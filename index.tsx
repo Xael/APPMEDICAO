@@ -1882,16 +1882,17 @@ const App = () => {
       }
       setIsLoading("Criando registro e enviando fotos 'Antes'...");
       try {
-          const recordPayload = {
-        		operatorId: parseInt(currentUser.id, 10),
-		        serviceType: currentService.serviceType,
-		        locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
-		        locationName: currentService.locationName,
-		        contractGroup: currentService.contractGroup,
-		        locationArea: currentService.locationArea,
-		        gpsUsed: !!currentService.gpsUsed,
-		        startTime: new Date().toISOString()
-	    };
+  			const recordPayload = {
+  			operatorId: parseInt(currentUser.id, 10),
+  			serviceType: currentService.serviceType,
+  			serviceUnit: currentService.serviceUnit,   // <-- adicionar este campo
+  			locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
+  			locationName: currentService.locationName,
+  			contractGroup: currentService.contractGroup,
+  			locationArea: currentService.locationArea,
+  			gpsUsed: !!currentService.gpsUsed,
+  			startTime: new Date().toISOString()
+       };
           const newRecord = await apiFetch('/api/records', { method: 'POST', body: JSON.stringify(recordPayload) });
 
           if (!newRecord || !newRecord.id) {
