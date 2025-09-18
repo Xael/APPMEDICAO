@@ -1498,56 +1498,98 @@ const AdminEditRecordView: React.FC<{
     services: ServiceDefinition[];
 }> = ({ record, onSave, onCancel, services }) => {
     const [formData, setFormData] = useState<ServiceRecord>(record);
-    
-    // This view is now mostly read-only as the backend does not support record updates.
-    // The form elements are disabled.
+
+    const handleChange = (field: keyof ServiceRecord, value: any) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleSave = async () => {
+        try {
+            const updated = await apiFetch(`/api/records/${formData.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(formData),
+            });
+            onSave(updated);
+            alert("Registro atualizado com sucesso!");
+        } catch (e) {
+            alert("Erro ao atualizar registro.");
+            console.error(e);
+        }
+    };
 
     return (
         <div className="card edit-form-container">
              <div className="form-group">
                 <label>Nome do Local</label>
-                <input type="text" value={formData.locationName} disabled />
+                <input
+                    type="text"
+                    value={formData.locationName}
+                    onChange={e => handleChange("locationName", e.target.value)}
+                />
             </div>
             <div className="form-group">
                 <label>Tipo de Serviço</label>
-                <input type="text" value={formData.serviceType} disabled />
+                <input
+                    type="text"
+                    value={formData.serviceType}
+                    onChange={e => handleChange("serviceType", e.target.value)}
+                />
             </div>
              <div className="form-group">
                 <label>Medição ({formData.serviceUnit})</label>
-                <input type="number" value={formData.locationArea || ''} disabled />
-            </div>
-            
-            <div className="form-group">
-                <h4>Fotos "Antes" ({formData.beforePhotos.length})</h4>
-                <div className="edit-photo-gallery">
-                    {formData.beforePhotos.map((p, i) => (
-                        <div key={i} className="edit-photo-item">
-                            <img src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />
-                        </div>
-                    ))}
-                </div>
+                <input
+                    type="number"
+                    value={formData.locationArea || ''}
+                    onChange={e => handleChange("locationArea", parseFloat(e.target.value))}
+                />
             </div>
 
             <div className="form-group">
-                <h4>Fotos "Depois" ({formData.afterPhotos.length})</h4>
-                <div className="edit-photo-gallery">
-                    {formData.afterPhotos.map((p, i) => (
-                        <div key={i} className="edit-photo-item">
-                            <img src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />
-                        </div>
-                    ))}
-                </div>
+                <label>Unidade</label>
+                <select
+                    value={formData.serviceUnit}
+                    onChange={e => handleChange("serviceUnit", e.target.value as 'm²' | 'm linear')}
+                >
+                    <option value="m²">m²</option>
+                    <option value="m linear">m linear</option>
+                </select>
             </div>
-            
-            <p className="text-danger" style={{marginTop: '1rem'}}>A edição de registros não é suportada pelo backend no momento. Esta tela é somente para visualização.</p>
+
+            <div className="form-group">
+                <label>Contrato/Cidade</label>
+                <input
+                    type="text"
+                    value={formData.contractGroup}
+                    onChange={e => handleChange("contractGroup", e.target.value)}
+                />
+            </div>
+
+            <div className="form-group">
+                <label>Início</label>
+                <input
+                    type="datetime-local"
+                    value={formData.startTime ? formData.startTime.slice(0,16) : ""}
+                    onChange={e => handleChange("startTime", e.target.value)}
+                />
+            </div>
+
+            <div className="form-group">
+                <label>Fim</label>
+                <input
+                    type="datetime-local"
+                    value={formData.endTime ? formData.endTime.slice(0,16) : ""}
+                    onChange={e => handleChange("endTime", e.target.value)}
+                />
+            </div>
 
             <div className="button-group">
                 <button className="button button-secondary" onClick={onCancel}>Voltar</button>
-                <button className="button button-success" onClick={() => onSave(formData)} disabled>Salvar Alterações</button>
+                <button className="button button-success" onClick={handleSave}>Salvar Alterações</button>
             </div>
         </div>
     );
 };
+
 
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
     
