@@ -2082,9 +2082,14 @@ const handleAfterPhotos = async (recordId: string) => {
       navigate('ADMIN_EDIT_RECORD');
   };
 
-  const handleUpdateRecord = (updatedRecord: ServiceRecord) => {
-    alert("A edição de registros não está implementada no backend.");
-  };
+const handleUpdateRecord = (updatedRecord: ServiceRecord) => {
+  setRecords(prev =>
+    prev.map(r => r.id === updatedRecord.id ? updatedRecord : r)
+  );
+  setSelectedRecord(updatedRecord);
+  alert("Registro atualizado com sucesso!");
+  navigate("HISTORY");
+};
 
   const handleDeleteRecord = async (recordId: string) => {
       if (!currentUser || currentUser.role !== 'ADMIN') return;
