@@ -6,9 +6,8 @@ import html2canvas from 'html2canvas';
 
 // --- API Client & Helpers ---
 
-// IMPORTANT: Configure your API URL.
-// In Vercel, set an environment variable named VITE_API_BASE.
-// For local development, create a .env.local file with: VITE_API_BASE=http://localhost:8000
+// A API_BASE agora é uma string vazia para permitir requisições relativas (ex: /api/login)
+// que serão interceptadas pelo proxy do Nginx no Docker.
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 
 let API_TOKEN: string | null = localStorage.getItem('crbApiToken');
@@ -23,10 +22,6 @@ const setApiToken = (token: string | null) => {
 };
 
 const apiFetch = async (path: string, options: RequestInit = {}) => {
-    if (!API_BASE) {
-        alert('A URL da API (VITE_API_BASE) não está configurada. Verifique seu arquivo .env.local ou as configurações de ambiente na Vercel.');
-        throw new Error('API_BASE URL is not configured.');
-    }
     const headers = new Headers(options.headers || {});
     if (API_TOKEN) {
         headers.append('Authorization', `Bearer ${API_TOKEN}`);
