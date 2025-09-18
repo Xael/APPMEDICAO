@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { queueRecord, addAfterPhotosToPending } from "./syncManager";
 
 // --- API Client & Helpers ---
 
@@ -2001,76 +2002,56 @@ const App = () => {
     navigate('PHOTO_STEP');
   };
 
-  const handleBeforePhotos = async (photos: string[]) => {
-      if (!currentUser || !currentService.serviceType || !currentService.contractGroup) {
-          alert("Erro: Dados do serviço incompletos.");
-          return;
-      }
-      setIsLoading("Criando registro e enviando fotos 'Antes'...");
-      try {
-  			const recordPayload = {
-  			operatorId: parseInt(currentUser.id, 10),
-  			serviceType: currentService.serviceType,
-  			serviceUnit: currentService.serviceUnit,   // <-- adicionar este campo
-  			locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
-  			locationName: currentService.locationName,
-  			contractGroup: currentService.contractGroup,
-  			locationArea: currentService.locationArea,
-  			gpsUsed: !!currentService.gpsUsed,
-  			startTime: new Date().toISOString()
-       };
-          const newRecord = await apiFetch('/api/records', { method: 'POST', body: JSON.stringify(recordPayload) });
+ // Criar registro + fotos "Antes"
+const handleBeforePhotos = async () => {
+  setIsLoading("Criando registro e salvando fotos 'Antes'...");
+  try {
+    const recordPayload = {
+      operatorId: parseInt(currentUser.id, 10),
+      serviceType: currentService.serviceType,
+      serviceUnit: currentService.serviceUnit,
+      locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
+      locationName: currentService.locationName,
+      contractGroup: currentService.contractGroup,
+      locationArea: currentService.locationArea,
+      gpsUsed: !!currentService.gpsUsed,
+      startTime: new Date().toISOString(),
+      tempId: crypto.randomUUID() // id temporário para vincular "Depois"
+    };
 
-          if (!newRecord || !newRecord.id) {
-              console.error("Server did not return a valid record object with an ID after creation.", newRecord);
-              throw new Error("Falha ao criar o registro no servidor antes do envio das fotos.");
-          }
-          
-          const photoFiles = photos.map((dataUrl, i) => dataURLtoFile(dataUrl, `before_${i}.jpg`));
-          if (photoFiles.length > 0) {
-              const formData = new FormData();
-              formData.append('phase', 'BEFORE');
-              photoFiles.forEach(file => formData.append('files', file));
-              await apiFetch(`/api/records/${newRecord.id}/photos`, { method: 'POST', body: formData });
-          }
+    const beforeFiles = photosBefore.map((p, i) =>
+      dataURLtoFile(p, `before_${i}.jpg`)
+    );
 
-          setCurrentService(s => ({...s, id: String(newRecord.id), startTime: newRecord.start_time }));
-          navigate('OPERATOR_SERVICE_IN_PROGRESS');
-      } catch(e) {
-          alert("Falha ao salvar fotos 'Antes'. Tente novamente.");
-          console.error(e);
-      } finally {
-          setIsLoading(null);
-      }
-  };
+    await queueRecord(recordPayload, beforeFiles);
 
-  const handleAfterPhotos = async (photos: string[]) => {
-      if (!currentService.id) {
-          alert("Erro: ID do registro não encontrado.");
-          return;
-      }
-      setIsLoading("Enviando fotos 'Depois'...");
-      try {
-          const photoFiles = photos.map((dataUrl, i) => dataURLtoFile(dataUrl, `after_${i}.jpg`));
-          if (photoFiles.length > 0) {
-              const formData = new FormData();
-              formData.append('phase', 'AFTER');
-              photoFiles.forEach(file => formData.append('files', file));
-              await apiFetch(`/api/records/${currentService.id}/photos`, { method: 'POST', body: formData });
-          }
-          
-          // Optionally update record with end_time if backend supports it
-          // await apiFetch(`/api/records/${currentService.id}`, { method: 'PUT', body: JSON.stringify({ end_time: new Date().toISOString() }) });
-          
-          setCurrentService(s => ({...s, endTime: new Date().toISOString()}));
-          navigate('CONFIRM_STEP');
-      } catch(e) {
-          alert("Falha ao salvar fotos 'Depois'. Tente novamente.");
-          console.error(e);
-      } finally {
-          setIsLoading(null);
-      }
-  };
+    setIsLoading(null);
+    alert("Registro salvo (offline se necessário). Será sincronizado automaticamente.");
+  } catch (err) {
+    console.error(err);
+    setIsLoading(null);
+    alert("Falha ao salvar registro local.");
+  }
+};
+
+// Adicionar fotos "Depois"
+const handleAfterPhotos = async (recordId: string) => {
+  setIsLoading("Salvando fotos 'Depois'...");
+  try {
+    const afterFiles = photosAfter.map((p, i) =>
+      dataURLtoFile(p, `after_${i}.jpg`)
+    );
+
+    await addAfterPhotosToPending(recordId, afterFiles);
+
+    setIsLoading(null);
+    alert("Fotos 'Depois' salvas (offline se necessário).");
+  } catch (err) {
+    console.error(err);
+    setIsLoading(null);
+    alert("Falha ao salvar fotos localmente.");
+  }
+};
 
   const handleSave = () => {
     alert("Registro salvo com sucesso no servidor.");
