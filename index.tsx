@@ -1517,9 +1517,42 @@ const AdminEditRecordView: React.FC<{
         }
     };
 
+    const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
+        if (!files || files.length === 0) return;
+        const formDataUpload = new FormData();
+        formDataUpload.append("phase", phase);
+        Array.from(files).forEach(file => formDataUpload.append("files", file));
+        try {
+            const updated = await apiFetch(`/api/records/${formData.id}/photos`, {
+                method: "POST",
+                body: formDataUpload
+            });
+            setFormData(updated); // atualiza com fotos novas
+        } catch (err) {
+            alert(`Falha ao enviar fotos '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
+            console.error(err);
+        }
+    };
+
+    const handlePhotoRemove = async (phase: 'BEFORE' | 'AFTER', photoUrl: string) => {
+        try {
+            const updated = await apiFetch(`/api/records/${formData.id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    [phase === "BEFORE" ? "beforePhotos" : "afterPhotos"]:
+                        (phase === "BEFORE" ? formData.beforePhotos : formData.afterPhotos).filter(p => p !== photoUrl)
+                })
+            });
+            setFormData(updated);
+        } catch (err) {
+            alert(`Falha ao remover foto '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
+            console.error(err);
+        }
+    };
+
     return (
         <div className="card edit-form-container">
-             <div className="form-group">
+            <div className="form-group">
                 <label>Nome do Local</label>
                 <input
                     type="text"
@@ -1527,6 +1560,7 @@ const AdminEditRecordView: React.FC<{
                     onChange={e => handleChange("locationName", e.target.value)}
                 />
             </div>
+
             <div className="form-group">
                 <label>Tipo de Serviço</label>
                 <input
@@ -1535,7 +1569,8 @@ const AdminEditRecordView: React.FC<{
                     onChange={e => handleChange("serviceType", e.target.value)}
                 />
             </div>
-             <div className="form-group">
+
+            <div className="form-group">
                 <label>Medição ({formData.serviceUnit})</label>
                 <input
                     type="number"
@@ -1582,6 +1617,54 @@ const AdminEditRecordView: React.FC<{
                 />
             </div>
 
+            {/* Fotos "Antes" */}
+            <div className="form-group">
+                <h4>Fotos "Antes" ({formData.beforePhotos.length})</h4>
+                <div className="edit-photo-gallery">
+                    {formData.beforePhotos.map((p, i) => (
+                        <div key={i} className="edit-photo-item">
+                            <img src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />
+                            <button
+                                className="button button-sm button-danger"
+                                onClick={() => handlePhotoRemove("BEFORE", p)}
+                            >
+                                ❌
+                            </button>
+                        </div>
+                    ))}
+                </div>
+                <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={e => handlePhotoUpload("BEFORE", e.target.files)}
+                />
+            </div>
+
+            {/* Fotos "Depois" */}
+            <div className="form-group">
+                <h4>Fotos "Depois" ({formData.afterPhotos.length})</h4>
+                <div className="edit-photo-gallery">
+                    {formData.afterPhotos.map((p, i) => (
+                        <div key={i} className="edit-photo-item">
+                            <img src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />
+                            <button
+                                className="button button-sm button-danger"
+                                onClick={() => handlePhotoRemove("AFTER", p)}
+                            >
+                                ❌
+                            </button>
+                        </div>
+                    ))}
+                </div>
+                <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={e => handlePhotoUpload("AFTER", e.target.files)}
+                />
+            </div>
+
             <div className="button-group">
                 <button className="button button-secondary" onClick={onCancel}>Voltar</button>
                 <button className="button button-success" onClick={handleSave}>Salvar Alterações</button>
@@ -1589,6 +1672,7 @@ const AdminEditRecordView: React.FC<{
         </div>
     );
 };
+
 
 
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
