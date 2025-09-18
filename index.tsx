@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { queueRecord, addAfterPhotosToPending } from "./syncManager";
 
 // --- API Client & Helpers ---
 
@@ -298,7 +299,7 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
 
     useEffect(() => {
         let isMounted = true;
-        navigator.mediaDevices.getUserMedia({ video: true })
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
             .then(mediaStream => {
                 if (isMounted) {
                     setStream(mediaStream);
@@ -312,6 +313,8 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
                         message = "Nenhuma câmera encontrada. Conecte uma câmera e tente novamente.";
                     } else if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
                         message = "A permissão para acessar a câmera foi negada. Habilite nas configurações do seu navegador.";
+                    } else if (err.name === "OverconstrainedError" || err.name === "ConstraintNotSatisfiedError") {
+                        message = "A câmera traseira não foi encontrada. Verifique se outra aplicação não a está utilizando.";
                     }
                 }
                 alert(message);
@@ -1496,56 +1499,182 @@ const AdminEditRecordView: React.FC<{
     services: ServiceDefinition[];
 }> = ({ record, onSave, onCancel, services }) => {
     const [formData, setFormData] = useState<ServiceRecord>(record);
-    
-    // This view is now mostly read-only as the backend does not support record updates.
-    // The form elements are disabled.
+
+    const handleChange = (field: keyof ServiceRecord, value: any) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleSave = async () => {
+        try {
+            const updated = await apiFetch(`/api/records/${formData.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(formData),
+            });
+            onSave(updated);
+            alert("Registro atualizado com sucesso!");
+        } catch (e) {
+            alert("Erro ao atualizar registro.");
+            console.error(e);
+        }
+    };
+
+    const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
+        if (!files || files.length === 0) return;
+        const formDataUpload = new FormData();
+        formDataUpload.append("phase", phase);
+        Array.from(files).forEach(file => formDataUpload.append("files", file));
+        try {
+            const updated = await apiFetch(`/api/records/${formData.id}/photos`, {
+                method: "POST",
+                body: formDataUpload
+            });
+            setFormData(updated); // atualiza com fotos novas
+        } catch (err) {
+            alert(`Falha ao enviar fotos '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
+            console.error(err);
+        }
+    };
+
+    const handlePhotoRemove = async (phase: 'BEFORE' | 'AFTER', photoUrl: string) => {
+        try {
+            const updated = await apiFetch(`/api/records/${formData.id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    [phase === "BEFORE" ? "beforePhotos" : "afterPhotos"]:
+                        (phase === "BEFORE" ? formData.beforePhotos : formData.afterPhotos).filter(p => p !== photoUrl)
+                })
+            });
+            setFormData(updated);
+        } catch (err) {
+            alert(`Falha ao remover foto '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
+            console.error(err);
+        }
+    };
 
     return (
         <div className="card edit-form-container">
-             <div className="form-group">
+            <div className="form-group">
                 <label>Nome do Local</label>
-                <input type="text" value={formData.locationName} disabled />
+                <input
+                    type="text"
+                    value={formData.locationName}
+                    onChange={e => handleChange("locationName", e.target.value)}
+                />
             </div>
+
             <div className="form-group">
                 <label>Tipo de Serviço</label>
-                <input type="text" value={formData.serviceType} disabled />
+                <input
+                    type="text"
+                    value={formData.serviceType}
+                    onChange={e => handleChange("serviceType", e.target.value)}
+                />
             </div>
-             <div className="form-group">
+
+            <div className="form-group">
                 <label>Medição ({formData.serviceUnit})</label>
-                <input type="number" value={formData.locationArea || ''} disabled />
+                <input
+                    type="number"
+                    value={formData.locationArea || ''}
+                    onChange={e => handleChange("locationArea", parseFloat(e.target.value))}
+                />
             </div>
-            
+
+            <div className="form-group">
+                <label>Unidade</label>
+                <select
+                    value={formData.serviceUnit}
+                    onChange={e => handleChange("serviceUnit", e.target.value as 'm²' | 'm linear')}
+                >
+                    <option value="m²">m²</option>
+                    <option value="m linear">m linear</option>
+                </select>
+            </div>
+
+            <div className="form-group">
+                <label>Contrato/Cidade</label>
+                <input
+                    type="text"
+                    value={formData.contractGroup}
+                    onChange={e => handleChange("contractGroup", e.target.value)}
+                />
+            </div>
+
+            <div className="form-group">
+                <label>Início</label>
+                <input
+                    type="datetime-local"
+                    value={formData.startTime ? formData.startTime.slice(0,16) : ""}
+                    onChange={e => handleChange("startTime", e.target.value)}
+                />
+            </div>
+
+            <div className="form-group">
+                <label>Fim</label>
+                <input
+                    type="datetime-local"
+                    value={formData.endTime ? formData.endTime.slice(0,16) : ""}
+                    onChange={e => handleChange("endTime", e.target.value)}
+                />
+            </div>
+
+            {/* Fotos "Antes" */}
             <div className="form-group">
                 <h4>Fotos "Antes" ({formData.beforePhotos.length})</h4>
                 <div className="edit-photo-gallery">
                     {formData.beforePhotos.map((p, i) => (
                         <div key={i} className="edit-photo-item">
                             <img src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />
+                            <button
+                                className="button button-sm button-danger"
+                                onClick={() => handlePhotoRemove("BEFORE", p)}
+                            >
+                                ❌
+                            </button>
                         </div>
                     ))}
                 </div>
+                <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={e => handlePhotoUpload("BEFORE", e.target.files)}
+                />
             </div>
 
+            {/* Fotos "Depois" */}
             <div className="form-group">
                 <h4>Fotos "Depois" ({formData.afterPhotos.length})</h4>
                 <div className="edit-photo-gallery">
                     {formData.afterPhotos.map((p, i) => (
                         <div key={i} className="edit-photo-item">
                             <img src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />
+                            <button
+                                className="button button-sm button-danger"
+                                onClick={() => handlePhotoRemove("AFTER", p)}
+                            >
+                                ❌
+                            </button>
                         </div>
                     ))}
                 </div>
+                <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={e => handlePhotoUpload("AFTER", e.target.files)}
+                />
             </div>
-            
-            <p className="text-danger" style={{marginTop: '1rem'}}>A edição de registros não é suportada pelo backend no momento. Esta tela é somente para visualização.</p>
 
             <div className="button-group">
                 <button className="button button-secondary" onClick={onCancel}>Voltar</button>
-                <button className="button button-success" onClick={() => onSave(formData)} disabled>Salvar Alterações</button>
+                <button className="button button-success" onClick={handleSave}>Salvar Alterações</button>
             </div>
         </div>
     );
 };
+
+
 
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
     
@@ -1873,70 +2002,56 @@ const App = () => {
     navigate('PHOTO_STEP');
   };
 
-  const handleBeforePhotos = async (photos: string[]) => {
-      if (!currentUser || !currentService.serviceType || !currentService.contractGroup) {
-          alert("Erro: Dados do serviço incompletos.");
-          return;
-      }
-      setIsLoading("Criando registro e enviando fotos 'Antes'...");
-      try {
-          const recordPayload = {
-              operator_id: parseInt(currentUser.id, 10),
-              service_type: currentService.serviceType,
-              location_id: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
-              location_name: currentService.locationName,
-              location_city: currentService.contractGroup,
-              location_area: currentService.locationArea,
-              gps_used: !!currentService.gpsUsed,
-              start_time: new Date().toISOString()
-          };
-          const newRecord = await apiFetch('/api/records', { method: 'POST', body: JSON.stringify(recordPayload) });
-          
-          const photoFiles = photos.map((dataUrl, i) => dataURLtoFile(dataUrl, `before_${i}.jpg`));
-          if (photoFiles.length > 0) {
-              const formData = new FormData();
-              formData.append('phase', 'BEFORE');
-              photoFiles.forEach(file => formData.append('files', file));
-              await apiFetch(`/api/records/${newRecord.id}/photos`, { method: 'POST', body: formData });
-          }
+ // Criar registro + fotos "Antes"
+const handleBeforePhotos = async () => {
+  setIsLoading("Criando registro e salvando fotos 'Antes'...");
+  try {
+    const recordPayload = {
+      operatorId: parseInt(currentUser.id, 10),
+      serviceType: currentService.serviceType,
+      serviceUnit: currentService.serviceUnit,
+      locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
+      locationName: currentService.locationName,
+      contractGroup: currentService.contractGroup,
+      locationArea: currentService.locationArea,
+      gpsUsed: !!currentService.gpsUsed,
+      startTime: new Date().toISOString(),
+      tempId: crypto.randomUUID() // id temporário para vincular "Depois"
+    };
 
-          setCurrentService(s => ({...s, id: String(newRecord.id), startTime: newRecord.start_time }));
-          navigate('OPERATOR_SERVICE_IN_PROGRESS');
-      } catch(e) {
-          alert("Falha ao salvar fotos 'Antes'. Tente novamente.");
-          console.error(e);
-      } finally {
-          setIsLoading(null);
-      }
-  };
+    const beforeFiles = photosBefore.map((p, i) =>
+      dataURLtoFile(p, `before_${i}.jpg`)
+    );
 
-  const handleAfterPhotos = async (photos: string[]) => {
-      if (!currentService.id) {
-          alert("Erro: ID do registro não encontrado.");
-          return;
-      }
-      setIsLoading("Enviando fotos 'Depois'...");
-      try {
-          const photoFiles = photos.map((dataUrl, i) => dataURLtoFile(dataUrl, `after_${i}.jpg`));
-          if (photoFiles.length > 0) {
-              const formData = new FormData();
-              formData.append('phase', 'AFTER');
-              photoFiles.forEach(file => formData.append('files', file));
-              await apiFetch(`/api/records/${currentService.id}/photos`, { method: 'POST', body: formData });
-          }
-          
-          // Optionally update record with end_time if backend supports it
-          // await apiFetch(`/api/records/${currentService.id}`, { method: 'PUT', body: JSON.stringify({ end_time: new Date().toISOString() }) });
-          
-          setCurrentService(s => ({...s, endTime: new Date().toISOString()}));
-          navigate('CONFIRM_STEP');
-      } catch(e) {
-          alert("Falha ao salvar fotos 'Depois'. Tente novamente.");
-          console.error(e);
-      } finally {
-          setIsLoading(null);
-      }
-  };
+    await queueRecord(recordPayload, beforeFiles);
+
+    setIsLoading(null);
+    alert("Registro salvo (offline se necessário). Será sincronizado automaticamente.");
+  } catch (err) {
+    console.error(err);
+    setIsLoading(null);
+    alert("Falha ao salvar registro local.");
+  }
+};
+
+// Adicionar fotos "Depois"
+const handleAfterPhotos = async (recordId: string) => {
+  setIsLoading("Salvando fotos 'Depois'...");
+  try {
+    const afterFiles = photosAfter.map((p, i) =>
+      dataURLtoFile(p, `after_${i}.jpg`)
+    );
+
+    await addAfterPhotosToPending(recordId, afterFiles);
+
+    setIsLoading(null);
+    alert("Fotos 'Depois' salvas (offline se necessário).");
+  } catch (err) {
+    console.error(err);
+    setIsLoading(null);
+    alert("Falha ao salvar fotos localmente.");
+  }
+};
 
   const handleSave = () => {
     alert("Registro salvo com sucesso no servidor.");
