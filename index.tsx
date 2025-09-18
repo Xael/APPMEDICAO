@@ -2070,23 +2070,23 @@ const handleAfterPhotos = async (recordId: string) => {
     resetService();
   };
 
-  const handleSelectRecord = async (record: ServiceRecord) => {
-    setIsLoading("Carregando detalhes...");
-    try {
-        const detailedRecord = await apiFetch(`/api/records/${record.id}`);
-        const fullRecord = {
-            ...record,
-            beforePhotos: detailedRecord.before_photos || [],
-            afterPhotos: detailedRecord.after_photos || [],
-        };
-        setSelectedRecord(fullRecord);
-        navigate('DETAIL');
-    } catch (e) {
-        alert('Não foi possível carregar os detalhes do registro.');
-    } finally {
-        setIsLoading(null);
-    }
+const handleSelectRecord = async (record: ServiceRecord) => {
+  setIsLoading("Carregando detalhes...");
+  try {
+      const detailedRecord = await apiFetch(`/api/records/${record.id}`);
+      const fullRecord: ServiceRecord = {
+          ...record,
+          beforePhotos: detailedRecord.beforePhotos || [],
+          afterPhotos: detailedRecord.afterPhotos || [],
+      };
+      setSelectedRecord(fullRecord);
+      navigate('DETAIL');
+  } catch (e) {
+      alert('Não foi possível carregar os detalhes do registro.');
+  } finally {
+      setIsLoading(null);
   }
+};
 
   const handleEditRecord = (record: ServiceRecord) => {
       setSelectedRecord(record);
