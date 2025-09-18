@@ -6,8 +6,9 @@ import html2canvas from 'html2canvas';
 
 // --- API Client & Helpers ---
 
-// A API_BASE agora é uma string vazia para permitir requisições relativas (ex: /api/login)
-// que serão interceptadas pelo proxy do Nginx no Docker.
+// IMPORTANT: Configure your API URL.
+// In Vercel, set an environment variable named VITE_API_BASE.
+// For local development, create a .env.local file with: VITE_API_BASE=http://localhost:8000
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 
 let API_TOKEN: string | null = localStorage.getItem('crbApiToken');
@@ -22,6 +23,10 @@ const setApiToken = (token: string | null) => {
 };
 
 const apiFetch = async (path: string, options: RequestInit = {}) => {
+    if (!API_BASE) {
+        alert('A URL da API (VITE_API_BASE) não está configurada. Verifique seu arquivo .env.local ou as configurações de ambiente na Vercel.');
+        throw new Error('API_BASE URL is not configured.');
+    }
     const headers = new Headers(options.headers || {});
     if (API_TOKEN) {
         headers.append('Authorization', `Bearer ${API_TOKEN}`);
@@ -81,8 +86,8 @@ type View =
   | 'HISTORY'
   | 'DETAIL'
   | 'OPERATOR_GROUP_SELECT'
-  | 'OPERATOR_SERVICE_SELECT'
   | 'OPERATOR_LOCATION_SELECT'
+  | 'OPERATOR_SERVICE_SELECT'
   | 'PHOTO_STEP'
   | 'OPERATOR_SERVICE_IN_PROGRESS'
   | 'CONFIRM_STEP';
@@ -118,6 +123,7 @@ interface LocationRecord {
   name: string;
   area: number; // metragem
   coords?: GeolocationCoords;
+  serviceIds?: string[];
 }
 
 interface ServiceRecord {
@@ -154,6 +160,15 @@ interface AuditLogEntry {
     details: string;
 }
 
+// --- Dados Padrão (Default Data) ---
+const DEFAULT_SERVICES: ServiceDefinition[] = [
+    { id: 'service-1', name: 'Roçagem', unit: 'm²' },
+    { id: 'service-2', name: 'Pintura de Guia', unit: 'm linear' },
+    { id: 'service-3', name: 'Varreção', unit: 'm²' },
+    { id: 'service-4', name: 'Capinagem', unit: 'm²' },
+    { id: 'service-5', name: 'Roçagem em Escolas', unit: 'm²' },
+];
+
 // --- Funções Auxiliares (Helper Functions) ---
 const formatDateTime = (isoString: string) => new Date(isoString).toLocaleString('pt-BR');
 const calculateDistance = (p1: GeolocationCoords, p2: GeolocationCoords) => {
@@ -166,6 +181,59 @@ const calculateDistance = (p1: GeolocationCoords, p2: GeolocationCoords) => {
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c; // in metres
+};
+
+const generateChangeLogDetails = (original: ServiceRecord, updated: ServiceRecord): string => {
+    const changes: string[] = [];
+    if (original.locationName !== updated.locationName) {
+        changes.push(`Nome do Local de "${original.locationName}" para "${updated.locationName}"`);
+    }
+    if (original.serviceType !== updated.serviceType) {
+        changes.push(`Tipo de Serviço de "${original.serviceType}" para "${updated.serviceType}"`);
+    }
+    if (original.locationArea !== updated.locationArea) {
+        changes.push(`Metragem de "${original.locationArea || 0}" para "${updated.locationArea || 0}"`);
+    }
+
+    const beforePhotosAdded = updated.beforePhotos.filter(p => !original.beforePhotos.includes(p)).length;
+    const beforePhotosRemoved = original.beforePhotos.filter(p => !updated.beforePhotos.includes(p)).length;
+    if (beforePhotosAdded > 0 || beforePhotosRemoved > 0) {
+        let photoChange = 'Fotos "Antes": ';
+        if (beforePhotosAdded > 0) photoChange += `adicionou ${beforePhotosAdded}`;
+        if (beforePhotosAdded > 0 && beforePhotosRemoved > 0) photoChange += ', ';
+        if (beforePhotosRemoved > 0) photoChange += `removeu ${beforePhotosRemoved}`;
+        changes.push(photoChange);
+    }
+    
+    const afterPhotosAdded = updated.afterPhotos.filter(p => !original.afterPhotos.includes(p)).length;
+    const afterPhotosRemoved = original.afterPhotos.filter(p => !updated.afterPhotos.includes(p)).length;
+    if (afterPhotosAdded > 0 || afterPhotosRemoved > 0) {
+        let photoChange = 'Fotos "Depois": ';
+        if (afterPhotosAdded > 0) photoChange += `adicionou ${afterPhotosAdded}`;
+        if (afterPhotosAdded > 0 && afterPhotosRemoved > 0) photoChange += ', ';
+        if (afterPhotosRemoved > 0) photoChange += `removeu ${afterPhotosRemoved}`;
+        changes.push(photoChange);
+    }
+    
+    return changes.length > 0 ? changes.join('; ') : 'Nenhuma alteração de dados foi feita.';
+}
+
+// --- Hooks ---
+const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
+    const [storedValue, setStoredValue] = useState<T>(() => {
+        try {
+            const item = window.localStorage.getItem(key);
+            return item ? JSON.parse(item) : initialValue;
+        } catch (error) { return initialValue; }
+    });
+    const setValue: React.Dispatch<React.SetStateAction<T>> = (value) => {
+        try {
+            const valueToStore = value instanceof Function ? value(storedValue) : value;
+            setStoredValue(valueToStore);
+            window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        } catch (error) { console.error(error); }
+    };
+    return [storedValue, setValue];
 };
 
 // --- Componentes ---
@@ -206,8 +274,8 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
 
         switch(view) {
             case 'OPERATOR_GROUP_SELECT': return 'Selecione o Contrato/Cidade';
+            case 'OPERATOR_LOCATION_SELECT': return 'Selecione o Local';
             case 'OPERATOR_SERVICE_SELECT': return `Selecione o Serviço`;
-            case 'OPERATOR_LOCATION_SELECT': return 'Registro do Serviço';
             case 'OPERATOR_SERVICE_IN_PROGRESS': return 'Serviço em Andamento';
             case 'HISTORY': return 'Meu Histórico';
             case 'DETAIL': return 'Detalhes do Serviço';
@@ -332,7 +400,9 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
 
 const AdminDashboard: React.FC<{ 
     onNavigate: (view: View) => void;
-}> = ({ onNavigate }) => (
+    onBackup: () => void;
+    onRestore: () => void;
+}> = ({ onNavigate, onBackup, onRestore }) => (
     <div className="admin-dashboard">
         <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_SERVICES')}>Gerenciar Tipos de Serviço</button>
         <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_LOCATIONS')}>Gerenciar Locais</button>
@@ -341,6 +411,8 @@ const AdminDashboard: React.FC<{
         <button className="button admin-button" onClick={() => onNavigate('HISTORY')}>Histórico Geral</button>
         <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_GOALS')}>🎯 Metas de Desempenho</button>
         <button className="button admin-button" onClick={() => onNavigate('AUDIT_LOG')}>📜 Log de Auditoria</button>
+        <button className="button admin-button" onClick={onBackup}>💾 Fazer Backup Geral (Local)</button>
+        <button className="button admin-button" onClick={onRestore}>🔄 Restaurar Backup (Local)</button>
     </div>
 );
 
@@ -372,19 +444,26 @@ const OperatorGroupSelect: React.FC<{
 };
 
 const OperatorServiceSelect: React.FC<{ 
-    user: User;
-    contractGroup: string;
+    location: LocationRecord;
     services: ServiceDefinition[];
+    user: User;
     onSelectService: (service: ServiceDefinition) => void 
-}> = ({ user, contractGroup, services, onSelectService }) => {
+}> = ({ location, services, user, onSelectService }) => {
     
-    const assignment = user.assignments?.find(a => a.contractGroup === contractGroup);
-    const availableServiceNames = assignment?.serviceNames || [];
-    const availableServices = services.filter(s => availableServiceNames.includes(s.name));
+    let availableServices: ServiceDefinition[] = [];
+    // If the location has specific services assigned to it, use them
+    if (location.serviceIds && location.serviceIds.length > 0) {
+        availableServices = services.filter(s => location.serviceIds!.includes(s.id));
+    } else {
+        // Fallback for new/unassigned locations: use the operator's general assignments for that contract group
+        const assignment = user.assignments?.find(a => a.contractGroup === location.contractGroup);
+        const userAssignedServiceNames = assignment?.serviceNames || [];
+        availableServices = services.filter(s => userAssignedServiceNames.includes(s.name));
+    }
 
     return (
         <div className="card">
-            <h2>Escolha o Serviço em "{contractGroup}"</h2>
+            <h2>Escolha o Serviço em "{location.name}"</h2>
             <div className="service-selection-list">
                 {availableServices.map(service => (
                     <button key={service.id} className="button" onClick={() => onSelectService(service)}>
@@ -399,9 +478,8 @@ const OperatorServiceSelect: React.FC<{
 const OperatorLocationSelect: React.FC<{ 
     locations: LocationRecord[]; 
     contractGroup: string; 
-    service: ServiceDefinition;
-    onLocationSet: (loc: Partial<ServiceRecord>) => void; 
-}> = ({ locations, contractGroup, service, onLocationSet }) => {
+    onSelectLocation: (loc: LocationRecord, gpsUsed: boolean) => void; 
+}> = ({ locations, contractGroup, onSelectLocation }) => {
     const [manualLocationName, setManualLocationName] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [gpsLocation, setGpsLocation] = useState<GeolocationCoords | null>(null);
@@ -431,36 +509,27 @@ const OperatorLocationSelect: React.FC<{
 
     const handleConfirmNearby = () => {
         if(nearbyLocation) {
-            onLocationSet({
-                locationId: nearbyLocation.id,
-                locationName: nearbyLocation.name,
-                contractGroup: contractGroup,
-                locationArea: nearbyLocation.area,
-                gpsUsed: true,
-            });
+            onSelectLocation(nearbyLocation, true);
         }
     };
 
     const handleConfirmNewManual = () => {
         if (manualLocationName.trim()) {
-            onLocationSet({
-                locationName: manualLocationName.trim(),
+             const newManualLocation: LocationRecord = {
+                id: `manual-${new Date().getTime()}`, // Temporary client-side ID
+                name: manualLocationName.trim(),
                 contractGroup: contractGroup,
-                gpsUsed: false,
-            });
+                area: 0, // Manually created locations require admin to set area later
+                serviceIds: [], // Empty, will trigger service selection fallback to user's assignments
+            };
+            onSelectLocation(newManualLocation, false);
         } else {
             alert('Por favor, digite o nome do novo local.');
         }
     };
 
     const handleSelectFromList = (loc: LocationRecord) => {
-        onLocationSet({
-            locationId: loc.id,
-            locationName: loc.name,
-            contractGroup: loc.contractGroup,
-            locationArea: loc.area,
-            gpsUsed: false,
-        });
+        onSelectLocation(loc, false);
     };
     
     const filteredLocations = contractLocations.filter(loc =>
@@ -470,7 +539,6 @@ const OperatorLocationSelect: React.FC<{
     return (
         <div className="card">
             <h2>Selecione o Local em "{contractGroup}"</h2>
-            <p><strong>Serviço:</strong> {service.name} ({service.unit})</p>
             {error && <p className="text-danger">{error}</p>}
 
             {!gpsLocation && !error && <Loader text="Obtendo sinal de GPS..." />}
@@ -860,12 +928,14 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
 const ManageLocationsView: React.FC<{ 
     locations: LocationRecord[]; 
-    onUpdate: () => Promise<void>;
-}> = ({ locations, onUpdate }) => {
+    setLocations: React.Dispatch<React.SetStateAction<LocationRecord[]>>;
+    services: ServiceDefinition[];
+}> = ({ locations, setLocations, services }) => {
     const [selectedGroup, setSelectedGroup] = useState('');
     const [name, setName] = useState('');
     const [area, setArea] = useState('');
     const [coords, setCoords] = useState<Partial<GeolocationCoords> | null>(null);
+    const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set());
     const [isFetchingCoords, setIsFetchingCoords] = useState(false);
     const [editingId, setEditingId] = useState<string|null>(null);
 
@@ -875,7 +945,19 @@ const ManageLocationsView: React.FC<{
         setName('');
         setArea('');
         setCoords(null);
+        setSelectedServiceIds(new Set());
         setEditingId(null);
+    };
+    
+    const handleAddNewGroup = () => {
+        const newGroup = prompt('Digite o nome do novo Contrato/Cidade:');
+        if (newGroup && !allGroups.includes(newGroup)) {
+            setSelectedGroup(newGroup);
+            resetForm();
+        } else if (newGroup) {
+            setSelectedGroup(newGroup);
+            resetForm();
+        }
     };
 
     const handleGetCoordinates = () => {
@@ -903,31 +985,63 @@ const ManageLocationsView: React.FC<{
         });
     };
 
+    const handleServiceCheckbox = (serviceId: string, checked: boolean) => {
+        setSelectedServiceIds(prev => {
+            const newSet = new Set(prev);
+            if (checked) {
+                newSet.add(serviceId);
+            } else {
+                newSet.delete(serviceId);
+            }
+            return newSet;
+        });
+    };
+
     const handleSave = async () => {
         if (!selectedGroup) {
-            alert('Digite o nome do Contrato/Cidade.');
+            alert('Selecione um Contrato/Cidade.');
             return;
         }
-        if (!name || !area || isNaN(parseFloat(area))) {
-            alert('Preencha todos os campos corretamente.');
+        if (!name) {
+            alert('O nome do local é obrigatório.');
+            return;
+        }
+        if (selectedServiceIds.size > 0 && (!area || isNaN(parseFloat(area)))) {
+             alert('A metragem é obrigatória quando um serviço é selecionado.');
             return;
         }
 
         const payload = {
             city: selectedGroup.trim(),
             name,
-            area: parseFloat(area),
+            area: parseFloat(area) || 0,
             lat: coords?.latitude,
             lng: coords?.longitude,
+            service_ids: Array.from(selectedServiceIds),
         };
 
         try {
             if (editingId) {
-                await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                const updatedLoc = await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                setLocations(locations.map(l => l.id === editingId ? {
+                    id: String(updatedLoc.id),
+                    name: updatedLoc.name,
+                    contractGroup: updatedLoc.city,
+                    area: updatedLoc.area,
+                    coords: updatedLoc.lat && updatedLoc.lng ? { latitude: updatedLoc.lat, longitude: updatedLoc.lng } : undefined,
+                    serviceIds: updatedLoc.service_ids || []
+                } : l));
             } else {
-                await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
+                const newLoc = await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
+                setLocations([{
+                    id: String(newLoc.id),
+                    name: newLoc.name,
+                    contractGroup: newLoc.city,
+                    area: newLoc.area,
+                    coords: newLoc.lat && newLoc.lng ? { latitude: newLoc.lat, longitude: newLoc.lng } : undefined,
+                    serviceIds: newLoc.service_ids || []
+                }, ...locations]);
             }
-            await onUpdate();
             resetForm();
         } catch (error) {
             alert('Falha ao salvar local. Tente novamente.');
@@ -940,6 +1054,7 @@ const ManageLocationsView: React.FC<{
         setName(loc.name);
         setArea(String(loc.area));
         setCoords(loc.coords || null);
+        setSelectedServiceIds(new Set(loc.serviceIds || []));
         setSelectedGroup(loc.contractGroup);
     };
 
@@ -947,7 +1062,7 @@ const ManageLocationsView: React.FC<{
         if(window.confirm('Excluir este local?')) {
             try {
                 await apiFetch(`/api/locations/${id}`, { method: 'DELETE' });
-                await onUpdate();
+                setLocations(locations.filter(l => l.id !== id));
             } catch (error) {
                 alert('Falha ao excluir local. Tente novamente.');
                 console.error(error);
@@ -961,27 +1076,46 @@ const ManageLocationsView: React.FC<{
         <div>
             <div className="card">
                 <h3>Gerenciar Locais por Contrato/Cidade</h3>
-                <input 
-                    list="contract-groups" 
-                    placeholder="Digite ou selecione um Contrato/Cidade" 
-                    value={selectedGroup} 
-                    onChange={e => {setSelectedGroup(e.target.value); resetForm();}}
-                />
-                <datalist id="contract-groups">
-                    {allGroups.map(g => <option key={g} value={g} />)}
-                </datalist>
+                <div className="form-group contract-group-selector">
+                    <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); resetForm(); }}>
+                        <option value="">Selecione um Contrato/Cidade</option>
+                        {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                    <button className="button button-secondary" onClick={handleAddNewGroup}>Adicionar Novo</button>
+                </div>
             </div>
             
             {selectedGroup && (
                 <>
                 <div className="form-container card">
                     <h3>{editingId ? 'Editando Local' : 'Adicionar Novo Local'} em "{selectedGroup}"</h3>
-                    <input type="text" placeholder="Nome do Local" value={name} onChange={e => setName(e.target.value)} />
-                    <input type="number" placeholder="Metragem (use a unidade do serviço)" value={area} onChange={e => setArea(e.target.value)} />
+                    <input type="text" placeholder="Nome do Local (Endereço)" value={name} onChange={e => setName(e.target.value)} />
+                    
+                    <fieldset className="service-assignment-fieldset">
+                        <legend>Serviços Disponíveis Neste Local</legend>
+                        <div className="checkbox-group">
+                            {services.sort((a,b) => a.name.localeCompare(b.name)).map(service => (
+                                <div key={service.id} className="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        id={`service-loc-${service.id}`}
+                                        checked={selectedServiceIds.has(service.id)}
+                                        onChange={e => handleServiceCheckbox(service.id, e.target.checked)}
+                                    />
+                                    <label htmlFor={`service-loc-${service.id}`}>{service.name}</label>
+                                </div>
+                            ))}
+                        </div>
+                    </fieldset>
+                    
+                    {selectedServiceIds.size > 0 && (
+                        <input type="number" placeholder="Metragem (ex: 150.5)" value={area} onChange={e => setArea(e.target.value)} />
+                    )}
+                    <p style={{fontSize: '0.8rem', color: '#666', margin: '0'}}>A unidade (m² ou m linear) é definida pelo serviço que o operador selecionar.</p>
                     
                     <div className="form-group" style={{marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem'}}>
                          <label>Coordenadas GPS (Opcional)</label>
-                         <p style={{fontSize: '0.8rem', color: '#666', margin: '0.25rem 0'}}>Preencha manualmente ou clique no botão para capturar as coordenadas GPS atuais.</p>
+                         <p style={{fontSize: '0.8rem', color: '#666', margin: '0.25rem 0'}}>Preencha manualmente ou use o botão para capturar as coordenadas atuais.</p>
                          <div className="coord-inputs">
                             <input type="number" step="any" placeholder="Latitude" value={coords?.latitude ?? ''} onChange={e => handleCoordChange('latitude', e.target.value)} />
                             <input type="number" step="any" placeholder="Longitude" value={coords?.longitude ?? ''} onChange={e => handleCoordChange('longitude', e.target.value)} />
@@ -995,19 +1129,30 @@ const ManageLocationsView: React.FC<{
                     {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
                 </div>
                 <ul className="location-list">
-                    {filteredLocations.sort((a,b) => a.name.localeCompare(b.name)).map(loc => (
-                        <li key={loc.id} className="card list-item">
-                            <div className="list-item-header">
-                                <h3>{loc.name}</h3>
-                                <div>
-                                    <button className="button button-sm admin-button" onClick={() => handleEdit(loc)}>Editar</button>
-                                    <button className="button button-sm button-danger" onClick={() => handleDelete(loc.id)}>Excluir</button>
+                    {filteredLocations.sort((a,b) => a.name.localeCompare(b.name)).map(loc => {
+                        const serviceNames = (loc.serviceIds || [])
+                            .map(id => services.find(s => s.id === id)?.name)
+                            .filter(Boolean);
+
+                        return (
+                            <li key={loc.id} className="card list-item">
+                                <div className="list-item-info">
+                                    <div className="list-item-header">
+                                        <h3>{loc.name}</h3>
+                                        <div>
+                                            <button className="button button-sm admin-button" onClick={() => handleEdit(loc)}>Editar</button>
+                                            <button className="button button-sm button-danger" onClick={() => handleDelete(loc.id)}>Excluir</button>
+                                        </div>
+                                    </div>
+                                    <p><strong>Metragem Base:</strong> {loc.area}</p>
+                                    <p className="location-services-list">
+                                        <strong>Serviços:</strong> {serviceNames.length > 0 ? serviceNames.join(', ') : 'Nenhum atribuído'}
+                                    </p>
+                                    {loc.coords && <p><strong>GPS:</strong> Sim <span className="gps-indicator">📍</span></p>}
                                 </div>
-                            </div>
-                            <p><strong>Metragem Base:</strong> {loc.area}</p>
-                            {loc.coords && <p><strong>GPS:</strong> Sim <span className="gps-indicator">📍</span></p>}
-                        </li>
-                    ))}
+                            </li>
+                        )
+                    })}
                 </ul>
                 </>
             )}
@@ -1019,7 +1164,8 @@ const ManageUsersView: React.FC<{
     users: User[];
     onUsersUpdate: () => Promise<void>;
     services: ServiceDefinition[];
-}> = ({ users, onUsersUpdate }) => {
+    locations: LocationRecord[];
+}> = ({ users, onUsersUpdate, services, locations }) => {
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -1027,6 +1173,13 @@ const ManageUsersView: React.FC<{
     const [assignments, setAssignments] = useState<UserAssignment[]>([]);
     const [editingId, setEditingId] = useState<string|null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    
+    // State for the 'add new assignment' form
+    const [newAssignmentGroup, setNewAssignmentGroup] = useState('');
+    const [newAssignmentServices, setNewAssignmentServices] = useState<Set<string>>(new Set());
+
+    const allGroups = [...new Set(locations.map(l => l.contractGroup))].sort();
+    const allServices = [...services].sort((a, b) => a.name.localeCompare(b.name));
 
     const resetForm = () => {
         setUsername('');
@@ -1035,6 +1188,45 @@ const ManageUsersView: React.FC<{
         setRole('OPERATOR');
         setAssignments([]);
         setEditingId(null);
+    };
+    
+    const handleAddAssignment = () => {
+        if (!newAssignmentGroup) {
+            alert('Por favor, selecione um Contrato/Cidade.');
+            return;
+        }
+        if (newAssignmentServices.size === 0) {
+            alert('Por favor, selecione pelo menos um serviço.');
+            return;
+        }
+         if (assignments.some(a => a.contractGroup === newAssignmentGroup)) {
+            alert('Este contrato já foi atribuído. Remova o antigo para adicionar um novo com serviços diferentes.');
+            return;
+        }
+
+        setAssignments(prev => [
+            ...prev,
+            { contractGroup: newAssignmentGroup, serviceNames: Array.from(newAssignmentServices) }
+        ].sort((a,b) => a.contractGroup.localeCompare(b.contractGroup)));
+        
+        setNewAssignmentGroup('');
+        setNewAssignmentServices(new Set());
+    };
+    
+    const handleRemoveAssignment = (groupToRemove: string) => {
+        setAssignments(prev => prev.filter(a => a.contractGroup !== groupToRemove));
+    };
+
+    const handleServiceCheckbox = (serviceName: string, checked: boolean) => {
+        setNewAssignmentServices(prev => {
+            const newSet = new Set(prev);
+            if(checked) {
+                newSet.add(serviceName);
+            } else {
+                newSet.delete(serviceName);
+            }
+            return newSet;
+        });
     };
 
     const handleSave = async () => {
@@ -1049,14 +1241,16 @@ const ManageUsersView: React.FC<{
 
         setIsLoading(true);
 
-        const payload: { name: string; email: string; role: Role; password?: string } = {
+        const payload: any = {
             name: username,
             email,
             role,
         };
-        // Only include the password if it's being set or changed
         if (password) {
             payload.password = password;
+        }
+        if (role === 'OPERATOR' || role === 'FISCAL') {
+            payload.assignments = assignments;
         }
 
         try {
@@ -1107,12 +1301,49 @@ const ManageUsersView: React.FC<{
                 <input type="email" placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} />
                 <input type="text" placeholder={editingId ? 'Nova Senha (deixe em branco para não alterar)' : 'Senha'} value={password} onChange={e => setPassword(e.target.value)} />
                 <select value={role} onChange={e => setRole(e.target.value as Role)}>
-                    <option value="ADMIN">Administrador</option>
                     <option value="OPERATOR">Operador</option>
                     <option value="FISCAL">Fiscalização</option>
+                    <option value="ADMIN">Administrador</option>
                 </select>
                 
-                <p style={{marginTop: '1rem', fontSize: '0.9rem'}}>Atenção: A atribuição de contratos/serviços a usuários ainda é uma funcionalidade em desenvolvimento no backend.</p>
+                {(role === 'OPERATOR' || role === 'FISCAL') && (
+                    <fieldset className="assignment-section">
+                        <legend>Atribuições (Contratos/Serviços)</legend>
+                        
+                        {assignments.length > 0 && (
+                             <ul className="assignment-list">
+                                {assignments.map(assign => (
+                                    <li key={assign.contractGroup} className="assignment-item">
+                                        <div className="assignment-item-info">
+                                            <strong>{assign.contractGroup}</strong>
+                                            <p>{assign.serviceNames.join(', ')}</p>
+                                        </div>
+                                        <button className="button button-sm button-danger" onClick={() => handleRemoveAssignment(assign.contractGroup)}>Remover</button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+
+                        <div className="add-assignment-form">
+                            <h4>Adicionar Nova Atribuição</h4>
+                            <select value={newAssignmentGroup} onChange={e => setNewAssignmentGroup(e.target.value)}>
+                                <option value="">Selecione o Contrato/Cidade</option>
+                                {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                            <div className="checkbox-group">
+                                {allServices.map(service => (
+                                <div key={service.id} className="checkbox-item">
+                                    <input type="checkbox" id={`service-assign-${service.id}`} 
+                                        checked={newAssignmentServices.has(service.name)} 
+                                        onChange={e => handleServiceCheckbox(service.name, e.target.checked)} />
+                                    <label htmlFor={`service-assign-${service.id}`}>{service.name}</label>
+                                </div>
+                                ))}
+                            </div>
+                            <button type="button" className="button button-sm" onClick={handleAddAssignment}>Adicionar Atribuição</button>
+                        </div>
+                    </fieldset>
+                )}
 
                 <button className="button admin-button" onClick={handleSave} disabled={isLoading}>{isLoading ? 'Salvando...' : (editingId ? 'Salvar Alterações' : 'Adicionar')}</button>
                 {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar</button>}
@@ -1138,15 +1369,14 @@ const ManageUsersView: React.FC<{
 
 const ManageGoalsView: React.FC<{
     goals: Goal[];
-    onUpdate: () => Promise<void>;
+    setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
     records: ServiceRecord[];
     locations: LocationRecord[];
-}> = ({ goals, onUpdate, records, locations }) => {
+}> = ({ goals, setGoals, records, locations }) => {
     const [contractGroup, setContractGroup] = useState('');
     const [month, setMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
     const [targetArea, setTargetArea] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
     
     const allGroups = [...new Set(locations.map(l => l.contractGroup).concat(records.map(r => r.contractGroup)))].sort();
 
@@ -1157,31 +1387,23 @@ const ManageGoalsView: React.FC<{
         setEditingId(null);
     };
 
-    const handleSave = async () => {
+    const handleSave = () => {
         if (!contractGroup || !month || !targetArea || isNaN(parseFloat(targetArea))) {
             alert('Preencha todos os campos corretamente.');
             return;
         }
-        setIsLoading(true);
-        const payload = {
+        const newGoal: Goal = {
+            id: editingId || new Date().toISOString(),
             contractGroup,
             month,
             targetArea: parseFloat(targetArea),
         };
-        try {
-            if (editingId) {
-                await apiFetch(`/api/goals/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
-            } else {
-                await apiFetch('/api/goals', { method: 'POST', body: JSON.stringify(payload) });
-            }
-            resetForm();
-            await onUpdate();
-        } catch (e) {
-            alert('Falha ao salvar a meta.');
-            console.error(e);
-        } finally {
-            setIsLoading(false);
+        if (editingId) {
+            setGoals(prevGoals => prevGoals.map(g => g.id === editingId ? newGoal : g));
+        } else {
+            setGoals(prevGoals => [newGoal, ...prevGoals]);
         }
+        resetForm();
     };
 
     const handleEdit = (goal: Goal) => {
@@ -1191,25 +1413,16 @@ const ManageGoalsView: React.FC<{
         setTargetArea(String(goal.targetArea));
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = (id: string) => {
         if (window.confirm('Excluir esta meta?')) {
-            setIsLoading(true);
-            try {
-                await apiFetch(`/api/goals/${id}`, { method: 'DELETE' });
-                await onUpdate();
-            } catch (e) {
-                alert('Falha ao excluir a meta.');
-                console.error(e);
-            } finally {
-                setIsLoading(false);
-            }
+            setGoals(prevGoals => prevGoals.filter(g => g.id !== id));
         }
     };
 
     return (
         <div>
             <div className="form-container card">
-                <h3>{editingId ? 'Editando Meta' : 'Adicionar Nova Meta'}</h3>
+                <h3>{editingId ? 'Editando Meta' : 'Adicionar Nova Meta'} (Local)</h3>
                  <input 
                     list="goal-contract-groups" 
                     placeholder="Digite ou selecione um Contrato/Cidade" 
@@ -1221,10 +1434,8 @@ const ManageGoalsView: React.FC<{
                 </datalist>
                 <input type="month" value={month} onChange={e => setMonth(e.target.value)} />
                 <input type="number" placeholder="Meta de Medição (m² ou m linear)" value={targetArea} onChange={e => setTargetArea(e.target.value)} />
-                <button className="button admin-button" onClick={handleSave} disabled={isLoading}>
-                    {isLoading ? 'Salvando...' : (editingId ? 'Salvar Alterações' : 'Adicionar Meta')}
-                </button>
-                {editingId && <button className="button button-secondary" onClick={resetForm} disabled={isLoading}>Cancelar Edição</button>}
+                <button className="button admin-button" onClick={handleSave}>{editingId ? 'Salvar Alterações' : 'Adicionar Meta'}</button>
+                {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
             </div>
 
             <ul className="goal-list">
@@ -1391,7 +1602,7 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
     return (
         <div>
             <div className="audit-log-header">
-                <h2>Registros de Alterações</h2>
+                <h2>Registros de Alterações (Local)</h2>
                 <button className="button admin-button" onClick={handleExportPdf} disabled={log.length === 0}>
                     Exportar para PDF
                 </button>
@@ -1417,12 +1628,11 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
 
 const ManageServicesView: React.FC<{
     services: ServiceDefinition[];
-    onUpdate: () => Promise<void>;
-}> = ({ services, onUpdate }) => {
+    setServices: React.Dispatch<React.SetStateAction<ServiceDefinition[]>>;
+}> = ({ services, setServices }) => {
     const [name, setName] = useState('');
     const [unit, setUnit] = useState<'m²' | 'm linear'>('m²');
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
 
     const resetForm = () => {
         setName('');
@@ -1430,27 +1640,18 @@ const ManageServicesView: React.FC<{
         setEditingId(null);
     };
 
-    const handleSave = async () => {
+    const handleSave = () => {
         if (!name.trim()) {
             alert('O nome do serviço é obrigatório.');
             return;
         }
-        setIsLoading(true);
-        const payload = { name: name.trim(), unit };
-        try {
-            if (editingId) {
-                await apiFetch(`/api/services/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
-            } else {
-                await apiFetch('/api/services', { method: 'POST', body: JSON.stringify(payload) });
-            }
-            resetForm();
-            await onUpdate();
-        } catch (e) {
-            alert('Falha ao salvar o serviço.');
-            console.error(e);
-        } finally {
-            setIsLoading(false);
+        const newService: ServiceDefinition = { id: editingId || `service-${new Date().getTime()}`, name, unit };
+        if (editingId) {
+            setServices(prev => prev.map(s => s.id === editingId ? newService : s));
+        } else {
+            setServices(prev => [newService, ...prev]);
         }
+        resetForm();
     };
 
     const handleEdit = (service: ServiceDefinition) => {
@@ -1459,34 +1660,23 @@ const ManageServicesView: React.FC<{
         setUnit(service.unit);
     };
 
-    const handleDelete = async (id: string) => {
-        if (window.confirm('Excluir este tipo de serviço? Isso pode afetar usuários e registros existentes.')) {
-            setIsLoading(true);
-            try {
-                await apiFetch(`/api/services/${id}`, { method: 'DELETE' });
-                await onUpdate();
-            } catch (e) {
-                alert('Falha ao excluir o serviço.');
-                console.error(e);
-            } finally {
-                setIsLoading(false);
-            }
+    const handleDelete = (id: string) => {
+        if (window.confirm('Excluir este tipo de serviço? Isso pode afetar locais e registros existentes.')) {
+            setServices(prev => prev.filter(s => s.id !== id));
         }
     };
 
     return (
         <div>
             <div className="form-container card">
-                <h3>{editingId ? 'Editando Tipo de Serviço' : 'Adicionar Novo Tipo de Serviço'}</h3>
+                <h3>{editingId ? 'Editando Tipo de Serviço' : 'Adicionar Novo Tipo de Serviço'} (Local)</h3>
                 <input type="text" placeholder="Nome do Serviço" value={name} onChange={e => setName(e.target.value)} />
                 <select value={unit} onChange={e => setUnit(e.target.value as any)}>
                     <option value="m²">m² (Metros Quadrados)</option>
                     <option value="m linear">m linear (Metros Lineares)</option>
                 </select>
-                <button className="button admin-button" onClick={handleSave} disabled={isLoading}>
-                    {isLoading ? 'Salvando...' : (editingId ? 'Salvar Alterações' : 'Adicionar Serviço')}
-                </button>
-                {editingId && <button className="button button-secondary" onClick={resetForm} disabled={isLoading}>Cancelar Edição</button>}
+                <button className="button admin-button" onClick={handleSave}>{editingId ? 'Salvar Alterações' : 'Adicionar Serviço'}</button>
+                {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
             </div>
             <ul className="location-list">
                 {services.sort((a,b) => a.name.localeCompare(b.name)).map(s => (
@@ -1509,20 +1699,22 @@ const ManageServicesView: React.FC<{
 // --- Componente Principal ---
 const App = () => {
   const [view, setView] = useState<View>('LOGIN');
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useLocalStorage<User | null>('crbCurrentUser', null);
   
   // Data from API
   const [users, setUsers] = useState<User[]>([]);
   const [locations, setLocations] = useState<LocationRecord[]>([]);
   const [records, setRecords] = useState<ServiceRecord[]>([]);
-  const [services, setServices] = useState<ServiceDefinition[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   
-  // Local transient state
-  const [currentService, setCurrentService] = useState<Partial<ServiceRecord>>({});
+  // Local data
+  const [services, setServices] = useLocalStorage<ServiceDefinition[]>('crbServices', DEFAULT_SERVICES);
+  const [goals, setGoals] = useLocalStorage<Goal[]>('crbGoals', []);
+  const [auditLog, setAuditLog] = useLocalStorage<AuditLogEntry[]>('crbAuditLog', []);
+  
+  const [currentService, setCurrentService] = useLocalStorage<Partial<ServiceRecord>>('crbCurrentService', {});
   const [selectedRecord, setSelectedRecord] = useState<ServiceRecord | null>(null);
   const [selectedContractGroup, setSelectedContractGroup] = useState<string | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<LocationRecord | null>(null);
   const [history, setHistory] = useState<View[]>([]);
   const [isLoading, setIsLoading] = useState<string | null>(null);
 
@@ -1554,17 +1746,13 @@ const App = () => {
   const handleLogout = () => {
       setCurrentUser(null);
       setApiToken(null);
-      localStorage.removeItem('crbCurrentUser'); // Clean up old local storage
-      localStorage.removeItem('crbCurrentService');
       setHistory([]);
       setSelectedContractGroup(null);
+      setSelectedLocation(null);
       setCurrentService({});
       setLocations([]);
       setRecords([]);
       setUsers([]);
-      setServices([]);
-      setGoals([]);
-      setAuditLog([]);
       navigate('LOGIN', true);
   }
 
@@ -1573,47 +1761,32 @@ const App = () => {
     setIsLoading('Carregando dados...');
     try {
         if (currentUser.role === 'ADMIN') {
-            const [locs, recs, usrs, srvs, gls, adt] = await Promise.all([
+            const [locs, recs, usrs] = await Promise.all([
                 apiFetch('/api/locations'),
                 apiFetch('/api/records'),
-                apiFetch('/api/users'),
-                apiFetch('/api/services'),
-                apiFetch('/api/goals'),
-                apiFetch('/api/audit-log')
+                apiFetch('/api/users')
             ]);
-            setLocations(locs.map((l: any) => ({id: String(l.id), contractGroup: l.city, name: l.name, area: l.area || 0, coords: (l.lat!=null && l.lng!=null) ? { latitude: l.lat, longitude: l.lng } : undefined })));
-            setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operatorId) })));
+            setLocations(locs.map((l: any) => ({id: String(l.id), contractGroup: l.city, name: l.name, area: l.area || 0, coords: (l.lat!=null && l.lng!=null) ? { latitude: l.lat, longitude: l.lng } : undefined, serviceIds: l.service_ids || [] })));
+            setRecords(recs.map((r: any) => ({...r, id: String(r.id), contractGroup: r.location_city, operatorId: String(r.operator_id), operatorName: r.operator_name || 'N/A' })));
             setUsers(usrs.map((u: any) => ({id: String(u.id), username: u.name, email: u.email, role: u.role, assignments: u.assignments || [] })));
-            setServices(srvs.map((s: any) => ({...s, id: String(s.id)})));
-            setGoals(gls.map((g: any) => ({...g, id: String(g.id)})));
-            setAuditLog(adt.map((a: any) => ({...a, id: String(a.id)})));
         } else if (currentUser.role === 'FISCAL') {
-            const [recs, srvs] = await Promise.all([
-                 apiFetch('/api/records'),
-                 apiFetch('/api/services')
-            ]);
+            const recs = await apiFetch('/api/records');
             const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
             setRecords(
-                recs.filter((r: any) => fiscalGroups.includes(r.contractGroup))
-                .map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operatorId) }))
+                recs.filter((r: any) => fiscalGroups.includes(r.location_city))
+                .map((r: any) => ({...r, id: String(r.id), contractGroup: r.location_city, operatorId: String(r.operator_id), operatorName: r.operator_name || 'N/A' }))
             );
-            setServices(srvs.map((s: any) => ({...s, id: String(s.id)})));
         } else if (currentUser.role === 'OPERATOR') {
-             const [locs, recs, srvs] = await Promise.all([
+             const [locs, recs] = await Promise.all([
                 apiFetch('/api/locations'),
-                apiFetch(`/api/records?operatorId=${currentUser.id}`),
-                apiFetch('/api/services')
+                apiFetch(`/api/records?operator_id=${currentUser.id}`)
              ]);
-             setLocations(locs.map((l: any) => ({id: String(l.id), contractGroup: l.city, name: l.name, area: l.area || 0, coords: (l.lat!=null && l.lng!=null) ? { latitude: l.lat, longitude: l.lng } : undefined })));
-             setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operatorId) })));
-             setServices(srvs.map((s: any) => ({...s, id: String(s.id)})));
+             setLocations(locs.map((l: any) => ({id: String(l.id), contractGroup: l.city, name: l.name, area: l.area || 0, coords: (l.lat!=null && l.lng!=null) ? { latitude: l.lat, longitude: l.lng } : undefined, serviceIds: l.service_ids || [] })));
+             setRecords(recs.map((r: any) => ({...r, id: String(r.id), contractGroup: r.location_city, operatorId: String(r.operator_id), operatorName: r.operator_name || 'N/A' })));
         }
     } catch (error) {
         console.error("Failed to fetch data", error);
         alert("Não foi possível carregar os dados do servidor.");
-        if (error instanceof Error && error.message.includes('401')) { // Unauthorized
-            handleLogout();
-        }
     } finally {
         setIsLoading(null);
     }
@@ -1653,6 +1826,7 @@ const App = () => {
   const resetService = () => {
       setCurrentService({});
       setSelectedContractGroup(null);
+      setSelectedLocation(null);
       redirectUser(currentUser!);
   }
 
@@ -1661,19 +1835,47 @@ const App = () => {
     redirectUser(user);
   };
 
-  const handleGroupSelect = (group: string) => {
-      setSelectedContractGroup(group);
-      navigate('OPERATOR_SERVICE_SELECT');
-  }
-
-  const handleServiceSelect = (service: ServiceDefinition) => {
-    setCurrentService({ serviceType: service.name, serviceUnit: service.unit, contractGroup: selectedContractGroup });
-    navigate('OPERATOR_LOCATION_SELECT');
+  const handleBackup = () => {
+      alert("O backup agora deve ser realizado diretamente no servidor/banco de dados.");
   };
 
-  const handleLocationSet = (locData: Partial<ServiceRecord>) => {
-      setCurrentService(s => ({...s, ...locData}));
-      navigate('PHOTO_STEP');
+  const handleRestore = () => {
+      alert("A restauração de dados agora deve ser realizada diretamente no servidor/banco de dados.");
+  };
+
+  const handleGroupSelect = (group: string) => {
+      setSelectedContractGroup(group);
+      navigate('OPERATOR_LOCATION_SELECT');
+  }
+
+  const handleLocationSelect = (location: LocationRecord, gpsUsed: boolean) => {
+      setSelectedLocation({ ...location, _gpsUsed: gpsUsed } as any); // Store gpsUsed temporarily
+
+      const servicesForLocation = location.serviceIds
+          ? services.filter(s => location.serviceIds!.includes(s.id))
+          : [];
+
+      if (servicesForLocation.length === 1) {
+          // Only one service, select it automatically and go to photos
+          handleServiceSelect(servicesForLocation[0]);
+      } else {
+          // Multiple services, or it's a new location (fallback), go to service select
+          navigate('OPERATOR_SERVICE_SELECT');
+      }
+  };
+
+  const handleServiceSelect = (service: ServiceDefinition) => {
+    if (!selectedLocation) return;
+    setCurrentService({ 
+        serviceType: service.name, 
+        serviceUnit: service.unit, 
+        contractGroup: selectedLocation.contractGroup,
+        locationId: selectedLocation.id.startsWith('manual-') ? undefined : selectedLocation.id,
+        locationName: selectedLocation.name,
+        locationArea: selectedLocation.area,
+        gpsUsed: (selectedLocation as any)._gpsUsed || false,
+    });
+    navigate('PHOTO_STEP');
   };
 
   const handleBeforePhotos = async (photos: string[]) => {
@@ -1684,15 +1886,14 @@ const App = () => {
       setIsLoading("Criando registro e enviando fotos 'Antes'...");
       try {
           const recordPayload = {
-              operatorId: currentUser.id,
-              serviceType: currentService.serviceType,
-              serviceUnit: currentService.serviceUnit,
-              locationId: currentService.locationId,
-              locationName: currentService.locationName,
-              contractGroup: currentService.contractGroup,
-              locationArea: currentService.locationArea,
-              gpsUsed: !!currentService.gpsUsed,
-              startTime: new Date().toISOString()
+              operator_id: parseInt(currentUser.id, 10),
+              service_type: currentService.serviceType,
+              location_id: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
+              location_name: currentService.locationName,
+              location_city: currentService.contractGroup,
+              location_area: currentService.locationArea,
+              gps_used: !!currentService.gpsUsed,
+              start_time: new Date().toISOString()
           };
           const newRecord = await apiFetch('/api/records', { method: 'POST', body: JSON.stringify(recordPayload) });
           
@@ -1704,7 +1905,7 @@ const App = () => {
               await apiFetch(`/api/records/${newRecord.id}/photos`, { method: 'POST', body: formData });
           }
 
-          setCurrentService(s => ({...s, id: String(newRecord.id), startTime: newRecord.startTime }));
+          setCurrentService(s => ({...s, id: String(newRecord.id), startTime: newRecord.start_time }));
           navigate('OPERATOR_SERVICE_IN_PROGRESS');
       } catch(e) {
           alert("Falha ao salvar fotos 'Antes'. Tente novamente.");
@@ -1729,9 +1930,10 @@ const App = () => {
               await apiFetch(`/api/records/${currentService.id}/photos`, { method: 'POST', body: formData });
           }
           
-          const updatedRecord = await apiFetch(`/api/records/${currentService.id}`, { method: 'PUT', body: JSON.stringify({ endTime: new Date().toISOString() }) });
+          // Optionally update record with end_time if backend supports it
+          // await apiFetch(`/api/records/${currentService.id}`, { method: 'PUT', body: JSON.stringify({ end_time: new Date().toISOString() }) });
           
-          setCurrentService(s => ({...s, endTime: updatedRecord.endTime }));
+          setCurrentService(s => ({...s, endTime: new Date().toISOString()}));
           navigate('CONFIRM_STEP');
       } catch(e) {
           alert("Falha ao salvar fotos 'Depois'. Tente novamente.");
@@ -1750,7 +1952,12 @@ const App = () => {
     setIsLoading("Carregando detalhes...");
     try {
         const detailedRecord = await apiFetch(`/api/records/${record.id}`);
-        setSelectedRecord(detailedRecord);
+        const fullRecord = {
+            ...record,
+            beforePhotos: detailedRecord.before_photos || [],
+            afterPhotos: detailedRecord.after_photos || [],
+        };
+        setSelectedRecord(fullRecord);
         navigate('DETAIL');
     } catch (e) {
         alert('Não foi possível carregar os detalhes do registro.');
@@ -1775,18 +1982,23 @@ const App = () => {
       if (!recordToDelete) return;
 
       if (window.confirm(`Tem certeza que deseja excluir o registro do local "${recordToDelete.locationName}"? Esta ação não pode ser desfeita.`)) {
-          setIsLoading("Excluindo registro...");
           try {
               await apiFetch(`/api/records/${recordId}`, { method: 'DELETE' });
-              // The backend creates the audit log entry upon deletion.
-              // Refetching data will update both the records list and the audit log.
-              await fetchData();
+              const logEntry: AuditLogEntry = {
+                  id: new Date().toISOString(),
+                  timestamp: new Date().toISOString(),
+                  adminId: currentUser.id,
+                  adminUsername: currentUser.username,
+                  action: 'DELETE',
+                  recordId: recordId,
+                  details: `Registro excluído via app: ${recordToDelete.serviceType} em ${recordToDelete.locationName}, ${recordToDelete.contractGroup}.`,
+              };
+              setAuditLog(prev => [logEntry, ...prev]);
+              setRecords(prev => prev.filter(r => r.id !== recordId));
               alert("Registro excluído com sucesso.");
           } catch(e) {
               alert("Falha ao excluir o registro.");
               console.error(e);
-          } finally {
-              setIsLoading(null);
           }
       }
   };
@@ -1802,17 +2014,17 @@ const App = () => {
     switch(currentUser.role) {
         case 'ADMIN':
             switch(view) {
-                case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} />;
-                case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} onUpdate={fetchData} />;
-                case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} onUpdate={fetchData} />;
-                case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} />;
-                case 'ADMIN_MANAGE_GOALS': return <ManageGoalsView goals={goals} onUpdate={fetchData} records={records} locations={locations} />;
+                case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} onBackup={handleBackup} onRestore={handleRestore} />;
+                case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} setServices={setServices} />;
+                case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} setLocations={setLocations} services={services} />;
+                case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
+                case 'ADMIN_MANAGE_GOALS': return <ManageGoalsView goals={goals} setGoals={setGoals} records={records} locations={locations} />;
                 case 'REPORTS': return <ReportsView records={records} services={services} />;
                 case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} />;
                 case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
                 case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} services={services} /> : <p>Nenhum registro selecionado para edição.</p>;
                 case 'AUDIT_LOG': return <AuditLogView log={auditLog} />;
-                default: return <AdminDashboard onNavigate={navigate} />;
+                default: return <AdminDashboard onNavigate={navigate} onBackup={handleBackup} onRestore={handleRestore} />;
             }
         
         case 'FISCAL':
@@ -1831,8 +2043,8 @@ const App = () => {
         case 'OPERATOR':
             switch(view) {
                 case 'OPERATOR_GROUP_SELECT': return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} />;
-                case 'OPERATOR_SERVICE_SELECT': return selectedContractGroup ? <OperatorServiceSelect user={currentUser} contractGroup={selectedContractGroup} services={services} onSelectService={handleServiceSelect} /> : null;
-                case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup && currentService.serviceType ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} service={{id: '', name: currentService.serviceType, unit: currentService.serviceUnit!}} onLocationSet={handleLocationSet} /> : null;
+                case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : null;
+                case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} /> : null;
                 case 'OPERATOR_SERVICE_IN_PROGRESS': return <ServiceInProgressView service={currentService} onFinish={() => navigate('PHOTO_STEP')} />;
                 case 'PHOTO_STEP': 
                     if(!currentService.id) {

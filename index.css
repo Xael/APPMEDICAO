@@ -322,7 +322,12 @@ main {
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.list-item-info {
+    flex-grow: 1;
 }
 
 .history-list .list-item > div:first-child {
@@ -339,6 +344,7 @@ main {
     gap: 0.5rem;
     flex-shrink: 0;
     margin-left: 1rem;
+    align-self: center;
 }
 
 .list-item p {
@@ -354,6 +360,7 @@ main {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
+  width: 100%;
 }
 
 .list-item-header h3 {
@@ -599,6 +606,27 @@ main {
     padding-right: 0.5rem;
 }
 
+.contract-group-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+@media (min-width: 600px) {
+    .contract-group-selector {
+        flex-direction: row;
+        align-items: center;
+    }
+    .contract-group-selector select {
+        flex-grow: 1;
+    }
+    .contract-group-selector button {
+        flex-shrink: 0;
+        width: auto;
+    }
+}
+
+
 /* Goal Management Styles */
 .progress-card {
     padding: 1.5rem;
@@ -744,17 +772,26 @@ main {
 /* User Assignment Styles */
 .assignment-section {
     margin-top: 1.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--medium-gray-color);
+    padding: 1.5rem;
+    border: 1px solid var(--medium-gray-color);
+    border-radius: var(--border-radius);
     text-align: left;
+    background-color: var(--light-gray-color);
 }
+.assignment-section legend {
+    font-weight: bold;
+    font-size: 1.1rem;
+    padding: 0 0.5rem;
+    margin-left: -0.5rem;
+}
+
 .assignment-list {
     list-style: none;
     padding: 0;
     margin: 1rem 0;
 }
 .assignment-item {
-    background-color: var(--light-gray-color);
+    background-color: var(--white-color);
     padding: 0.75rem;
     border-radius: var(--border-radius);
     margin-bottom: 0.5rem;
@@ -762,6 +799,7 @@ main {
     justify-content: space-between;
     align-items: center;
     text-align: left;
+    border: 1px solid var(--medium-gray-color);
 }
 .assignment-item-info p {
     margin: 0;
@@ -773,11 +811,11 @@ main {
     color: var(--text-color);
 }
 .add-assignment-form {
-    background-color: var(--light-gray-color);
+    background-color: var(--white-color);
     padding: 1rem;
     border: 1px dashed var(--dark-gray-color);
     border-radius: var(--border-radius);
-    margin-top: 1rem;
+    margin-top: 1.5rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -785,4 +823,26 @@ main {
 .add-assignment-form h4 {
     margin: 0 0 0.5rem 0;
     text-align: left;
+}
+.add-assignment-form .button {
+    margin-top: 0.5rem;
+}
+
+
+/* Location Service Assignment Styles */
+.service-assignment-fieldset {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    border: 1px solid var(--medium-gray-color);
+    border-radius: var(--border-radius);
+    text-align: left;
+}
+.service-assignment-fieldset legend {
+    font-weight: 500;
+    padding: 0 0.5rem;
+}
+.location-services-list {
+    font-size: 0.85rem;
+    color: var(--dark-gray-color);
+    font-style: italic;
 }
