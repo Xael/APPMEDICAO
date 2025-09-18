@@ -1536,21 +1536,32 @@ const AdminEditRecordView: React.FC<{
         }
     };
 
-    const handlePhotoRemove = async (phase: 'BEFORE' | 'AFTER', photoUrl: string) => {
-        try {
-            const updated = await apiFetch(`/api/records/${formData.id}`, {
-                method: "PUT",
-                body: JSON.stringify({
-                    [phase === "BEFORE" ? "beforePhotos" : "afterPhotos"]:
-                        (phase === "BEFORE" ? formData.beforePhotos : formData.afterPhotos).filter(p => p !== photoUrl)
-                })
-            });
-            setFormData(updated);
-        } catch (err) {
-            alert(`Falha ao remover foto '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
-            console.error(err);
-        }
-    };
+const handlePhotoRemove = async (phase: 'BEFORE' | 'AFTER', photoUrl: string) => {
+  try {
+    const newBefore = phase === "BEFORE"
+      ? formData.beforePhotos.filter(p => p !== photoUrl)
+      : formData.beforePhotos;
+
+    const newAfter = phase === "AFTER"
+      ? formData.afterPhotos.filter(p => p !== photoUrl)
+      : formData.afterPhotos;
+
+    const updated = await apiFetch(`/api/records/${formData.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...formData,
+        beforePhotos: newBefore,
+        afterPhotos: newAfter
+      })
+    });
+
+    setFormData(updated);
+  } catch (err) {
+    alert(`Falha ao remover foto '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
+    console.error(err);
+  }
+};
+
 
     return (
         <div className="card edit-form-container">
