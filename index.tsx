@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { queueRecord, addAfterPhotosToPending } from "./syncManager";
+import { apiFetch } from "./api";
 
 // --- API Client & Helpers ---
 
