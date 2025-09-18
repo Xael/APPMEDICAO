@@ -4,7 +4,6 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { queueRecord, addAfterPhotosToPending } from "./syncManager";
-import { apiFetch, setApiToken, API_BASE } from "./api";
 
 // --- API Client & Helpers ---
 
@@ -360,12 +359,12 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
         setError('');
         setIsLoading(true);
         try {
-            const { access_token } = await ('/api/auth/login', {
+            const { access_token } = await apiFetch('/api/auth/login', {
                 method: 'POST',
                 body: JSON.stringify({ email, password }),
             });
             setApiToken(access_token);
-            const me = await ('/api/auth/me');
+            const me = await apiFetch('/api/auth/me');
             
             const user: User = {
                 id: String(me.id),
@@ -1021,7 +1020,7 @@ const ManageLocationsView: React.FC<{
 
         try {
             if (editingId) {
-                const updatedLoc = await (`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                const updatedLoc = await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
                 setLocations(locations.map(l => l.id === editingId ? {
                     id: String(updatedLoc.id),
                     name: updatedLoc.name,
@@ -1031,7 +1030,7 @@ const ManageLocationsView: React.FC<{
                     serviceIds: updatedLoc.service_ids || []
                 } : l));
             } else {
-                const newLoc = await ('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
+                const newLoc = await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
                 setLocations([{
                     id: String(newLoc.id),
                     name: newLoc.name,
@@ -1060,7 +1059,7 @@ const ManageLocationsView: React.FC<{
     const handleDelete = async (id: string) => {
         if(window.confirm('Excluir este local?')) {
             try {
-                await (`/api/locations/${id}`, { method: 'DELETE' });
+                await apiFetch(`/api/locations/${id}`, { method: 'DELETE' });
                 setLocations(locations.filter(l => l.id !== id));
             } catch (error) {
                 alert('Falha ao excluir local. Tente novamente.');
@@ -1254,9 +1253,9 @@ const ManageUsersView: React.FC<{
 
         try {
             if (editingId) {
-                await (`/api/users/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                await apiFetch(`/api/users/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
             } else {
-                await ('/api/users', { method: 'POST', body: JSON.stringify(payload) });
+                await apiFetch('/api/users', { method: 'POST', body: JSON.stringify(payload) });
             }
             await onUsersUpdate(); // Refetch users from the server
             resetForm();
@@ -1281,7 +1280,7 @@ const ManageUsersView: React.FC<{
         if(window.confirm('Excluir este usuário? Esta ação não pode ser desfeita.')) {
             setIsLoading(true);
             try {
-                await (`/api/users/${id}`, { method: 'DELETE' });
+                await apiFetch(`/api/users/${id}`, { method: 'DELETE' });
                 await onUsersUpdate();
             } catch (e) {
                 alert('Falha ao excluir usuário.');
@@ -1507,7 +1506,7 @@ const AdminEditRecordView: React.FC<{
 
     const handleSave = async () => {
         try {
-            const updated = await (`/api/records/${formData.id}`, {
+            const updated = await apiFetch(`/api/records/${formData.id}`, {
                 method: 'PUT',
                 body: JSON.stringify(formData),
             });
@@ -1525,7 +1524,7 @@ const AdminEditRecordView: React.FC<{
         formDataUpload.append("phase", phase);
         Array.from(files).forEach(file => formDataUpload.append("files", file));
         try {
-            const updated = await (`/api/records/${formData.id}/photos`, {
+            const updated = await apiFetch(`/api/records/${formData.id}/photos`, {
                 method: "POST",
                 body: formDataUpload
             });
@@ -1536,32 +1535,21 @@ const AdminEditRecordView: React.FC<{
         }
     };
 
-const handlePhotoRemove = async (phase: 'BEFORE' | 'AFTER', photoUrl: string) => {
-  try {
-    const newBefore = phase === "BEFORE"
-      ? formData.beforePhotos.filter(p => p !== photoUrl)
-      : formData.beforePhotos;
-
-    const newAfter = phase === "AFTER"
-      ? formData.afterPhotos.filter(p => p !== photoUrl)
-      : formData.afterPhotos;
-
-    const updated = await (`/api/records/${formData.id}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        ...formData,
-        beforePhotos: newBefore,
-        afterPhotos: newAfter
-      })
-    });
-
-    setFormData(updated);
-  } catch (err) {
-    alert(`Falha ao remover foto '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
-    console.error(err);
-  }
-};
-
+    const handlePhotoRemove = async (phase: 'BEFORE' | 'AFTER', photoUrl: string) => {
+        try {
+            const updated = await apiFetch(`/api/records/${formData.id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    [phase === "BEFORE" ? "beforePhotos" : "afterPhotos"]:
+                        (phase === "BEFORE" ? formData.beforePhotos : formData.afterPhotos).filter(p => p !== photoUrl)
+                })
+            });
+            setFormData(updated);
+        } catch (err) {
+            alert(`Falha ao remover foto '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
+            console.error(err);
+        }
+    };
 
     return (
         <div className="card edit-form-container">
@@ -1898,7 +1886,7 @@ const App = () => {
     try {
         if (currentUser.role === 'ADMIN') {
             const [locs, recs, usrs] = await Promise.all([
-                ('/api/locations'),
+                apiFetch('/api/locations'),
                 apiFetch('/api/records'),
                 apiFetch('/api/users')
             ]);
@@ -2015,12 +2003,9 @@ const App = () => {
   };
 
  // Criar registro + fotos "Antes"
-const handleBeforePhotos = async (photos: string[]) => {
+const handleBeforePhotos = async () => {
   setIsLoading("Criando registro e salvando fotos 'Antes'...");
   try {
-    // gera um id temporário para amarrar as "Depois" depois
-    const tempId = crypto.randomUUID();
-
     const recordPayload = {
       operatorId: parseInt(currentUser.id, 10),
       serviceType: currentService.serviceType,
@@ -2031,20 +2016,17 @@ const handleBeforePhotos = async (photos: string[]) => {
       locationArea: currentService.locationArea,
       gpsUsed: !!currentService.gpsUsed,
       startTime: new Date().toISOString(),
-      tempId, // muito importante!
+      tempId: crypto.randomUUID() // id temporário para vincular "Depois"
     };
 
-    const beforeFiles = photos.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
+    const beforeFiles = photosBefore.map((p, i) =>
+      dataURLtoFile(p, `before_${i}.jpg`)
+    );
 
     await queueRecord(recordPayload, beforeFiles);
 
-    // marca no estado que já existe um "id" (tempId) — isso faz a UI ir para o fluxo de "Depois"
-    setCurrentService(prev => ({ ...prev, id: tempId, startTime: recordPayload.startTime }));
     setIsLoading(null);
     alert("Registro salvo (offline se necessário). Será sincronizado automaticamente.");
-
-    // Mostra a tela de serviço em andamento até o operador finalizar
-    navigate('OPERATOR_SERVICE_IN_PROGRESS');
   } catch (err) {
     console.error(err);
     setIsLoading(null);
@@ -2052,23 +2034,18 @@ const handleBeforePhotos = async (photos: string[]) => {
   }
 };
 
-// Salva as fotos "Depois"
-const handleAfterPhotos = async (photos: string[]) => {
-  if (!currentService?.id) {
-    alert("Não encontrei o registro em andamento. Recomece o processo, por favor.");
-    return;
-  }
-
+// Adicionar fotos "Depois"
+const handleAfterPhotos = async (recordId: string) => {
   setIsLoading("Salvando fotos 'Depois'...");
   try {
-    const afterFiles = photos.map((p, i) => dataURLtoFile(p, `after_${i}.jpg`));
-    await addAfterPhotosToPending(String(currentService.id), afterFiles);
+    const afterFiles = photosAfter.map((p, i) =>
+      dataURLtoFile(p, `after_${i}.jpg`)
+    );
+
+    await addAfterPhotosToPending(recordId, afterFiles);
 
     setIsLoading(null);
     alert("Fotos 'Depois' salvas (offline se necessário).");
-
-    // opcionalmente vá para a confirmação
-    navigate('CONFIRM_STEP');
   } catch (err) {
     console.error(err);
     setIsLoading(null);
@@ -2076,38 +2053,37 @@ const handleAfterPhotos = async (photos: string[]) => {
   }
 };
 
-      
-const handleSelectRecord = async (record: ServiceRecord) => {
-  setIsLoading("Carregando detalhes...");
-  try {
-      const detailedRecord = await apiFetch(`/api/records/${record.id}`);
-      const fullRecord: ServiceRecord = {
-          ...record,
-          beforePhotos: detailedRecord.beforePhotos || [],
-          afterPhotos: detailedRecord.afterPhotos || [],
-      };
-      setSelectedRecord(fullRecord);
-      navigate('DETAIL');
-  } catch (e) {
-      alert('Não foi possível carregar os detalhes do registro.');
-  } finally {
-      setIsLoading(null);
+  const handleSave = () => {
+    alert("Registro salvo com sucesso no servidor.");
+    resetService();
+  };
+
+  const handleSelectRecord = async (record: ServiceRecord) => {
+    setIsLoading("Carregando detalhes...");
+    try {
+        const detailedRecord = await apiFetch(`/api/records/${record.id}`);
+        const fullRecord = {
+            ...record,
+            beforePhotos: detailedRecord.before_photos || [],
+            afterPhotos: detailedRecord.after_photos || [],
+        };
+        setSelectedRecord(fullRecord);
+        navigate('DETAIL');
+    } catch (e) {
+        alert('Não foi possível carregar os detalhes do registro.');
+    } finally {
+        setIsLoading(null);
+    }
   }
-};
 
   const handleEditRecord = (record: ServiceRecord) => {
       setSelectedRecord(record);
       navigate('ADMIN_EDIT_RECORD');
   };
 
-const handleUpdateRecord = (updatedRecord: ServiceRecord) => {
-  setRecords(prev =>
-    prev.map(r => r.id === updatedRecord.id ? updatedRecord : r)
-  );
-  setSelectedRecord(updatedRecord);
-  alert("Registro atualizado com sucesso!");
-  navigate("HISTORY");
-};
+  const handleUpdateRecord = (updatedRecord: ServiceRecord) => {
+    alert("A edição de registros não está implementada no backend.");
+  };
 
   const handleDeleteRecord = async (recordId: string) => {
       if (!currentUser || currentUser.role !== 'ADMIN') return;
