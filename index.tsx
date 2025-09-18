@@ -298,7 +298,7 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
 
     useEffect(() => {
         let isMounted = true;
-        navigator.mediaDevices.getUserMedia({ video: true })
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
             .then(mediaStream => {
                 if (isMounted) {
                     setStream(mediaStream);
@@ -312,6 +312,8 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
                         message = "Nenhuma câmera encontrada. Conecte uma câmera e tente novamente.";
                     } else if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
                         message = "A permissão para acessar a câmera foi negada. Habilite nas configurações do seu navegador.";
+                    } else if (err.name === "OverconstrainedError" || err.name === "ConstraintNotSatisfiedError") {
+                        message = "A câmera traseira não foi encontrada. Verifique se outra aplicação não a está utilizando.";
                     }
                 }
                 alert(message);
@@ -1891,6 +1893,11 @@ const App = () => {
               start_time: new Date().toISOString()
           };
           const newRecord = await apiFetch('/api/records', { method: 'POST', body: JSON.stringify(recordPayload) });
+
+          if (!newRecord || !newRecord.id) {
+              console.error("Server did not return a valid record object with an ID after creation.", newRecord);
+              throw new Error("Falha ao criar o registro no servidor antes do envio das fotos.");
+          }
           
           const photoFiles = photos.map((dataUrl, i) => dataURLtoFile(dataUrl, `before_${i}.jpg`));
           if (photoFiles.length > 0) {
