@@ -1,8 +1,0 @@
-{
-  "name": "MEDIÇÃO CRB",
-  "description": "An application to log urban cleaning services with geolocation and photo capture.",
-  "requestFramePermissions": [
-    "camera"
-  ],
-  "prompt": ""
-}
