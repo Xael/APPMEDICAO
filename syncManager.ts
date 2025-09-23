@@ -9,6 +9,7 @@ export async function queueRecord(recordPayload: any, photosBefore: File[]) {
     photosBefore,
     photosAfter: [],
     status: "pending",
+    createdAt: Date.now(), // útil pra debug e ordenação
   };
   await addPendingRecord(record);
   trySync();
@@ -39,13 +40,17 @@ export async function addAfterPhotosToPending(recordId: string, photosAfter: Fil
 // Processa fila
 export async function trySync() {
   const pending = await getPendingRecords();
+  console.log("trySync rodando, registros pendentes:", pending.length);
 
   for (const item of pending) {
     try {
-      // 1. Cria registro
+      // 🔑 Remove o tempId antes de mandar pro backend
+      const { tempId, ...cleanPayload } = item.payload;
+
+      // 1. Cria registro no backend
       const newRecord = await apiFetch("/api/records", {
         method: "POST",
-        body: JSON.stringify(item.payload),
+        body: JSON.stringify(cleanPayload),
       });
 
       // 2. Sobe fotos BEFORE
@@ -66,9 +71,9 @@ export async function trySync() {
 
       // 4. Remove da fila
       await deletePendingRecord(item.id);
-      console.log("Registro sincronizado:", item.id);
+      console.log("✅ Registro sincronizado:", item.id);
     } catch (err) {
-      console.warn("Falha ao sincronizar:", item.id, err);
+      console.warn("⚠️ Falha ao sincronizar:", item.id, err);
     }
   }
 }
