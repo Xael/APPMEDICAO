@@ -2002,8 +2002,8 @@ const App = () => {
     navigate('PHOTO_STEP');
   };
 
- // Criar registro + fotos "Antes"
-const handleBeforePhotos = async () => {
+// Criar registro + fotos "Antes"
+const handleBeforePhotos = async (photosBefore: string[]) => {
   setIsLoading("Criando registro e salvando fotos 'Antes'...");
   try {
     const recordPayload = {
@@ -2019,10 +2019,12 @@ const handleBeforePhotos = async () => {
       tempId: crypto.randomUUID() // id temporário para vincular "Depois"
     };
 
+    // Converter base64 -> File[]
     const beforeFiles = photosBefore.map((p, i) =>
       dataURLtoFile(p, `before_${i}.jpg`)
     );
 
+    // Agora sim: manda payload + fotos iniciais
     await queueRecord(recordPayload, beforeFiles);
 
     setIsLoading(null);
@@ -2035,14 +2037,15 @@ const handleBeforePhotos = async () => {
 };
 
 // Adicionar fotos "Depois"
-const handleAfterPhotos = async (recordId: string) => {
+const handleAfterPhotos = async (photosAfter: string[]) => {
   setIsLoading("Salvando fotos 'Depois'...");
   try {
     const afterFiles = photosAfter.map((p, i) =>
       dataURLtoFile(p, `after_${i}.jpg`)
     );
 
-    await addAfterPhotosToPending(recordId, afterFiles);
+    // Usa tempId (do BEFORE) ou id do registro quando já existir
+    await addAfterPhotosToPending(currentService.tempId || currentService.id!, afterFiles);
 
     setIsLoading(null);
     alert("Fotos 'Depois' salvas (offline se necessário).");
@@ -2153,14 +2156,16 @@ const handleAfterPhotos = async (recordId: string) => {
         case 'OPERATOR':
             switch(view) {
                 case 'OPERATOR_GROUP_SELECT': return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} />;
-                case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : null;
-                case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} /> : null;
+                case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} 
+
+		contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : null;
+                case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} 			user={currentUser} onSelectService={handleServiceSelect} /> : null;
                 case 'OPERATOR_SERVICE_IN_PROGRESS': return <ServiceInProgressView service={currentService} onFinish={() => navigate('PHOTO_STEP')} />;
-                case 'PHOTO_STEP': 
-                    if(!currentService.id) {
-                        return <PhotoStep phase="BEFORE" onComplete={handleBeforePhotos} onCancel={resetService} />;
-                    }
-                    return <PhotoStep phase="AFTER" onComplete={handleAfterPhotos} onCancel={resetService} />;
+		case 'PHOTO_STEP': 
+		  if(!currentService.id) {
+		      return <PhotoStep phase="BEFORE" onComplete={handleBeforePhotos} onCancel={resetService} />;
+		  }
+		  return <PhotoStep phase="AFTER" onComplete={handleAfterPhotos} onCancel={resetService} />;
                 case 'CONFIRM_STEP': return <ConfirmStep recordData={currentService} onSave={handleSave} onCancel={resetService} />;
                 case 'HISTORY': 
                     const operatorRecords = records.filter(r => r.operatorId === currentUser.id);
