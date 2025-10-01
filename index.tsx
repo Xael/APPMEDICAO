@@ -2003,7 +2003,7 @@ const App = () => {
   };
 
  // Criar registro + fotos "Antes"
-const handleBeforePhotos = async () => {
+const handleBeforePhotos = async (photosBefore: string[]) => {
   setIsLoading("Criando registro e salvando fotos 'Antes'...");
   try {
     const recordPayload = {
@@ -2019,6 +2019,7 @@ const handleBeforePhotos = async () => {
       tempId: crypto.randomUUID() // id temporário para vincular "Depois"
     };
 
+    // Converter base64 -> File[]
     const beforeFiles = photosBefore.map((p, i) =>
       dataURLtoFile(p, `before_${i}.jpg`)
     );
@@ -2035,14 +2036,14 @@ const handleBeforePhotos = async () => {
 };
 
 // Adicionar fotos "Depois"
-const handleAfterPhotos = async (recordId: string) => {
+const handleAfterPhotos = async (photosAfter: string[]) => {
   setIsLoading("Salvando fotos 'Depois'...");
   try {
     const afterFiles = photosAfter.map((p, i) =>
       dataURLtoFile(p, `after_${i}.jpg`)
     );
 
-    await addAfterPhotosToPending(recordId, afterFiles);
+    await addAfterPhotosToPending(currentService.tempId || currentService.id!, afterFiles);
 
     setIsLoading(null);
     alert("Fotos 'Depois' salvas (offline se necessário).");
@@ -2052,7 +2053,6 @@ const handleAfterPhotos = async (recordId: string) => {
     alert("Falha ao salvar fotos localmente.");
   }
 };
-
   const handleSave = () => {
     alert("Registro salvo com sucesso no servidor.");
     resetService();
