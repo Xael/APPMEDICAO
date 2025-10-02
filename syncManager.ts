@@ -1,7 +1,7 @@
 import { addPendingRecord, getPendingRecords, deletePendingRecord } from "./db";
-import { apiFetch } from "./api"; // usa seu helper existente
+import { apiFetch } from "./api";
 
-// Cria novo registro com fotos "Antes"
+// Cria novo registro com fotos "Antes" (sem alterações aqui)
 export async function queueRecord(recordPayload: any, photosBefore: File[]) {
   const record = {
     id: crypto.randomUUID(),
@@ -21,7 +21,7 @@ export async function addAfterPhotosToPending(recordId: string, photosAfter: Fil
 
   if (record) {
     record.photosAfter.push(...photosAfter);
-    await addPendingRecord(record); // sobrescreve no IndexedDB
+    await addPendingRecord(record);
     trySync();
   } else {
     // Se já subiu, manda direto
@@ -29,16 +29,24 @@ export async function addAfterPhotosToPending(recordId: string, photosAfter: Fil
       const fd = new FormData();
       fd.append("phase", "AFTER");
       photosAfter.forEach(f => fd.append("files", f));
-      await apiFetch(`/api/records/${recordId}/photos`, { method: "POST", body: fd });
+
+      // --- INÍCIO DA CORREÇÃO ---
+      // Busca no localStorage pelo ID real que foi salvo pelo trySync.
+      // Se não encontrar, usa o recordId original (para casos de erro ou offline).
+      const realId = localStorage.getItem(`sync_map_${recordId}`) || recordId;
+      
+      await apiFetch(`/api/records/${realId}/photos`, { method: "POST", body: fd });
+      // --- FIM DA CORREÇÃO ---
+
     } catch (err) {
       console.error("Falha ao enviar fotos AFTER direto:", err);
+      // Re-lança o erro para que a interface possa tratá-lo se necessário
+      throw err; 
     }
   }
 }
 
 // Processa fila
-// Em syncManager.ts
-
 export async function trySync() {
   const pending = await getPendingRecords();
 
@@ -50,18 +58,13 @@ export async function trySync() {
         body: JSON.stringify(item.payload),
       });
 
-      // --- INÍCIO DA ALTERAÇÃO ---
-      // Dispara um evento global avisando que o ID temporário foi trocado pelo ID real do servidor
-      const event = new CustomEvent('syncSuccess', {
-        detail: {
-          tempId: item.payload.tempId, // O ID temporário que o frontend conhece
-          newId: newRecord.id,         // O novo ID numérico retornado pelo backend
-        }
-      });
-      window.dispatchEvent(event);
-      // --- FIM DA ALTERAÇÃO ---
+      // --- INÍCIO DA CORREÇÃO ---
+      // Salva o mapeamento do ID temporário para o ID real no localStorage.
+      // Ex: sync_map_4930af7a... -> 15
+      localStorage.setItem(`sync_map_${item.payload.tempId}`, newRecord.id);
+      // --- FIM DA CORREÇÃO ---
 
-      // 2. Sobe fotos BEFORE (agora usando o newRecord.id correto)
+      // 2. Sobe fotos BEFORE (usando o newRecord.id correto)
       if (item.photosBefore?.length) {
         const fd = new FormData();
         fd.append("phase", "BEFORE");
@@ -69,7 +72,7 @@ export async function trySync() {
         await apiFetch(`/api/records/${newRecord.id}/photos`, { method: "POST", body: fd });
       }
 
-      // 3. Sobe fotos AFTER
+      // 3. Sobe fotos AFTER (se já existirem na fila)
       if (item.photosAfter?.length) {
         const fd = new FormData();
         fd.append("phase", "AFTER");
@@ -79,13 +82,18 @@ export async function trySync() {
 
       // 4. Remove da fila
       await deletePendingRecord(item.id);
-      console.log("Registro sincronizado:", item.id, "-> Novo ID:", newRecord.id);
+      console.log("Registro sincronizado:", item.payload.tempId, "-> Novo ID:", newRecord.id);
+      
+      // Limpa o mapeamento do localStorage após o sucesso completo para não acumular lixo
+      // (Opcional, mas boa prática)
+      localStorage.removeItem(`sync_map_${item.payload.tempId}`);
+
     } catch (err) {
       console.warn("Falha ao sincronizar:", item.id, err);
     }
   }
 }
 
-// Auto-sync quando a internet volta
+// Auto-sync
 window.addEventListener("online", trySync);
-setInterval(trySync, 30000);
+setInterval(trySync, 30000); // Tenta sincronizar a cada 30 segundos
