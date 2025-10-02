@@ -2007,7 +2007,7 @@ const handleBeforePhotos = async (photosBefore: string[]) => {
   setIsLoading("Criando registro e salvando fotos 'Antes'...");
   try {
     const recordPayload = {
-      operatorId: parseInt(currentUser.id, 10),
+      operatorId: parseInt(currentUser!.id, 10),
       serviceType: currentService.serviceType,
       serviceUnit: currentService.serviceUnit,
       locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
@@ -2019,15 +2019,27 @@ const handleBeforePhotos = async (photosBefore: string[]) => {
       tempId: crypto.randomUUID() // id temporário para vincular "Depois"
     };
 
-    // Converter base64 -> File[]
     const beforeFiles = photosBefore.map((p, i) =>
       dataURLtoFile(p, `before_${i}.jpg`)
     );
 
     await queueRecord(recordPayload, beforeFiles);
 
+    // --- INÍCIO DA CORREÇÃO ---
+    // 1. Atualiza o estado para que o app saiba qual serviço está em andamento.
+    setCurrentService(prev => ({
+      ...prev,
+      ...recordPayload,
+      id: recordPayload.tempId 
+    }));
+    
+    // 2. Navega o usuário para a tela de "serviço em andamento".
+    navigate('OPERATOR_SERVICE_IN_PROGRESS');
+    // --- FIM DA CORREÇÃO ---
+
     setIsLoading(null);
-    alert("Registro salvo (offline se necessário). Será sincronizado automaticamente.");
+    alert("Registro inicial salvo. Continue o trabalho e finalize para tirar as fotos 'Depois'.");
+
   } catch (err) {
     console.error(err);
     setIsLoading(null);
