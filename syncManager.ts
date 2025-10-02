@@ -37,6 +37,8 @@ export async function addAfterPhotosToPending(recordId: string, photosAfter: Fil
 }
 
 // Processa fila
+// Em syncManager.ts
+
 export async function trySync() {
   const pending = await getPendingRecords();
 
@@ -48,7 +50,18 @@ export async function trySync() {
         body: JSON.stringify(item.payload),
       });
 
-      // 2. Sobe fotos BEFORE
+      // --- INÍCIO DA ALTERAÇÃO ---
+      // Dispara um evento global avisando que o ID temporário foi trocado pelo ID real do servidor
+      const event = new CustomEvent('syncSuccess', {
+        detail: {
+          tempId: item.payload.tempId, // O ID temporário que o frontend conhece
+          newId: newRecord.id,         // O novo ID numérico retornado pelo backend
+        }
+      });
+      window.dispatchEvent(event);
+      // --- FIM DA ALTERAÇÃO ---
+
+      // 2. Sobe fotos BEFORE (agora usando o newRecord.id correto)
       if (item.photosBefore?.length) {
         const fd = new FormData();
         fd.append("phase", "BEFORE");
@@ -66,7 +79,7 @@ export async function trySync() {
 
       // 4. Remove da fila
       await deletePendingRecord(item.id);
-      console.log("Registro sincronizado:", item.id);
+      console.log("Registro sincronizado:", item.id, "-> Novo ID:", newRecord.id);
     } catch (err) {
       console.warn("Falha ao sincronizar:", item.id, err);
     }
