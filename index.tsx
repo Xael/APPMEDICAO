@@ -1498,7 +1498,7 @@ const AdminEditRecordView: React.FC<{
     onSave: (updatedRecord: ServiceRecord) => void;
     onCancel: () => void;
     services: ServiceDefinition[];
-    setIsLoading: React.Dispatch<React.SetStateAction<string | null>>; 
+    setIsLoading: React.Dispatch<React.SetStateAction<string | null>>;
 }> = ({ record, onSave, onCancel, services, setIsLoading }) => { 
     const [formData, setFormData] = useState<ServiceRecord>(record);
     const handleChange = (field: keyof ServiceRecord, value: any) => {
@@ -2179,7 +2179,7 @@ const handleAfterPhotos = async (photosAfter: string[]) => {
                 case 'REPORTS': return <ReportsView records={records} services={services} />;
                 case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} />;
                 case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
-                case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} services={services} /> : <p>Nenhum registro selecionado para edição.</p>;
+                case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} services={services} setIsLoading={setIsLoading} /> : <p>Nenhum registro selecionado para edição.</p>;
                 case 'AUDIT_LOG': return <AuditLogView log={auditLog} />;
                 default: return <AdminDashboard onNavigate={navigate} onBackup={handleBackup} onRestore={handleRestore} />;
             }
