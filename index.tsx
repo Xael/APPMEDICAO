@@ -1497,9 +1497,10 @@ const AdminEditRecordView: React.FC<{
     record: ServiceRecord;
     onSave: (updatedRecord: ServiceRecord) => void;
     onCancel: () => void;
-}> = ({ record, onSave, onCancel }) => {
+    services: ServiceDefinition[];
+    setIsLoading: React.Dispatch<React.SetStateAction<string | null>>; 
+}> = ({ record, onSave, onCancel, services, setIsLoading }) => { 
     const [formData, setFormData] = useState<ServiceRecord>(record);
-
     const handleChange = (field: keyof ServiceRecord, value: any) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
