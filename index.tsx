@@ -925,7 +925,8 @@ const ManageLocationsView: React.FC<{
     locations: LocationRecord[]; 
     setLocations: React.Dispatch<React.SetStateAction<LocationRecord[]>>;
     services: ServiceDefinition[];
-}> = ({ locations, setLocations, services }) => {
+    fetchData: () => Promise<void>; // ADICIONE ESTA LINHA
+}> = ({ locations, setLocations, services, fetchData }) => { 
     const [selectedGroup, setSelectedGroup] = useState('');
     const [name, setName] = useState('');
     const [area, setArea] = useState('');
@@ -1523,7 +1524,35 @@ const AdminEditRecordView: React.FC<{
         } finally {
             setIsLoading(null);
         }
+            if (!selectedGroup || !name) {
+        // ...
+        return;
+    }
+
+    const payload = {
+        city: selectedGroup.trim(),
+        name,
+        area: parseFloat(area) || 0,
+        lat: coords?.latitude,
+        lng: coords?.longitude,
+        service_ids: Array.from(selectedServiceIds),
     };
+
+    try {
+        if (editingId) {
+            await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        } else {
+            await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
+        }
+        
+       alert(`Local "${name}" salvo com sucesso!`);
+       resetForm();
+
+    } catch (error) {
+        alert('Falha ao salvar local. Tente novamente.');
+        console.error(error);
+    }
+};
 
     const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
         if (!files || files.length === 0) return;
@@ -2244,7 +2273,7 @@ const App = () => {
             switch(view) {
                 case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} onBackup={handleBackup} onRestore={handleRestore} />;
                 case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} setServices={setServices} />;
-                case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} setLocations={setLocations} services={services} />;
+                case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} setLocations={setLocations} services={services} fetchData={fetchData} />;
                 case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
                 case 'ADMIN_MANAGE_GOALS': return <ManageGoalsView goals={goals} setGoals={setGoals} records={records} locations={locations} />;
                 case 'REPORTS': return <ReportsView records={records} services={services} />;
