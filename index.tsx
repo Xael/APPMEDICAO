@@ -2091,7 +2091,8 @@ const handleAfterPhotos = async (photosAfter: string[]) => {
     await addAfterPhotosToPending(currentService.tempId || currentService.id!, afterFiles);
 
     setIsLoading(null);
-    alert("Fotos 'Depois' salvas (offline se necessário).");
+      
+    navigate('CONFIRM_STEP');
   } catch (err) {
     console.error(err);
     setIsLoading(null);
