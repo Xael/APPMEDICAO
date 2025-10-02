@@ -135,7 +135,7 @@ interface ServiceRecord {
   endTime: string;
   beforePhotos: string[];
   afterPhotos: string[];
-  tempId?: string; // Adicionado para rastreamento explícito
+  tempId?: string;
 }
 
 interface Goal {
@@ -168,50 +168,15 @@ const DEFAULT_SERVICES: ServiceDefinition[] = [
 const formatDateTime = (isoString: string) => new Date(isoString).toLocaleString('pt-BR');
 const calculateDistance = (p1: GeolocationCoords, p2: GeolocationCoords) => {
     if (!p1 || !p2) return Infinity;
-    const R = 6371e3; // metres
+    const R = 6371e3;
     const φ1 = p1.latitude * Math.PI / 180;
     const φ2 = p2.latitude * Math.PI / 180;
     const Δφ = (p2.latitude - p1.latitude) * Math.PI / 180;
     const Δλ = (p2.longitude - p1.longitude) * Math.PI / 180;
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // in metres
+    return R * c;
 };
-
-const generateChangeLogDetails = (original: ServiceRecord, updated: ServiceRecord): string => {
-    const changes: string[] = [];
-    if (original.locationName !== updated.locationName) {
-        changes.push(`Nome do Local de "${original.locationName}" para "${updated.locationName}"`);
-    }
-    if (original.serviceType !== updated.serviceType) {
-        changes.push(`Tipo de Serviço de "${original.serviceType}" para "${updated.serviceType}"`);
-    }
-    if (original.locationArea !== updated.locationArea) {
-        changes.push(`Metragem de "${original.locationArea || 0}" para "${updated.locationArea || 0}"`);
-    }
-
-    const beforePhotosAdded = updated.beforePhotos.filter(p => !original.beforePhotos.includes(p)).length;
-    const beforePhotosRemoved = original.beforePhotos.filter(p => !updated.beforePhotos.includes(p)).length;
-    if (beforePhotosAdded > 0 || beforePhotosRemoved > 0) {
-        let photoChange = 'Fotos "Antes": ';
-        if (beforePhotosAdded > 0) photoChange += `adicionou ${beforePhotosAdded}`;
-        if (beforePhotosAdded > 0 && beforePhotosRemoved > 0) photoChange += ', ';
-        if (beforePhotosRemoved > 0) photoChange += `removeu ${beforePhotosRemoved}`;
-        changes.push(photoChange);
-    }
-    
-    const afterPhotosAdded = updated.afterPhotos.filter(p => !original.afterPhotos.includes(p)).length;
-    const afterPhotosRemoved = original.afterPhotos.filter(p => !updated.afterPhotos.includes(p)).length;
-    if (afterPhotosAdded > 0 || afterPhotosRemoved > 0) {
-        let photoChange = 'Fotos "Depois": ';
-        if (afterPhotosAdded > 0) photoChange += `adicionou ${afterPhotosAdded}`;
-        if (afterPhotosAdded > 0 && afterPhotosRemoved > 0) photoChange += ', ';
-        if (afterPhotosRemoved > 0) photoChange += `removeu ${afterPhotosRemoved}`;
-        changes.push(photoChange);
-    }
-    
-    return changes.length > 0 ? changes.join('; ') : 'Nenhuma alteração de dados foi feita.';
-}
 
 // --- Hooks ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
@@ -240,6 +205,8 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
 
     const getTitle = () => {
         if (!currentUser) return 'CRB SERVIÇOS';
+        
+        const isEditing = view === 'ADMIN_EDIT_RECORD';
         
         if (isAdmin) {
             switch(view) {
@@ -274,6 +241,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
             case 'OPERATOR_SERVICE_IN_PROGRESS': return 'Serviço em Andamento';
             case 'HISTORY': return 'Meu Histórico';
             case 'DETAIL': return 'Detalhes do Serviço';
+            case 'ADMIN_EDIT_RECORD': return 'Adicionar Fotos/Informações';
             default: return 'Registro de Serviço';
         }
     }
@@ -492,7 +460,7 @@ const OperatorLocationSelect: React.FC<{
                 const closest = contractLocations
                     .filter(l => l.coords)
                     .map(l => ({ ...l, distance: calculateDistance(currentCoords, l.coords!) }))
-                    .filter(l => l.distance < 100) // 100m radius
+                    .filter(l => l.distance < 100)
                     .sort((a, b) => a.distance - b.distance)[0];
                 setNearbyLocation(closest || null);
             },
@@ -659,35 +627,63 @@ const ConfirmStep: React.FC<{ recordData: Partial<ServiceRecord>; onSave: () => 
     </div>
 );
 
-const HistoryView: React.FC<{ 
+interface HistoryViewProps {
     records: ServiceRecord[]; 
     onSelect: (record: ServiceRecord) => void; 
     isAdmin: boolean;
     onEdit?: (record: ServiceRecord) => void;
     onDelete?: (recordId: string) => void;
-}> = ({ records, onSelect, isAdmin, onEdit, onDelete }) => (
+    selectedIds: Set<string>;
+    onToggleSelect: (recordId: string) => void;
+    onDeleteSelected?: () => void;
+}
+
+const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, onEdit, onDelete, selectedIds, onToggleSelect, onDeleteSelected }) => (
     <div>
+        {isAdmin && selectedIds.size > 0 && (
+            <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                <button className="button button-danger" onClick={onDeleteSelected}>
+                    Excluir {selectedIds.size} Iten(s) Selecionado(s)
+                </button>
+            </div>
+        )}
+
         {records.length === 0 ? <p style={{textAlign: 'center'}}>Nenhum serviço registrado ainda.</p>
         : (
             <ul className="history-list">
                 {records.map(record => (
-                    <li key={record.id} className="list-item">
+                    <li key={record.id} className="list-item" style={{alignItems: 'center'}}>
+                        {isAdmin && (
+                            <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0, marginRight: '1rem' }}>
+                                <input 
+                                    type="checkbox" 
+                                    checked={selectedIds.has(record.id)} 
+                                    onChange={() => onToggleSelect(record.id)}
+                                    style={{ width: '24px', height: '24px' }}
+                                />
+                            </div>
+                        )}
                         <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer'}}>
                             <p><strong>Local:</strong> {record.locationName}, {record.contractGroup} {record.gpsUsed && <span className="gps-indicator">📍</span>}</p>
                             <p><strong>Serviço:</strong> {record.serviceType}</p>
                             <p><strong>Data:</strong> {formatDateTime(record.startTime)}</p>
                             {isAdmin && <p><strong>Operador:</strong> {record.operatorName}</p>}
                             <div className="history-item-photos">
-                               {(record.beforePhotos || []).slice(0,2).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} />)}
-                               {(record.afterPhotos || []).slice(0,2).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} />)}
+                               {(record.beforePhotos || []).slice(0,2).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt="antes" />)}
+                               {(record.afterPhotos || []).slice(0,2).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt="depois" />)}
                             </div>
                         </div>
-                        {isAdmin && onEdit && onDelete && (
-                             <div className="list-item-actions">
+                         <div className="list-item-actions">
+                            {isAdmin && onEdit && (
                                 <button className="button button-sm admin-button" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Editar</button>
+                            )}
+                            {!isAdmin && onEdit && (
+                                 <button className="button button-sm" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Reabrir</button>
+                            )}
+                            {isAdmin && onDelete && (
                                 <button className="button button-sm button-danger" onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}>Excluir</button>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </li>
                 ))}
             </ul>
@@ -709,11 +705,11 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
         </div>
         <div className="detail-section card">
             <h3>Fotos "Antes" ({(record.beforePhotos || []).length})</h3>
-            <div className="photo-gallery">{(record.beforePhotos || []).map((p,i) => <img key={i} src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />)}</div>
+            <div className="photo-gallery">{(record.beforePhotos || []).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />)}</div>
         </div>
         <div className="detail-section card">
             <h3>Fotos "Depois" ({(record.afterPhotos || []).length})</h3>
-            <div className="photo-gallery">{(record.afterPhotos || []).map((p,i) => <img key={i} src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />)}</div>
+            <div className="photo-gallery">{(record.afterPhotos || []).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />)}</div>
         </div>
     </div>
 );
@@ -902,7 +898,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                         </div>
                         <h3>Fotos "Antes"</h3>
                         <div className="printable-report-gallery">
-                            {r.beforePhotos.map((p, i) => (
+                            {(r.beforePhotos || []).map((p, i) => (
                                 <div key={`before-${i}`} className="photo-item-container">
                                     <img src={`${API_BASE}${p}`} alt={`Foto Antes ${i + 1}`} />
                                     <p className="caption">Antes {i + 1}</p>
@@ -911,7 +907,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                         </div>
                         <h3>Fotos "Depois"</h3>
                         <div className="printable-report-gallery">
-                            {r.afterPhotos.map((p, i) => (
+                            {(r.afterPhotos || []).map((p, i) => (
                                 <div key={`after-${i}`} className="photo-item-container">
                                     <img src={`${API_BASE}${p}`} alt={`Foto Depois ${i + 1}`} />
                                     <p className="caption">Depois {i + 1}</p>
@@ -1497,15 +1493,18 @@ const AdminEditRecordView: React.FC<{
     record: ServiceRecord;
     onSave: (updatedRecord: ServiceRecord) => void;
     onCancel: () => void;
-    services: ServiceDefinition[];
     setIsLoading: React.Dispatch<React.SetStateAction<string | null>>;
-}> = ({ record, onSave, onCancel, services, setIsLoading }) => { 
+    currentUser: User | null;
+}> = ({ record, onSave, onCancel, setIsLoading, currentUser }) => {
     const [formData, setFormData] = useState<ServiceRecord>(record);
+    const isOperator = currentUser?.role === 'OPERATOR';
+
     const handleChange = (field: keyof ServiceRecord, value: any) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
     const handleSave = async () => {
+        setIsLoading("Salvando alterações...");
         try {
             const updated = await apiFetch(`/api/records/${formData.id}`, {
                 method: 'PUT',
@@ -1521,6 +1520,8 @@ const AdminEditRecordView: React.FC<{
         } catch (e) {
             alert("Erro ao atualizar registro.");
             console.error(e);
+        } finally {
+            setIsLoading(null);
         }
     };
 
@@ -1553,10 +1554,9 @@ const AdminEditRecordView: React.FC<{
         if (!window.confirm("Tem certeza que deseja remover esta foto?")) return;
         setIsLoading("Removendo foto...");
         try {
-            // A lógica de remoção de arquivo agora está no backend, então basta atualizar
-            const isBefore = formData.beforePhotos.includes(photoUrl);
-            const newBefore = isBefore ? formData.beforePhotos.filter(p => p !== photoUrl) : formData.beforePhotos;
-            const newAfter = !isBefore ? formData.afterPhotos.filter(p => p !== photoUrl) : formData.afterPhotos;
+            const isBefore = (formData.beforePhotos || []).includes(photoUrl);
+            const newBefore = isBefore ? (formData.beforePhotos || []).filter(p => p !== photoUrl) : formData.beforePhotos;
+            const newAfter = !isBefore ? (formData.afterPhotos || []).filter(p => p !== photoUrl) : formData.afterPhotos;
 
             const updated = await apiFetch(`/api/records/${formData.id}`, {
                 method: "PUT",
@@ -1581,12 +1581,14 @@ const AdminEditRecordView: React.FC<{
 
     return (
         <div className="card edit-form-container">
+            <h3>{isOperator ? 'Adicionar Fotos/Informações' : 'Editar Registro de Serviço'}</h3>
             <div className="form-group">
                 <label>Nome do Local</label>
                 <input
                     type="text"
                     value={formData.locationName}
                     onChange={e => handleChange("locationName", e.target.value)}
+                    readOnly={isOperator}
                 />
             </div>
 
@@ -1596,6 +1598,7 @@ const AdminEditRecordView: React.FC<{
                     type="text"
                     value={formData.serviceType}
                     onChange={e => handleChange("serviceType", e.target.value)}
+                    readOnly={isOperator}
                 />
             </div>
 
@@ -1605,6 +1608,7 @@ const AdminEditRecordView: React.FC<{
                     type="number"
                     value={formData.locationArea || ''}
                     onChange={e => handleChange("locationArea", parseFloat(e.target.value) || 0)}
+                    readOnly={isOperator}
                 />
             </div>
 
@@ -1613,6 +1617,7 @@ const AdminEditRecordView: React.FC<{
                 <select
                     value={formData.serviceUnit}
                     onChange={e => handleChange("serviceUnit", e.target.value as 'm²' | 'm linear')}
+                    disabled={isOperator}
                 >
                     <option value="m²">m²</option>
                     <option value="m linear">m linear</option>
@@ -1625,6 +1630,7 @@ const AdminEditRecordView: React.FC<{
                     type="text"
                     value={formData.contractGroup}
                     onChange={e => handleChange("contractGroup", e.target.value)}
+                    readOnly={isOperator}
                 />
             </div>
 
@@ -1634,6 +1640,7 @@ const AdminEditRecordView: React.FC<{
                     type="datetime-local"
                     value={formData.startTime ? new Date(new Date(formData.startTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
                     onChange={e => handleChange("startTime", new Date(e.target.value).toISOString())}
+                    readOnly={isOperator}
                 />
             </div>
 
@@ -1643,10 +1650,10 @@ const AdminEditRecordView: React.FC<{
                     type="datetime-local"
                     value={formData.endTime ? new Date(new Date(formData.endTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
                     onChange={e => handleChange("endTime", new Date(e.target.value).toISOString())}
+                    readOnly={isOperator}
                 />
             </div>
 
-            {/* Fotos "Antes" */}
             <div className="form-group">
                 <h4>Fotos "Antes" ({(formData.beforePhotos || []).length})</h4>
                 <div className="edit-photo-gallery">
@@ -1662,7 +1669,7 @@ const AdminEditRecordView: React.FC<{
                         </div>
                     ))}
                 </div>
-                <label htmlFor="before-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar</label>
+                <label htmlFor="before-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar Foto "Antes"</label>
                 <input
                     id="before-upload"
                     type="file"
@@ -1673,7 +1680,6 @@ const AdminEditRecordView: React.FC<{
                 />
             </div>
 
-            {/* Fotos "Depois" */}
             <div className="form-group">
                 <h4>Fotos "Depois" ({(formData.afterPhotos || []).length})</h4>
                 <div className="edit-photo-gallery">
@@ -1689,7 +1695,7 @@ const AdminEditRecordView: React.FC<{
                         </div>
                     ))}
                 </div>
-                <label htmlFor="after-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar</label>
+                <label htmlFor="after-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar Foto "Depois"</label>
                 <input
                     id="after-upload"
                     type="file"
@@ -1701,7 +1707,7 @@ const AdminEditRecordView: React.FC<{
             </div>
 
             <div className="button-group">
-                <button className="button button-secondary" onClick={onCancel}>Cancelar</button>
+                <button className="button button-secondary" onClick={onCancel}>Voltar</button>
                 <button className="button button-success" onClick={handleSave}>Salvar Alterações</button>
             </div>
         </div>
@@ -1859,12 +1865,10 @@ const App = () => {
   const [view, setView] = useState<View>('LOGIN');
   const [currentUser, setCurrentUser] = useLocalStorage<User | null>('crbCurrentUser', null);
   
-  // Data from API
   const [users, setUsers] = useState<User[]>([]);
   const [locations, setLocations] = useState<LocationRecord[]>([]);
   const [records, setRecords] = useState<ServiceRecord[]>([]);
   
-  // Local data
   const [services, setServices] = useLocalStorage<ServiceDefinition[]>('crbServices', DEFAULT_SERVICES);
   const [goals, setGoals] = useLocalStorage<Goal[]>('crbGoals', []);
   const [auditLog, setAuditLog] = useLocalStorage<AuditLogEntry[]>('crbAuditLog', []);
@@ -1875,6 +1879,61 @@ const App = () => {
   const [selectedLocation, setSelectedLocation] = useState<LocationRecord | null>(null);
   const [history, setHistory] = useState<View[]>([]);
   const [isLoading, setIsLoading] = useState<string | null>(null);
+
+  // NOVO: Estado e funções para multi-delete
+  const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
+
+  const handleToggleRecordSelection = (recordId: string) => {
+    setSelectedRecordIds(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(recordId)) {
+            newSet.delete(recordId);
+        } else {
+            newSet.add(recordId);
+        }
+        return newSet;
+    });
+  };
+
+  const handleDeleteSelectedRecords = async () => {
+    if (selectedRecordIds.size === 0) return;
+    if (window.confirm(`Tem certeza que deseja excluir os ${selectedRecordIds.size} registros selecionados?`)) {
+        setIsLoading("Excluindo registros...");
+        try {
+            const deletePromises = Array.from(selectedRecordIds).map(id => 
+                apiFetch(`/api/records/${id}`, { method: 'DELETE' })
+            );
+            await Promise.all(deletePromises);
+            
+            setRecords(prev => prev.filter(r => !selectedRecordIds.has(r.id)));
+            setSelectedRecordIds(new Set());
+            alert("Registros excluídos com sucesso.");
+        } catch (e) {
+            alert("Falha ao excluir um ou mais registros.");
+            console.error(e);
+        } finally {
+            setIsLoading(null);
+        }
+    }
+  };
+
+  // Efeito para ouvir o evento de sincronização
+  useEffect(() => {
+    const handleSyncSuccess = (event: Event) => {
+      const { tempId, newId } = (event as CustomEvent).detail;
+      setCurrentService(prev => {
+        if (prev.id === tempId || prev.tempId === tempId) {
+          console.log(`ID do serviço atualizado de ${tempId} para ${newId}`);
+          return { ...prev, id: String(newId) };
+        }
+        return prev;
+      });
+    };
+    window.addEventListener('syncSuccess', handleSyncSuccess);
+    return () => {
+      window.removeEventListener('syncSuccess', handleSyncSuccess);
+    };
+  }, [setCurrentService]);
 
   const navigate = (newView: View, replace = false) => {
     if (!replace) setHistory(h => [...h, view]);
@@ -1924,23 +1983,23 @@ const App = () => {
                 apiFetch('/api/records'),
                 apiFetch('/api/users')
             ]);
-            setLocations(locs.map((l: any) => ({id: String(l.id), contractGroup: l.city, name: l.name, area: l.area || 0, coords: (l.lat!=null && l.lng!=null) ? { latitude: l.lat, longitude: l.lng } : undefined, serviceIds: l.service_ids || [] })));
-            setRecords(recs.map((r: any) => ({...r, id: String(r.id), contractGroup: r.location_city, operatorId: String(r.operator_id), operatorName: r.operator_name || 'N/A' })));
-            setUsers(usrs.map((u: any) => ({id: String(u.id), username: u.name, email: u.email, role: u.role, assignments: u.assignments || [] })));
+            setLocations(locs.map((l: any) => ({...l, id: String(l.id) })));
+            setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
+            setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
         } else if (currentUser.role === 'FISCAL') {
             const recs = await apiFetch('/api/records');
             const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
             setRecords(
-                recs.filter((r: any) => fiscalGroups.includes(r.location_city))
-                .map((r: any) => ({...r, id: String(r.id), contractGroup: r.location_city, operatorId: String(r.operator_id), operatorName: r.operator_name || 'N/A' }))
+                recs.filter((r: any) => fiscalGroups.includes(r.contractGroup))
+                .map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) }))
             );
         } else if (currentUser.role === 'OPERATOR') {
              const [locs, recs] = await Promise.all([
                 apiFetch('/api/locations'),
-                apiFetch(`/api/records?operator_id=${currentUser.id}`)
+                apiFetch(`/api/records?operatorId=${currentUser.id}`)
              ]);
-             setLocations(locs.map((l: any) => ({id: String(l.id), contractGroup: l.city, name: l.name, area: l.area || 0, coords: (l.lat!=null && l.lng!=null) ? { latitude: l.lat, longitude: l.lng } : undefined, serviceIds: l.service_ids || [] })));
-             setRecords(recs.map((r: any) => ({...r, id: String(r.id), contractGroup: r.location_city, operatorId: String(r.operator_id), operatorName: r.operator_name || 'N/A' })));
+             setLocations(locs.map((l: any) => ({...l, id: String(l.id) })));
+             setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
         }
     } catch (error) {
         console.error("Failed to fetch data", error);
@@ -2007,23 +2066,34 @@ const App = () => {
   }
 
   const handleLocationSelect = (location: LocationRecord, gpsUsed: boolean) => {
-      setSelectedLocation({ ...location, _gpsUsed: gpsUsed } as any); // Store gpsUsed temporarily
+      setSelectedLocation({ ...location, _gpsUsed: gpsUsed } as any);
 
       const servicesForLocation = location.serviceIds
           ? services.filter(s => location.serviceIds!.includes(s.id))
           : [];
 
       if (servicesForLocation.length === 1) {
-          // Only one service, select it automatically and go to photos
           handleServiceSelect(servicesForLocation[0]);
       } else {
-          // Multiple services, or it's a new location (fallback), go to service select
           navigate('OPERATOR_SERVICE_SELECT');
       }
   };
 
   const handleServiceSelect = (service: ServiceDefinition) => {
     if (!selectedLocation) return;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const isAlreadyDone = records.some(record => 
+        record.locationId === selectedLocation.id &&
+        record.serviceType === service.name &&
+        record.startTime.startsWith(today)
+    );
+
+    if (isAlreadyDone) {
+        alert('Este serviço já foi realizado para este local hoje. Para adicionar mais informações, use a função "Reabrir" no seu histórico.');
+        return;
+    }
+
     setCurrentService({ 
         serviceType: service.name, 
         serviceUnit: service.unit, 
@@ -2036,72 +2106,66 @@ const App = () => {
     navigate('PHOTO_STEP');
   };
 
- // Criar registro + fotos "Antes"
-const handleBeforePhotos = async (photosBefore: string[]) => {
-  setIsLoading("Criando registro e salvando fotos 'Antes'...");
-  try {
-    const recordPayload = {
-      operatorId: parseInt(currentUser!.id, 10),
-      serviceType: currentService.serviceType,
-      serviceUnit: currentService.serviceUnit,
-      locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
-      locationName: currentService.locationName,
-      contractGroup: currentService.contractGroup,
-      locationArea: currentService.locationArea,
-      gpsUsed: !!currentService.gpsUsed,
-      startTime: new Date().toISOString(),
-      tempId: crypto.randomUUID() // id temporário para vincular "Depois"
-    };
+  const handleBeforePhotos = async (photosBefore: string[]) => {
+    setIsLoading("Criando registro e salvando fotos 'Antes'...");
+    try {
+      const recordPayload = {
+        operatorId: parseInt(currentUser!.id, 10),
+        serviceType: currentService.serviceType,
+        serviceUnit: currentService.serviceUnit,
+        locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
+        locationName: currentService.locationName,
+        contractGroup: currentService.contractGroup,
+        locationArea: currentService.locationArea,
+        gpsUsed: !!currentService.gpsUsed,
+        startTime: new Date().toISOString(),
+        tempId: crypto.randomUUID()
+      };
 
-    const beforeFiles = photosBefore.map((p, i) =>
-      dataURLtoFile(p, `before_${i}.jpg`)
-    );
+      const beforeFiles = photosBefore.map((p, i) =>
+        dataURLtoFile(p, `before_${i}.jpg`)
+      );
 
-    await queueRecord(recordPayload, beforeFiles);
+      await queueRecord(recordPayload, beforeFiles);
 
-    // --- INÍCIO DA CORREÇÃO ---
-    // 1. Atualiza o estado para que o app saiba qual serviço está em andamento.
-    setCurrentService(prev => ({
-      ...prev,
-      ...recordPayload,
-      id: recordPayload.tempId 
-    }));
-    
-    // 2. Navega o usuário para a tela de "serviço em andamento".
-    navigate('OPERATOR_SERVICE_IN_PROGRESS');
-    // --- FIM DA CORREÇÃO ---
-
-    setIsLoading(null);
-    alert("Registro inicial salvo. Continue o trabalho e finalize para tirar as fotos 'Depois'.");
-
-  } catch (err) {
-    console.error(err);
-    setIsLoading(null);
-    alert("Falha ao salvar registro local.");
-  }
-};
-
-// Adicionar fotos "Depois"
-const handleAfterPhotos = async (photosAfter: string[]) => {
-  setIsLoading("Salvando fotos 'Depois'...");
-  try {
-    const afterFiles = photosAfter.map((p, i) =>
-      dataURLtoFile(p, `after_${i}.jpg`)
-    );
-
-    await addAfterPhotosToPending(currentService.tempId || currentService.id!, afterFiles);
-
-    setIsLoading(null);
+      setCurrentService(prev => ({
+        ...prev,
+        ...recordPayload,
+        id: recordPayload.tempId 
+      }));
       
-    navigate('CONFIRM_STEP');
-  } catch (err) {
-    console.error(err);
-    setIsLoading(null);
-    alert("Falha ao salvar fotos localmente.");
-  }
-};
+      navigate('OPERATOR_SERVICE_IN_PROGRESS');
+      
+    } catch (err) {
+      console.error(err);
+      alert("Falha ao salvar registro local.");
+    } finally {
+        setIsLoading(null);
+    }
+  };
+
+  const handleAfterPhotos = async (photosAfter: string[]) => {
+    setIsLoading("Salvando fotos 'Depois'...");
+    try {
+      const afterFiles = photosAfter.map((p, i) =>
+        dataURLtoFile(p, `after_${i}.jpg`)
+      );
+
+      await addAfterPhotosToPending(currentService.tempId || currentService.id!, afterFiles);
+      
+      navigate('CONFIRM_STEP');
+
+    } catch (err) {
+      console.error(err);
+      alert("Falha ao salvar fotos localmente.");
+    } finally {
+        setIsLoading(null);
+    }
+  };
+
   const handleSave = () => {
-    alert("Registro salvo com sucesso no servidor.");
+    alert("Registro salvo com sucesso.");
+    fetchData(); 
     resetService();
   };
 
@@ -2110,9 +2174,9 @@ const handleAfterPhotos = async (photosAfter: string[]) => {
     try {
         const detailedRecord = await apiFetch(`/api/records/${record.id}`);
         const fullRecord = {
-            ...record,
-            beforePhotos: detailedRecord.before_photos || [],
-            afterPhotos: detailedRecord.after_photos || [],
+            ...detailedRecord,
+            id: String(detailedRecord.id),
+            operatorId: String(detailedRecord.operatorId),
         };
         setSelectedRecord(fullRecord);
         navigate('DETAIL');
@@ -2123,13 +2187,27 @@ const handleAfterPhotos = async (photosAfter: string[]) => {
     }
   }
 
-  const handleEditRecord = (record: ServiceRecord) => {
-      setSelectedRecord(record);
-      navigate('ADMIN_EDIT_RECORD');
+  const handleEditRecord = async (record: ServiceRecord) => {
+      setIsLoading("Carregando registro para edição...");
+      try {
+        const detailedRecord = await apiFetch(`/api/records/${record.id}`);
+        const fullRecord = {
+            ...detailedRecord,
+            id: String(detailedRecord.id),
+            operatorId: String(detailedRecord.operatorId),
+        };
+        setSelectedRecord(fullRecord);
+        navigate('ADMIN_EDIT_RECORD');
+      } catch(e) {
+          alert('Não foi possível carregar o registro para edição.');
+      } finally {
+          setIsLoading(null);
+      }
   };
 
   const handleUpdateRecord = (updatedRecord: ServiceRecord) => {
-    alert("A edição de registros não está implementada no backend.");
+    setRecords(prev => prev.map(r => r.id === updatedRecord.id ? { ...r, ...updatedRecord } : r));
+    handleBack();
   };
 
   const handleDeleteRecord = async (recordId: string) => {
@@ -2138,24 +2216,17 @@ const handleAfterPhotos = async (photosAfter: string[]) => {
       const recordToDelete = records.find(r => r.id === recordId);
       if (!recordToDelete) return;
 
-      if (window.confirm(`Tem certeza que deseja excluir o registro do local "${recordToDelete.locationName}"? Esta ação não pode ser desfeita.`)) {
+      if (window.confirm(`Tem certeza que deseja excluir o registro do local "${recordToDelete.locationName}"?`)) {
           try {
+              setIsLoading("Excluindo registro...");
               await apiFetch(`/api/records/${recordId}`, { method: 'DELETE' });
-              const logEntry: AuditLogEntry = {
-                  id: new Date().toISOString(),
-                  timestamp: new Date().toISOString(),
-                  adminId: currentUser.id,
-                  adminUsername: currentUser.username,
-                  action: 'DELETE',
-                  recordId: recordId,
-                  details: `Registro excluído via app: ${recordToDelete.serviceType} em ${recordToDelete.locationName}, ${recordToDelete.contractGroup}.`,
-              };
-              setAuditLog(prev => [logEntry, ...prev]);
               setRecords(prev => prev.filter(r => r.id !== recordId));
               alert("Registro excluído com sucesso.");
           } catch(e) {
               alert("Falha ao excluir o registro.");
               console.error(e);
+          } finally {
+              setIsLoading(null);
           }
       }
   };
@@ -2177,9 +2248,9 @@ const handleAfterPhotos = async (photosAfter: string[]) => {
                 case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
                 case 'ADMIN_MANAGE_GOALS': return <ManageGoalsView goals={goals} setGoals={setGoals} records={records} locations={locations} />;
                 case 'REPORTS': return <ReportsView records={records} services={services} />;
-                case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} />;
+                case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} selectedIds={selectedRecordIds} onToggleSelect={handleToggleRecordSelection} onDeleteSelected={handleDeleteSelectedRecords} />;
                 case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
-                case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} services={services} setIsLoading={setIsLoading} /> : <p>Nenhum registro selecionado para edição.</p>;
+                case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado para edição.</p>;
                 case 'AUDIT_LOG': return <AuditLogView log={auditLog} />;
                 default: return <AdminDashboard onNavigate={navigate} onBackup={handleBackup} onRestore={handleRestore} />;
             }
@@ -2190,7 +2261,7 @@ const handleAfterPhotos = async (photosAfter: string[]) => {
             switch(view) {
                 case 'FISCAL_DASHBOARD': return <FiscalDashboard onNavigate={navigate} />;
                 case 'REPORTS': return <ReportsView records={fiscalRecords} services={services} />;
-                case 'HISTORY': return <HistoryView records={fiscalRecords} onSelect={handleSelectRecord} isAdmin={false} />;
+                case 'HISTORY': return <HistoryView records={fiscalRecords} onSelect={handleSelectRecord} isAdmin={false} selectedIds={new Set()} onToggleSelect={() => {}} />;
                 case 'DETAIL':
                     const canView = selectedRecord && fiscalGroups.includes(selectedRecord.contractGroup);
                     return canView ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado ou acesso não permitido.</p>;
@@ -2210,9 +2281,10 @@ const handleAfterPhotos = async (photosAfter: string[]) => {
                     return <PhotoStep phase="AFTER" onComplete={handleAfterPhotos} onCancel={resetService} />;
                 case 'CONFIRM_STEP': return <ConfirmStep recordData={currentService} onSave={handleSave} onCancel={resetService} />;
                 case 'HISTORY': 
-                    const operatorRecords = records.filter(r => r.operatorId === currentUser.id);
-                    return <HistoryView records={operatorRecords} onSelect={handleSelectRecord} isAdmin={false} />;
+                    const operatorRecords = records.filter(r => String(r.operatorId) === String(currentUser.id));
+                    return <HistoryView records={operatorRecords} onSelect={handleSelectRecord} isAdmin={false} onEdit={handleEditRecord} selectedIds={new Set()} onToggleSelect={() => {}} />;
                 case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
+                case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado para edição.</p>;
                 default: return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} />;
             }
         
