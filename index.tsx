@@ -7,8 +7,6 @@ import { queueRecord, addAfterPhotosToPending } from "./syncManager";
 
 // --- API Client & Helpers ---
 
-// A API_BASE agora é uma string vazia para permitir requisições relativas (ex: /api/login)
-// que serão interceptadas pelo proxy do Nginx no Docker.
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 
 let API_TOKEN: string | null = localStorage.getItem('crbApiToken');
@@ -100,7 +98,7 @@ interface UserAssignment {
 }
 
 interface User {
-  id: string; // From backend will be number, converted to string
+  id: string;
   username: string;
   email?: string;
   password?: string;
@@ -114,16 +112,16 @@ interface GeolocationCoords {
 }
 
 interface LocationRecord {
-  id: string; // From backend will be number, converted to string
+  id: string;
   contractGroup: string;
   name: string;
-  area: number; // metragem
+  area: number;
   coords?: GeolocationCoords;
   serviceIds?: string[];
 }
 
 interface ServiceRecord {
-  id: string; // From backend will be number, converted to string
+  id: string;
   operatorId: string;
   operatorName: string;
   serviceType: string;
@@ -135,14 +133,15 @@ interface ServiceRecord {
   gpsUsed: boolean;
   startTime: string;
   endTime: string;
-  beforePhotos: string[]; // Will now hold URLs
-  afterPhotos: string[]; // Will now hold URLs
+  beforePhotos: string[];
+  afterPhotos: string[];
+  tempId?: string; // Adicionado para rastreamento explícito
 }
 
 interface Goal {
     id: string;
     contractGroup: string;
-    month: string; // YYYY-MM
+    month: string;
     targetArea: number;
 }
 
@@ -426,7 +425,6 @@ const OperatorGroupSelect: React.FC<{
     onSelectGroup: (group: string) => void 
 }> = ({ user, onSelectGroup }) => {
     
-    // This now relies on the user object fetched from the API having an 'assignments' field.
     const assignedGroups = [...new Set(user.assignments?.map(a => a.contractGroup) || [])].sort();
 
     return (
@@ -449,11 +447,10 @@ const OperatorServiceSelect: React.FC<{
 }> = ({ location, services, user, onSelectService }) => {
     
     let availableServices: ServiceDefinition[] = [];
-    // If the location has specific services assigned to it, use them
+
     if (location.serviceIds && location.serviceIds.length > 0) {
         availableServices = services.filter(s => location.serviceIds!.includes(s.id));
     } else {
-        // Fallback for new/unassigned locations: use the operator's general assignments for that contract group
         const assignment = user.assignments?.find(a => a.contractGroup === location.contractGroup);
         const userAssignedServiceNames = assignment?.serviceNames || [];
         availableServices = services.filter(s => userAssignedServiceNames.includes(s.name));
@@ -514,11 +511,11 @@ const OperatorLocationSelect: React.FC<{
     const handleConfirmNewManual = () => {
         if (manualLocationName.trim()) {
              const newManualLocation: LocationRecord = {
-                id: `manual-${new Date().getTime()}`, // Temporary client-side ID
+                id: `manual-${new Date().getTime()}`,
                 name: manualLocationName.trim(),
                 contractGroup: contractGroup,
-                area: 0, // Manually created locations require admin to set area later
-                serviceIds: [], // Empty, will trigger service selection fallback to user's assignments
+                area: 0,
+                serviceIds: [],
             };
             onSelectLocation(newManualLocation, false);
         } else {
@@ -587,16 +584,18 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
     };
 
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const dataUrl = e.target?.result as string;
-                if (dataUrl) {
-                    setPhotos(p => [...p, dataUrl]);
-                }
-            };
-            reader.readAsDataURL(file);
+        const files = event.target.files;
+        if (files) {
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const dataUrl = e.target?.result as string;
+                    if (dataUrl) {
+                        setPhotos(p => [...p, dataUrl]);
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
         }
         if (event.target) {
             event.target.value = '';
@@ -651,10 +650,10 @@ const ConfirmStep: React.FC<{ recordData: Partial<ServiceRecord>; onSave: () => 
             <p><strong>Data/Hora:</strong> {formatDateTime(new Date().toISOString())}</p>
             {recordData.locationArea ? <p><strong>Metragem:</strong> {recordData.locationArea} {recordData.serviceUnit}</p> : <p><strong>Metragem:</strong> Não informada (novo local)</p>}
             
-            <p>O registro e as fotos foram enviados ao servidor.</p>
+            <p>O registro e as fotos foram salvos e enviados ao servidor.</p>
         </div>
-        <div style={{display: 'flex', gap: '1rem'}}>
-            <button className="button button-danger" onClick={onCancel}>Cancelar</button>
+        <div className="button-group">
+            <button className="button button-secondary" onClick={onCancel}>Voltar ao Início</button>
             <button className="button button-success" onClick={onSave}>✅ Concluir</button>
         </div>
     </div>
@@ -673,14 +672,14 @@ const HistoryView: React.FC<{
             <ul className="history-list">
                 {records.map(record => (
                     <li key={record.id} className="list-item">
-                        <div onClick={() => onSelect(record)}>
+                        <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer'}}>
                             <p><strong>Local:</strong> {record.locationName}, {record.contractGroup} {record.gpsUsed && <span className="gps-indicator">📍</span>}</p>
                             <p><strong>Serviço:</strong> {record.serviceType}</p>
                             <p><strong>Data:</strong> {formatDateTime(record.startTime)}</p>
                             {isAdmin && <p><strong>Operador:</strong> {record.operatorName}</p>}
                             <div className="history-item-photos">
-                               {record.beforePhotos.slice(0,2).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} />)}
-                               {record.afterPhotos.slice(0,2).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} />)}
+                               {(record.beforePhotos || []).slice(0,2).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} />)}
+                               {(record.afterPhotos || []).slice(0,2).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} />)}
                             </div>
                         </div>
                         {isAdmin && onEdit && onDelete && (
@@ -706,15 +705,15 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
             {record.locationArea ? <p><strong>Metragem:</strong> {record.locationArea} {record.serviceUnit}</p> : <p><strong>Metragem:</strong> Não informada</p>}
             <p><strong>Operador:</strong> {record.operatorName}</p>
             <p><strong>Início:</strong> {formatDateTime(record.startTime)}</p>
-            <p><strong>Fim:</strong> {formatDateTime(record.endTime)}</p>
+            <p><strong>Fim:</strong> {record.endTime ? formatDateTime(record.endTime) : 'Não finalizado'}</p>
         </div>
         <div className="detail-section card">
-            <h3>Fotos "Antes" ({record.beforePhotos.length})</h3>
-            <div className="photo-gallery">{record.beforePhotos.map((p,i) => <img key={i} src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />)}</div>
+            <h3>Fotos "Antes" ({(record.beforePhotos || []).length})</h3>
+            <div className="photo-gallery">{(record.beforePhotos || []).map((p,i) => <img key={i} src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />)}</div>
         </div>
         <div className="detail-section card">
-            <h3>Fotos "Depois" ({record.afterPhotos.length})</h3>
-            <div className="photo-gallery">{record.afterPhotos.map((p,i) => <img key={i} src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />)}</div>
+            <h3>Fotos "Depois" ({(record.afterPhotos || []).length})</h3>
+            <div className="photo-gallery">{(record.afterPhotos || []).map((p,i) => <img key={i} src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />)}</div>
         </div>
     </div>
 );
@@ -771,6 +770,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             { header: 'Local', key: 'location', width: 30 },
             { header: 'Medição', key: 'area', width: 15 },
             { header: 'Unidade', key: 'unit', width: 10 },
+            { header: 'Operador', key: 'operator', width: 25 },
         ];
         selectedRecords.forEach(r => {
             sheet.addRow({
@@ -779,7 +779,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 service: r.serviceType,
                 location: r.locationName,
                 area: r.locationArea || 'N/A',
-                unit: r.serviceUnit
+                unit: r.serviceUnit,
+                operator: r.operatorName,
             });
         });
         sheet.addRow({});
@@ -1483,7 +1484,7 @@ const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinis
                 <p><strong>Local:</strong> {service.locationName}</p>
                 <p><strong>Início:</strong> {service.startTime ? formatDateTime(service.startTime) : 'N/A'}</p>
             </div>
-            <p>O registro inicial e as fotos "Antes" foram salvos no servidor. Complete o serviço no local.</p>
+            <p>O registro inicial e as fotos "Antes" foram salvos. Complete o serviço no local.</p>
             <p>Quando terminar, clique no botão abaixo para tirar as fotos "Depois".</p>
             <button className="button button-success" style={{marginTop: '1.5rem'}} onClick={onFinish}>
                 ✅ Finalizar e Tirar Fotos "Depois"
@@ -1496,8 +1497,7 @@ const AdminEditRecordView: React.FC<{
     record: ServiceRecord;
     onSave: (updatedRecord: ServiceRecord) => void;
     onCancel: () => void;
-    services: ServiceDefinition[];
-}> = ({ record, onSave, onCancel, services }) => {
+}> = ({ record, onSave, onCancel }) => {
     const [formData, setFormData] = useState<ServiceRecord>(record);
 
     const handleChange = (field: keyof ServiceRecord, value: any) => {
@@ -1510,7 +1510,12 @@ const AdminEditRecordView: React.FC<{
                 method: 'PUT',
                 body: JSON.stringify(formData),
             });
-            onSave(updated);
+             const fullRecord = {
+                ...updated,
+                id: String(updated.id),
+                operatorId: String(updated.operatorId),
+            };
+            onSave(fullRecord);
             alert("Registro atualizado com sucesso!");
         } catch (e) {
             alert("Erro ao atualizar registro.");
@@ -1520,6 +1525,7 @@ const AdminEditRecordView: React.FC<{
 
     const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
         if (!files || files.length === 0) return;
+        setIsLoading("Enviando fotos...");
         const formDataUpload = new FormData();
         formDataUpload.append("phase", phase);
         Array.from(files).forEach(file => formDataUpload.append("files", file));
@@ -1528,26 +1534,47 @@ const AdminEditRecordView: React.FC<{
                 method: "POST",
                 body: formDataUpload
             });
-            setFormData(updated); // atualiza com fotos novas
+            const fullRecord = {
+                ...updated,
+                id: String(updated.id),
+                operatorId: String(updated.operatorId),
+            };
+            setFormData(fullRecord); 
         } catch (err) {
             alert(`Falha ao enviar fotos '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
             console.error(err);
+        } finally {
+            setIsLoading(null);
         }
     };
 
-    const handlePhotoRemove = async (phase: 'BEFORE' | 'AFTER', photoUrl: string) => {
+    const handlePhotoRemove = async (photoUrl: string) => {
+        if (!window.confirm("Tem certeza que deseja remover esta foto?")) return;
+        setIsLoading("Removendo foto...");
         try {
+            // A lógica de remoção de arquivo agora está no backend, então basta atualizar
+            const isBefore = formData.beforePhotos.includes(photoUrl);
+            const newBefore = isBefore ? formData.beforePhotos.filter(p => p !== photoUrl) : formData.beforePhotos;
+            const newAfter = !isBefore ? formData.afterPhotos.filter(p => p !== photoUrl) : formData.afterPhotos;
+
             const updated = await apiFetch(`/api/records/${formData.id}`, {
                 method: "PUT",
                 body: JSON.stringify({
-                    [phase === "BEFORE" ? "beforePhotos" : "afterPhotos"]:
-                        (phase === "BEFORE" ? formData.beforePhotos : formData.afterPhotos).filter(p => p !== photoUrl)
+                    beforePhotos: newBefore,
+                    afterPhotos: newAfter,
                 })
             });
-            setFormData(updated);
+             const fullRecord = {
+                ...updated,
+                id: String(updated.id),
+                operatorId: String(updated.operatorId),
+            };
+            setFormData(fullRecord);
         } catch (err) {
-            alert(`Falha ao remover foto '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
+            alert(`Falha ao remover foto.`);
             console.error(err);
+        } finally {
+            setIsLoading(null);
         }
     };
 
@@ -1576,7 +1603,7 @@ const AdminEditRecordView: React.FC<{
                 <input
                     type="number"
                     value={formData.locationArea || ''}
-                    onChange={e => handleChange("locationArea", parseFloat(e.target.value))}
+                    onChange={e => handleChange("locationArea", parseFloat(e.target.value) || 0)}
                 />
             </div>
 
@@ -1604,8 +1631,8 @@ const AdminEditRecordView: React.FC<{
                 <label>Início</label>
                 <input
                     type="datetime-local"
-                    value={formData.startTime ? formData.startTime.slice(0,16) : ""}
-                    onChange={e => handleChange("startTime", e.target.value)}
+                    value={formData.startTime ? new Date(new Date(formData.startTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
+                    onChange={e => handleChange("startTime", new Date(e.target.value).toISOString())}
                 />
             </div>
 
@@ -1613,61 +1640,67 @@ const AdminEditRecordView: React.FC<{
                 <label>Fim</label>
                 <input
                     type="datetime-local"
-                    value={formData.endTime ? formData.endTime.slice(0,16) : ""}
-                    onChange={e => handleChange("endTime", e.target.value)}
+                    value={formData.endTime ? new Date(new Date(formData.endTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
+                    onChange={e => handleChange("endTime", new Date(e.target.value).toISOString())}
                 />
             </div>
 
             {/* Fotos "Antes" */}
             <div className="form-group">
-                <h4>Fotos "Antes" ({formData.beforePhotos.length})</h4>
+                <h4>Fotos "Antes" ({(formData.beforePhotos || []).length})</h4>
                 <div className="edit-photo-gallery">
-                    {formData.beforePhotos.map((p, i) => (
-                        <div key={i} className="edit-photo-item">
+                    {(formData.beforePhotos || []).map((p, i) => (
+                        <div key={`b-${i}`} className="edit-photo-item">
                             <img src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />
                             <button
-                                className="button button-sm button-danger"
-                                onClick={() => handlePhotoRemove("BEFORE", p)}
+                                className="delete-photo-btn"
+                                onClick={() => handlePhotoRemove(p)}
                             >
-                                ❌
+                                &times;
                             </button>
                         </div>
                     ))}
                 </div>
+                <label htmlFor="before-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar</label>
                 <input
+                    id="before-upload"
                     type="file"
                     accept="image/*"
                     multiple
                     onChange={e => handlePhotoUpload("BEFORE", e.target.files)}
+                    style={{display: 'none'}}
                 />
             </div>
 
             {/* Fotos "Depois" */}
             <div className="form-group">
-                <h4>Fotos "Depois" ({formData.afterPhotos.length})</h4>
+                <h4>Fotos "Depois" ({(formData.afterPhotos || []).length})</h4>
                 <div className="edit-photo-gallery">
-                    {formData.afterPhotos.map((p, i) => (
-                        <div key={i} className="edit-photo-item">
+                    {(formData.afterPhotos || []).map((p, i) => (
+                        <div key={`a-${i}`} className="edit-photo-item">
                             <img src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />
-                            <button
-                                className="button button-sm button-danger"
-                                onClick={() => handlePhotoRemove("AFTER", p)}
+                             <button
+                                className="delete-photo-btn"
+                                onClick={() => handlePhotoRemove(p)}
                             >
-                                ❌
+                                &times;
                             </button>
                         </div>
                     ))}
                 </div>
+                <label htmlFor="after-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar</label>
                 <input
+                    id="after-upload"
                     type="file"
                     accept="image/*"
                     multiple
                     onChange={e => handlePhotoUpload("AFTER", e.target.files)}
+                    style={{display: 'none'}}
                 />
             </div>
 
             <div className="button-group">
-                <button className="button button-secondary" onClick={onCancel}>Voltar</button>
+                <button className="button button-secondary" onClick={onCancel}>Cancelar</button>
                 <button className="button button-success" onClick={handleSave}>Salvar Alterações</button>
             </div>
         </div>
