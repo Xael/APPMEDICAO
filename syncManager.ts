@@ -1,7 +1,7 @@
 import { addPendingRecord, getPendingRecords, deletePendingRecord } from "./db";
 import { apiFetch } from "./api";
 
-// Cria novo registro com fotos "Antes" (sem alterações aqui)
+// Cria novo registro com fotos "Antes"
 export async function queueRecord(recordPayload: any, photosBefore: File[]) {
   const record = {
     id: crypto.randomUUID(),
@@ -21,7 +21,7 @@ export async function addAfterPhotosToPending(recordId: string, photosAfter: Fil
 
   if (record) {
     record.photosAfter.push(...photosAfter);
-    await addPendingRecord(record);
+    await addPendingRecord(record); // sobrescreve no IndexedDB
     trySync();
   } else {
     // Se já subiu, manda direto
@@ -30,17 +30,13 @@ export async function addAfterPhotosToPending(recordId: string, photosAfter: Fil
       fd.append("phase", "AFTER");
       photosAfter.forEach(f => fd.append("files", f));
 
-      // --- INÍCIO DA CORREÇÃO ---
       // Busca no localStorage pelo ID real que foi salvo pelo trySync.
-      // Se não encontrar, usa o recordId original (para casos de erro ou offline).
       const realId = localStorage.getItem(`sync_map_${recordId}`) || recordId;
       
       await apiFetch(`/api/records/${realId}/photos`, { method: "POST", body: fd });
-      // --- FIM DA CORREÇÃO ---
 
     } catch (err) {
       console.error("Falha ao enviar fotos AFTER direto:", err);
-      // Re-lança o erro para que a interface possa tratá-lo se necessário
       throw err; 
     }
   }
@@ -58,11 +54,8 @@ export async function trySync() {
         body: JSON.stringify(item.payload),
       });
 
-      // --- INÍCIO DA CORREÇÃO ---
       // Salva o mapeamento do ID temporário para o ID real no localStorage.
-      // Ex: sync_map_4930af7a... -> 15
       localStorage.setItem(`sync_map_${item.payload.tempId}`, newRecord.id);
-      // --- FIM DA CORREÇÃO ---
 
       // 2. Sobe fotos BEFORE (usando o newRecord.id correto)
       if (item.photosBefore?.length) {
@@ -84,9 +77,8 @@ export async function trySync() {
       await deletePendingRecord(item.id);
       console.log("Registro sincronizado:", item.payload.tempId, "-> Novo ID:", newRecord.id);
       
-      // Limpa o mapeamento do localStorage após o sucesso completo para não acumular lixo
-      // (Opcional, mas boa prática)
-      localStorage.removeItem(`sync_map_${item.payload.tempId}`);
+      // A LINHA ABAIXO FOI REMOVIDA PARA CORRIGIR O BUG
+      // localStorage.removeItem(`sync_map_${item.payload.tempId}`);
 
     } catch (err) {
       console.warn("Falha ao sincronizar:", item.id, err);
@@ -96,4 +88,4 @@ export async function trySync() {
 
 // Auto-sync
 window.addEventListener("online", trySync);
-setInterval(trySync, 30000); // Tenta sincronizar a cada 30 segundos
+setInterval(trySync, 30000);
