@@ -513,71 +513,130 @@ main {
 }
 
 
-/* Styles for printable PDF report */
-.printable-report {
+/*
+=========================================================
+NOVOS ESTILOS PARA O RELATÓRIO PDF
+=========================================================
+*/
+
+/* Esconde o container do relatório da tela principal */
+.printable-report-container {
   position: absolute;
   left: -9999px;
   top: auto;
-  width: 210mm; /* A4 width */
-  background: white;
-  color: black;
+  width: 210mm; /* Largura A4 */
   font-family: Arial, sans-serif;
-}
-.printable-report-page {
-  padding: 20mm;
-  page-break-after: always;
-  width: 100%;
-  min-height: 297mm; /* A4 height */
-  box-sizing: border-box;
-}
-.printable-report-page:last-child {
-  page-break-after: avoid;
-}
-.printable-page-header {
-    border-bottom: 2px solid #333;
-    padding-bottom: 10px;
-    margin-bottom: 10mm;
-}
-.printable-page-header h2 {
-  text-align: center;
-  margin-bottom: 10mm;
-  font-size: 18pt;
-}
-.printable-page-header p {
-  margin: 2mm 0;
-  font-size: 12pt;
-}
-.printable-report-page h3 {
-  margin-top: 10mm;
-  margin-bottom: 5mm;
-  font-size: 14pt;
-  border-bottom: 1px solid #ccc;
-  padding-bottom: 2mm;
-}
-.printable-report-gallery {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10mm;
-}
-.photo-item-container {
-    page-break-inside: avoid;
-    text-align: center;
-}
-.photo-item-container img {
-    width: 100%;
-    height: 80mm;
-    object-fit: cover;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    margin-bottom: 2mm;
-}
-.photo-item-container .caption {
-    font-size: 10pt;
-    color: #333;
-    margin: 0;
+  color: black;
+  background: white;
 }
 
-/* New Styles */
+/* Define uma página A4 */
+.printable-page {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 15mm;
+  page-break-after: always;
+  box-sizing: border-box;
+  position: relative; /* Para o rodapé */
+}
+
+.printable-page:last-child {
+  page-break-after: avoid;
+}
+
+/* Cabeçalho de cada página */
+.pdf-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #333;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+.pdf-page-header h2 {
+  font-size: 16pt;
+  margin: 0;
+}
+.pdf-page-header p {
+  font-size: 10pt;
+  margin: 0;
+  text-align: right;
+}
+
+/* Rodapé de cada página */
+.pdf-page-footer {
+  position: absolute;
+  bottom: 10mm;
+  left: 15mm;
+  right: 15mm;
+  text-align: right;
+  font-size: 10pt;
+  border-top: 1px solid #ccc;
+  padding-top: 5px;
+}
+
+
+/* Bloco de cada registro de serviço */
+.pdf-record-block {
+  margin-bottom: 10mm;
+  page-break-inside: avoid; /* Tenta não quebrar este bloco entre páginas */
+}
+
+/* Informações do registro */
+.pdf-record-info {
+  background-color: #f0f0f0;
+  padding: 3mm;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  margin-bottom: 4mm;
+}
+.pdf-record-info h3 {
+  margin: 0 0 2mm 0;
+  font-size: 12pt;
+}
+.pdf-record-info p {
+  font-size: 9pt;
+  margin: 1mm 0;
+}
+
+/* Tabela de comparação de fotos */
+.pdf-photo-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4mm;
+}
+
+.pdf-photo-table th {
+  font-size: 11pt;
+  padding-bottom: 2mm;
+  border-bottom: 1px solid #ccc;
+}
+
+.pdf-photo-table td {
+  width: 50%;
+  padding: 2mm;
+  vertical-align: top;
+  text-align: center;
+}
+
+.pdf-photo-table img {
+  width: 100%;
+  height: 60mm; /* Tamanho fixo, conforme solicitado */
+  object-fit: cover; /* Mantém a proporção e corta se necessário */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 1mm;
+}
+
+.pdf-photo-table .caption {
+  font-size: 8pt;
+  color: #555;
+  margin: 0;
+}
+
+
+/* Outros estilos novos... */
+
 .admin-dashboard {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
