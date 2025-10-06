@@ -5,66 +5,38 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { queueRecord, addAfterPhotosToPending } from "./syncManager";
 
-// --- API Client & Helpers ---
-
+// --- (As seções API Client & Helpers, Tipos, Funções Auxiliares e Hooks permanecem inalteradas) ---
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
-
 let API_TOKEN: string | null = localStorage.getItem('crbApiToken');
-
 const setApiToken = (token: string | null) => {
     API_TOKEN = token;
-    if (token) {
-        localStorage.setItem('crbApiToken', token);
-    } else {
-        localStorage.removeItem('crbApiToken');
-    }
+    if (token) { localStorage.setItem('crbApiToken', token); }
+    else { localStorage.removeItem('crbApiToken'); }
 };
-
 const apiFetch = async (path: string, options: RequestInit = {}) => {
     const headers = new Headers(options.headers || {});
-    if (API_TOKEN) {
-        headers.append('Authorization', `Bearer ${API_TOKEN}`);
-    }
-    if (!(options.body instanceof FormData)) {
-        headers.append('Content-Type', 'application/json');
-    }
-
+    if (API_TOKEN) { headers.append('Authorization', `Bearer ${API_TOKEN}`); }
+    if (!(options.body instanceof FormData)) { headers.append('Content-Type', 'application/json'); }
     const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-
     if (!response.ok) {
         let errorBody;
-        try {
-            errorBody = await response.json();
-        } catch (e) {
-            errorBody = await response.text();
-        }
+        try { errorBody = await response.json(); }
+        catch (e) { errorBody = await response.text(); }
         console.error("API Error:", errorBody);
         throw new Error(`API request failed with status ${response.status}`);
     }
-    
-    if (response.status === 204 || response.headers.get('content-length') === '0') {
-        return null;
-    }
-    
+    if (response.status === 204 || response.headers.get('content-length') === '0') { return null; }
     return response.json();
 };
-
 const dataURLtoFile = (dataurl: string, filename: string): File => {
-    const arr = dataurl.split(',');
-    const mimeMatch = arr[0].match(/:(.*?);/);
+    const arr = dataurl.split(','), mimeMatch = arr[0].match(/:(.*?);/);
     if (!mimeMatch) throw new Error("Invalid data URL");
-    const mime = mimeMatch[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
+    const mime = mimeMatch[1], bstr = atob(arr[1]); let n = bstr.length;
     const u8arr = new Uint8Array(n);
-    while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-    }
+    while (n--) { u8arr[n] = bstr.charCodeAt(n); }
     return new File([u8arr], filename, { type: mime });
 };
 
-
-// --- Tipos (Types) ---
 type Role = 'ADMIN' | 'OPERATOR' | 'FISCAL';
 type View =
   | 'LOGIN'
@@ -85,77 +57,15 @@ type View =
   | 'PHOTO_STEP'
   | 'OPERATOR_SERVICE_IN_PROGRESS'
   | 'CONFIRM_STEP';
+interface ServiceDefinition { id: string; name: string; unit: 'm²' | 'm linear'; }
+interface UserAssignment { contractGroup: string; serviceNames: string[]; }
+interface User { id: string; username: string; email?: string; password?: string; role: Role; assignments?: UserAssignment[]; }
+interface GeolocationCoords { latitude: number; longitude: number; }
+interface LocationRecord { id: string; contractGroup: string; name: string; area: number; coords?: GeolocationCoords; serviceIds?: string[]; }
+interface ServiceRecord { id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: 'm²' | 'm linear'; locationId?: string; locationName: string; contractGroup: string; locationArea?: number; gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[]; tempId?: string; }
+interface Goal { id: string; contractGroup: string; month: string; targetArea: number; }
+interface AuditLogEntry { id: string; timestamp: string; adminId: string; adminUsername: string; action: 'UPDATE' | 'DELETE'; recordId: string; details: string; }
 
-interface ServiceDefinition {
-    id: string;
-    name: string;
-    unit: 'm²' | 'm linear';
-}
-
-interface UserAssignment {
-    contractGroup: string;
-    serviceNames: string[];
-}
-
-interface User {
-  id: string;
-  username: string;
-  email?: string;
-  password?: string;
-  role: Role;
-  assignments?: UserAssignment[];
-}
-
-interface GeolocationCoords {
-  latitude: number;
-  longitude: number;
-}
-
-interface LocationRecord {
-  id: string;
-  contractGroup: string;
-  name: string;
-  area: number;
-  coords?: GeolocationCoords;
-  serviceIds?: string[];
-}
-
-interface ServiceRecord {
-  id: string;
-  operatorId: string;
-  operatorName: string;
-  serviceType: string;
-  serviceUnit: 'm²' | 'm linear';
-  locationId?: string;
-  locationName: string;
-  contractGroup: string;
-  locationArea?: number;
-  gpsUsed: boolean;
-  startTime: string;
-  endTime: string;
-  beforePhotos: string[];
-  afterPhotos: string[];
-  tempId?: string;
-}
-
-interface Goal {
-    id: string;
-    contractGroup: string;
-    month: string;
-    targetArea: number;
-}
-
-interface AuditLogEntry {
-    id: string;
-    timestamp: string;
-    adminId: string;
-    adminUsername: string;
-    action: 'UPDATE' | 'DELETE';
-    recordId: string;
-    details: string;
-}
-
-// --- Funções Auxiliares (Helper Functions) ---
 const formatDateTime = (isoString: string) => new Date(isoString).toLocaleString('pt-BR');
 const calculateDistance = (p1: GeolocationCoords, p2: GeolocationCoords) => {
     if (!p1 || !p2) return Infinity;
@@ -169,13 +79,10 @@ const calculateDistance = (p1: GeolocationCoords, p2: GeolocationCoords) => {
     return R * c;
 };
 
-// --- Hooks ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
     const [storedValue, setStoredValue] = useState<T>(() => {
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) { return initialValue; }
+        try { const item = window.localStorage.getItem(key); return item ? JSON.parse(item) : initialValue; }
+        catch (error) { return initialValue; }
     });
     const setValue: React.Dispatch<React.SetStateAction<T>> = (value) => {
         try {
@@ -189,16 +96,17 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
 
 // --- Componentes ---
 
+// =================================================================
+// ===== #3 - ATUALIZAÇÃO DO HEADER PARA INCLUIR LOGO =============
+// =================================================================
 const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => void; onLogout: () => void; }> = ({ view, currentUser, onBack, onLogout }) => {
     const isAdmin = currentUser?.role === 'ADMIN';
     const showBackButton = onBack && view !== 'LOGIN' && view !== 'ADMIN_DASHBOARD' && view !== 'FISCAL_DASHBOARD';
     const showLogoutButton = currentUser;
 
     const getTitle = () => {
+        // A lógica de getTitle permanece a mesma
         if (!currentUser) return 'CRB SERVIÇOS';
-        
-        const isEditing = view === 'ADMIN_EDIT_RECORD';
-        
         if (isAdmin) {
             switch(view) {
                 case 'ADMIN_DASHBOARD': return 'Painel do Administrador';
@@ -214,7 +122,6 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 default: return 'Modo Administrador';
             }
         }
-
         if (currentUser.role === 'FISCAL') {
              switch(view) {
                 case 'FISCAL_DASHBOARD': return 'Painel de Fiscalização';
@@ -224,7 +131,6 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 default: return 'Modo Fiscalização';
             }
         }
-
         switch(view) {
             case 'OPERATOR_GROUP_SELECT': return 'Selecione o Contrato/Cidade';
             case 'OPERATOR_LOCATION_SELECT': return 'Selecione o Local';
@@ -235,25 +141,72 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
             case 'ADMIN_EDIT_RECORD': return 'Adicionar Fotos/Informações';
             default: return 'Registro de Serviço';
         }
-    }
+    };
     
     return (
         <header className={isAdmin ? 'admin-header' : ''}>
             {showBackButton && <button className="button button-sm button-secondary header-back-button" onClick={onBack}>&lt; Voltar</button>}
-            <h1>{getTitle()}</h1>
+            
+            <div className="header-content">
+                {/* O logo só aparece na tela de login/inicial */}
+                {view === 'LOGIN' && <img src="/Logo.png" alt="Logo CRB Serviços" className="header-logo" />}
+                <h1>{getTitle()}</h1>
+            </div>
+
             {showLogoutButton && <button className="button button-sm button-danger header-logout-button" onClick={onLogout}>Sair</button>}
         </header>
     );
 };
 
 const Loader: React.FC<{ text?: string }> = ({ text = "Carregando..." }) => (
-  <div className="loader-container"><div className="spinner"></div><p>{text}</p></div>
+    <div className="loader-container"><div className="spinner"></div><p>{text}</p></div>
 );
 
+// =================================================================
+// ===== #2 - ATUALIZAÇÃO DA CÂMERA PARA TELA CHEIA ================
+// =================================================================
 const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () => void; onFinish: () => void; photoCount: number }> = 
 ({ onCapture, onCancel, onFinish, photoCount }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const cameraViewRef = useRef<HTMLDivElement>(null); // Ref para o container principal
     const [stream, setStream] = useState<MediaStream | null>(null);
+
+    // Efeito para Fullscreen e Orientação
+    useEffect(() => {
+        const elem = cameraViewRef.current;
+        if (!elem) return;
+        
+        const enterFullscreen = async () => {
+            try {
+                if (document.fullscreenElement) return; // Já está em tela cheia
+                if (elem.requestFullscreen) {
+                    await elem.requestFullscreen();
+                }
+                // Tenta travar a orientação (pode não funcionar em todos os navegadores/dispositivos)
+                if (screen.orientation && screen.orientation.lock) {
+                    await screen.orientation.lock('landscape');
+                }
+            } catch (err) {
+                console.warn("Não foi possível ativar tela cheia ou travar orientação:", err);
+            }
+        };
+
+        enterFullscreen();
+
+        // Função de limpeza para sair da tela cheia ao desmontar o componente
+        return () => {
+            try {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                }
+                if (screen.orientation && screen.orientation.unlock) {
+                    screen.orientation.unlock();
+                }
+            } catch (err) {
+                console.warn("Não foi possível sair da tela cheia ou destravar orientação:", err);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
@@ -282,7 +235,7 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
             isMounted = false;
             stream?.getTracks().forEach(track => track.stop());
         };
-    }, [onCancel]);
+    }, [onCancel, stream]);
 
     const handleTakePhoto = () => {
         const canvas = document.createElement('canvas');
@@ -296,7 +249,7 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
     };
     
     return (
-        <div className="camera-view">
+        <div className="camera-view" ref={cameraViewRef}>
             <video ref={videoRef} autoPlay playsInline muted />
             <div className="camera-controls">
                 <button className="button button-secondary" onClick={onCancel}>Cancelar</button>
@@ -341,7 +294,10 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
     };
 
     return (
+        // A tela de login não é renderizada dentro do Header, então o logo não apareceria.
+        // Adicionamos ele aqui também para consistência.
         <div className="login-container card">
+            <img src="/Logo.png" alt="Logo CRB Serviços" className="header-logo" style={{marginBottom: '1rem'}}/>
             <h2>Login de Acesso</h2>
             <p>Entre com suas credenciais.</p>
             {error && <p className="text-danger">{error}</p>}
