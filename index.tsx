@@ -155,15 +155,6 @@ interface AuditLogEntry {
     details: string;
 }
 
-// --- Dados Padrão (Default Data) ---
-const DEFAULT_SERVICES: ServiceDefinition[] = [
-    { id: 'service-1', name: 'Roçagem', unit: 'm²' },
-    { id: 'service-2', name: 'Pintura de Guia', unit: 'm linear' },
-    { id: 'service-3', name: 'Varreção', unit: 'm²' },
-    { id: 'service-4', name: 'Capinagem', unit: 'm²' },
-    { id: 'service-5', name: 'Roçagem em Escolas', unit: 'm²' },
-];
-
 // --- Funções Auxiliares (Helper Functions) ---
 const formatDateTime = (isoString: string) => new Date(isoString).toLocaleString('pt-BR');
 const calculateDistance = (p1: GeolocationCoords, p2: GeolocationCoords) => {
@@ -925,7 +916,7 @@ const ManageLocationsView: React.FC<{
     locations: LocationRecord[]; 
     setLocations: React.Dispatch<React.SetStateAction<LocationRecord[]>>;
     services: ServiceDefinition[];
-    fetchData: () => Promise<void>; // ADICIONE ESTA LINHA
+    fetchData: () => Promise<void>;
 }> = ({ locations, setLocations, services, fetchData }) => { 
     const [selectedGroup, setSelectedGroup] = useState('');
     const [name, setName] = useState('');
@@ -1018,27 +1009,15 @@ const ManageLocationsView: React.FC<{
 
         try {
             if (editingId) {
-                const updatedLoc = await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
-                setLocations(locations.map(l => l.id === editingId ? {
-                    id: String(updatedLoc.id),
-                    name: updatedLoc.name,
-                    contractGroup: updatedLoc.city,
-                    area: updatedLoc.area,
-                    coords: updatedLoc.lat && updatedLoc.lng ? { latitude: updatedLoc.lat, longitude: updatedLoc.lng } : undefined,
-                    serviceIds: updatedLoc.service_ids || []
-                } : l));
+                await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
             } else {
-                const newLoc = await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
-                setLocations([{
-                    id: String(newLoc.id),
-                    name: newLoc.name,
-                    contractGroup: newLoc.city,
-                    area: newLoc.area,
-                    coords: newLoc.lat && newLoc.lng ? { latitude: newLoc.lat, longitude: newLoc.lng } : undefined,
-                    serviceIds: newLoc.service_ids || []
-                }, ...locations]);
+                await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
             }
-            resetForm();
+            
+           alert(`Local "${name}" salvo com sucesso!`);
+           resetForm();
+           await fetchData();
+
         } catch (error) {
             alert('Falha ao salvar local. Tente novamente.');
             console.error(error);
@@ -1058,7 +1037,7 @@ const ManageLocationsView: React.FC<{
         if(window.confirm('Excluir este local?')) {
             try {
                 await apiFetch(`/api/locations/${id}`, { method: 'DELETE' });
-                setLocations(locations.filter(l => l.id !== id));
+                await fetchData();
             } catch (error) {
                 alert('Falha ao excluir local. Tente novamente.');
                 console.error(error);
@@ -1524,35 +1503,7 @@ const AdminEditRecordView: React.FC<{
         } finally {
             setIsLoading(null);
         }
-            if (!selectedGroup || !name) {
-        // ...
-        return;
-    }
-
-    const payload = {
-        city: selectedGroup.trim(),
-        name,
-        area: parseFloat(area) || 0,
-        lat: coords?.latitude,
-        lng: coords?.longitude,
-        service_ids: Array.from(selectedServiceIds),
     };
-
-    try {
-        if (editingId) {
-            await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
-        } else {
-            await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
-        }
-        
-       alert(`Local "${name}" salvo com sucesso!`);
-       resetForm();
-
-    } catch (error) {
-        alert('Falha ao salvar local. Tente novamente.');
-        console.error(error);
-    }
-};
 
     const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
         if (!files || files.length === 0) return;
@@ -1819,13 +1770,18 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
     );
 };
 
+// =================================================================
+// ===== INÍCIO DA SEÇÃO MODIFICADA: ManageServicesView ===========
+// =================================================================
+
 const ManageServicesView: React.FC<{
     services: ServiceDefinition[];
-    setServices: React.Dispatch<React.SetStateAction<ServiceDefinition[]>>;
-}> = ({ services, setServices }) => {
+    fetchData: () => Promise<void>; // Prop para recarregar todos os dados
+}> = ({ services, fetchData }) => {
     const [name, setName] = useState('');
     const [unit, setUnit] = useState<'m²' | 'm linear'>('m²');
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
 
     const resetForm = () => {
         setName('');
@@ -1833,18 +1789,35 @@ const ManageServicesView: React.FC<{
         setEditingId(null);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!name.trim()) {
             alert('O nome do serviço é obrigatório.');
             return;
         }
-        const newService: ServiceDefinition = { id: editingId || `service-${new Date().getTime()}`, name, unit };
-        if (editingId) {
-            setServices(prev => prev.map(s => s.id === editingId ? newService : s));
-        } else {
-            setServices(prev => [newService, ...prev]);
+        setIsLoading(true);
+        try {
+            const payload = { name, unit };
+            if (editingId) {
+                // Modo de Edição: envia um PUT para a API
+                await apiFetch(`/api/services/${editingId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                // Modo de Criação: envia um POST para a API
+                await apiFetch('/api/services', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+            }
+            resetForm();
+            await fetchData(); // Recarrega os dados do servidor
+        } catch (error) {
+            alert('Falha ao salvar o serviço. Tente novamente.');
+            console.error('Erro ao salvar serviço:', error);
+        } finally {
+            setIsLoading(false);
         }
-        resetForm();
     };
 
     const handleEdit = (service: ServiceDefinition) => {
@@ -1853,30 +1826,42 @@ const ManageServicesView: React.FC<{
         setUnit(service.unit);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (window.confirm('Excluir este tipo de serviço? Isso pode afetar locais e registros existentes.')) {
-            setServices(prev => prev.filter(s => s.id !== id));
+            setIsLoading(true);
+            try {
+                // Envia um DELETE para a API
+                await apiFetch(`/api/services/${id}`, { method: 'DELETE' });
+                await fetchData(); // Recarrega os dados do servidor
+            } catch (error) {
+                alert('Falha ao excluir o serviço. Tente novamente.');
+                console.error('Erro ao excluir serviço:', error);
+            } finally {
+                setIsLoading(false);
+            }
         }
     };
 
     return (
         <div>
             <div className="form-container card">
-                <h3>{editingId ? 'Editando Tipo de Serviço' : 'Adicionar Novo Tipo de Serviço'} (Local)</h3>
+                <h3>{editingId ? 'Editando Tipo de Serviço' : 'Adicionar Novo Tipo de Serviço'}</h3>
                 <input type="text" placeholder="Nome do Serviço" value={name} onChange={e => setName(e.target.value)} />
                 <select value={unit} onChange={e => setUnit(e.target.value as any)}>
                     <option value="m²">m² (Metros Quadrados)</option>
                     <option value="m linear">m linear (Metros Lineares)</option>
                 </select>
-                <button className="button admin-button" onClick={handleSave}>{editingId ? 'Salvar Alterações' : 'Adicionar Serviço'}</button>
-                {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
+                <button className="button admin-button" onClick={handleSave} disabled={isLoading}>
+                    {isLoading ? 'Salvando...' : (editingId ? 'Salvar Alterações' : 'Adicionar Serviço')}
+                </button>
+                {editingId && <button className="button button-secondary" onClick={resetForm} disabled={isLoading}>Cancelar Edição</button>}
             </div>
             <ul className="location-list">
-                {services.sort((a,b) => a.name.localeCompare(b.name)).map(s => (
+                {services.sort((a, b) => a.name.localeCompare(b.name)).map(s => (
                     <li key={s.id} className="card list-item">
                         <div className="list-item-info">
-                           <p><strong>{s.name}</strong></p>
-                           <p>Unidade: {s.unit}</p>
+                            <p><strong>{s.name}</strong></p>
+                            <p>Unidade: {s.unit}</p>
                         </div>
                         <div className="list-item-actions">
                             <button className="button button-sm admin-button" onClick={() => handleEdit(s)}>Editar</button>
@@ -1889,6 +1874,11 @@ const ManageServicesView: React.FC<{
     );
 };
 
+// =================================================================
+// ===== FIM DA SEÇÃO MODIFICADA: ManageServicesView ==============
+// =================================================================
+
+
 // --- Componente Principal ---
 const App = () => {
   const [view, setView] = useState<View>('LOGIN');
@@ -1898,7 +1888,10 @@ const App = () => {
   const [locations, setLocations] = useState<LocationRecord[]>([]);
   const [records, setRecords] = useState<ServiceRecord[]>([]);
   
-  const [services, setServices] = useLocalStorage<ServiceDefinition[]>('crbServices', DEFAULT_SERVICES);
+  // ===== ALTERAÇÃO #1: Removido useLocalStorage para 'services' =====
+  const [services, setServices] = useState<ServiceDefinition[]>([]);
+  // =================================================================
+
   const [goals, setGoals] = useLocalStorage<Goal[]>('crbGoals', []);
   const [auditLog, setAuditLog] = useLocalStorage<AuditLogEntry[]>('crbAuditLog', []);
   
@@ -2007,28 +2000,44 @@ const App = () => {
     setIsLoading('Carregando dados...');
     try {
         if (currentUser.role === 'ADMIN') {
-            const [locs, recs, usrs] = await Promise.all([
+            // ===== ALTERAÇÃO #2: Adicionado 'apiFetch' para '/api/services' =====
+            const [locs, recs, usrs, srvs] = await Promise.all([
                 apiFetch('/api/locations'),
                 apiFetch('/api/records'),
-                apiFetch('/api/users')
+                apiFetch('/api/users'),
+                apiFetch('/api/services') // <-- Adicionado
             ]);
             setLocations(locs.map((l: any) => ({...l, id: String(l.id) })));
             setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
             setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
+            setServices(srvs.map((s: any) => ({...s, id: String(s.id) }))); // <-- Adicionado
+            // ====================================================================
+
         } else if (currentUser.role === 'FISCAL') {
-            const recs = await apiFetch('/api/records');
+             // ===== ALTERAÇÃO #3: Buscando serviços para o Fiscal também =====
+            const [recs, srvs] = await Promise.all([
+                apiFetch('/api/records'),
+                apiFetch('/api/services')
+            ]);
             const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
             setRecords(
                 recs.filter((r: any) => fiscalGroups.includes(r.contractGroup))
                 .map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) }))
             );
+            setServices(srvs.map((s: any) => ({...s, id: String(s.id) })));
+            // ===============================================================
+
         } else if (currentUser.role === 'OPERATOR') {
-             const [locs, recs] = await Promise.all([
+             // ===== ALTERAÇÃO #4: Buscando serviços para o Operador também =====
+             const [locs, recs, srvs] = await Promise.all([
                 apiFetch('/api/locations'),
-                apiFetch(`/api/records?operatorId=${currentUser.id}`)
+                apiFetch(`/api/records?operatorId=${currentUser.id}`),
+                apiFetch('/api/services')
              ]);
              setLocations(locs.map((l: any) => ({...l, id: String(l.id) })));
              setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
+             setServices(srvs.map((s: any) => ({...s, id: String(s.id) })));
+             // =================================================================
         }
     } catch (error) {
         console.error("Failed to fetch data", error);
@@ -2272,7 +2281,9 @@ const App = () => {
         case 'ADMIN':
             switch(view) {
                 case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} onBackup={handleBackup} onRestore={handleRestore} />;
-                case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} setServices={setServices} />;
+                // ===== ALTERAÇÃO #5: Passando a prop 'fetchData' para o componente =====
+                case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} fetchData={fetchData} />;
+                // =======================================================================
                 case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} setLocations={setLocations} services={services} fetchData={fetchData} />;
                 case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
                 case 'ADMIN_MANAGE_GOALS': return <ManageGoalsView goals={goals} setGoals={setGoals} records={records} locations={locations} />;
