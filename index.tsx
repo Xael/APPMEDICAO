@@ -705,6 +705,10 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
     </div>
 );
 
+// =================================================================
+// ===== INÍCIO DA SEÇÃO MODIFICADA: ReportsView (PDF) =============
+// =================================================================
+
 const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
     const [reportType, setReportType] = useState<'excel' | 'photos' | null>(null);
     const [startDate, setStartDate] = useState('');
@@ -713,6 +717,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     const [selectedContractGroup, setSelectedContractGroup] = useState('');
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const printableRef = useRef<HTMLDivElement>(null);
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
     
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
@@ -781,24 +786,44 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         link.download = `relatorio_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
         link.click();
     };
-
+    
     const handleExportPdf = async () => {
-        if (!printableRef.current) return;
-        const doc = new jsPDF('p', 'mm', 'a4');
-        const pages = printableRef.current.querySelectorAll('.printable-report-page');
+        if (!printableRef.current || selectedRecords.length === 0) return;
 
-        for (let i = 0; i < pages.length; i++) {
-            const page = pages[i] as HTMLElement;
-            const canvas = await html2canvas(page, { scale: 2 });
-            const imgData = canvas.toDataURL('image/png');
-            const imgProps= doc.getImageProperties(imgData);
-            const pdfWidth = doc.internal.pageSize.getWidth();
-            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-            
-            if (i > 0) doc.addPage();
-            doc.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        }
-        doc.save(`relatorio_fotos_crb_${new Date().toISOString().split('T')[0]}.pdf`);
+        setIsGeneratingPdf(true);
+        
+        // A lógica de `html2canvas` precisa de tempo para renderizar, então usamos um timeout
+        setTimeout(async () => {
+            try {
+                const doc = new jsPDF('p', 'mm', 'a4');
+                const pages = printableRef.current!.querySelectorAll('.printable-page');
+    
+                for (let i = 0; i < pages.length; i++) {
+                    const page = pages[i] as HTMLElement;
+                    const canvas = await html2canvas(page, {
+                        scale: 2, // Aumenta a resolução
+                        useCORS: true, // Tenta carregar imagens de outros domínios (se aplicável)
+                        logging: false,
+                    });
+    
+                    const imgData = canvas.toDataURL('image/png');
+                    const pdfWidth = doc.internal.pageSize.getWidth();
+                    const pdfHeight = doc.internal.pageSize.getHeight();
+    
+                    if (i > 0) {
+                        doc.addPage();
+                    }
+                    doc.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                }
+    
+                doc.save(`relatorio_fotos_crb_${new Date().toISOString().split('T')[0]}.pdf`);
+            } catch (error) {
+                console.error("Erro ao gerar PDF:", error);
+                alert("Ocorreu um erro ao gerar o PDF. Verifique o console para mais detalhes.");
+            } finally {
+                setIsGeneratingPdf(false);
+            }
+        }, 500); // Um pequeno delay para garantir que tudo foi renderizado
     };
 
     if (!reportType) {
@@ -812,6 +837,84 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             </div>
         )
     }
+
+    // Estrutura para o novo layout do PDF
+    const PdfLayout = () => {
+        const recordsPerPage = 2; // Quantos registros por página A4 (ajuste conforme necessário)
+        const pages = [];
+        for (let i = 0; i < selectedRecords.length; i += recordsPerPage) {
+            pages.push(selectedRecords.slice(i, i + recordsPerPage));
+        }
+
+        const today = new Date().toLocaleDateString('pt-BR');
+
+        return (
+            <div className="printable-report-container" ref={printableRef}>
+                {pages.map((pageRecords, pageIndex) => (
+                    <div key={pageIndex} className="printable-page">
+                        <header className="pdf-page-header">
+                            <h2>Relatório Fotográfico de Serviços</h2>
+                            <p>CRB Serviços<br/>Data de Emissão: {today}</p>
+                        </header>
+                        
+                        <div className="pdf-page-content">
+                            {pageRecords.map(record => {
+                                // Encontra os pares de fotos "Antes" e "Depois"
+                                const maxPhotos = Math.max(record.beforePhotos.length, record.afterPhotos.length);
+                                const photoPairs = [];
+                                for (let i = 0; i < maxPhotos; i++) {
+                                    photoPairs.push({
+                                        before: record.beforePhotos[i],
+                                        after: record.afterPhotos[i],
+                                    });
+                                }
+
+                                return (
+                                    <div key={record.id} className="pdf-record-block">
+                                        <div className="pdf-record-info">
+                                            <h3>{record.locationName}</h3>
+                                            <p>
+                                                <strong>Contrato/Cidade:</strong> {record.contractGroup} | 
+                                                <strong> Serviço:</strong> {record.serviceType} | 
+                                                <strong> Data:</strong> {formatDateTime(record.startTime)}
+                                            </p>
+                                        </div>
+                                        
+                                        <table className="pdf-photo-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>ANTES</th>
+                                                    <th>DEPOIS</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {photoPairs.map((pair, index) => (
+                                                    <tr key={index}>
+                                                        <td>
+                                                            {pair.before && <img src={`${API_BASE}${pair.before}`} alt={`Antes ${index + 1}`} />}
+                                                            <p className="caption">Foto Antes {index + 1}</p>
+                                                        </td>
+                                                        <td>
+                                                            {pair.after && <img src={`${API_BASE}${pair.after}`} alt={`Depois ${index + 1}`} />}
+                                                            <p className="caption">Foto Depois {index + 1}</p>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <footer className="pdf-page-footer">
+                            Página {pageIndex + 1} de {pages.length}
+                        </footer>
+                    </div>
+                ))}
+            </div>
+        );
+    };
 
     return (
         <div>
@@ -868,49 +971,27 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 <div className="report-summary card">
                     <h3>Resumo da Exportação</h3>
                     <p>{selectedRecords.length} registro(s) selecionado(s).</p>
-                    <p>Total de medição (unidades somadas): <strong>{totalArea.toLocaleString('pt-BR')}</strong></p>
+                    {reportType === 'excel' && <p>Total de medição (unidades somadas): <strong>{totalArea.toLocaleString('pt-BR')}</strong></p>}
                     <div className="button-group">
                         {reportType === 'excel' && <button className="button" onClick={handleExportExcel}>📊 Exportar Excel</button>}
-                        {reportType === 'photos' && <button className="button button-secondary" onClick={handleExportPdf}>🖼️ Exportar PDF c/ Fotos</button>}
+                        {reportType === 'photos' && 
+                            <button className="button button-secondary" onClick={handleExportPdf} disabled={isGeneratingPdf}>
+                                {isGeneratingPdf ? 'Gerando PDF...' : '🖼️ Exportar PDF c/ Fotos'}
+                            </button>
+                        }
                     </div>
                 </div>
             )}
             
-            <div className="printable-report" ref={printableRef}>
-                {selectedRecords.map(r => (
-                    <div key={r.id} className="printable-report-page">
-                        <div className="printable-page-header">
-                            <h2>Relatório de Serviço - CRB Serviços</h2>
-                            <p><strong>Contrato/Cidade:</strong> {r.contractGroup}</p>
-                            <p><strong>Local:</strong> {r.locationName}</p>
-                            <p><strong>Serviço:</strong> {r.serviceType}</p>
-                            <p><strong>Data:</strong> {formatDateTime(r.startTime)}</p>
-                            <p><strong>Medição:</strong> {r.locationArea ? `${r.locationArea.toLocaleString('pt-BR')} ${r.serviceUnit}` : 'Não informada'}</p>
-                        </div>
-                        <h3>Fotos "Antes"</h3>
-                        <div className="printable-report-gallery">
-                            {(r.beforePhotos || []).map((p, i) => (
-                                <div key={`before-${i}`} className="photo-item-container">
-                                    <img src={`${API_BASE}${p}`} alt={`Foto Antes ${i + 1}`} />
-                                    <p className="caption">Antes {i + 1}</p>
-                                </div>
-                            ))}
-                        </div>
-                        <h3>Fotos "Depois"</h3>
-                        <div className="printable-report-gallery">
-                            {(r.afterPhotos || []).map((p, i) => (
-                                <div key={`after-${i}`} className="photo-item-container">
-                                    <img src={`${API_BASE}${p}`} alt={`Foto Depois ${i + 1}`} />
-                                    <p className="caption">Depois {i + 1}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-            </div>
+            {/* O layout do PDF é renderizado aqui, mas escondido */}
+            {reportType === 'photos' && selectedRecords.length > 0 && <PdfLayout />}
         </div>
     );
 };
+
+// =================================================================
+// ===== FIM DA SEÇÃO MODIFICADA: ReportsView (PDF) ================
+// =================================================================
 
 const ManageLocationsView: React.FC<{ 
     locations: LocationRecord[]; 
@@ -1770,10 +1851,6 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
     );
 };
 
-// =================================================================
-// ===== INÍCIO DA SEÇÃO MODIFICADA: ManageServicesView ===========
-// =================================================================
-
 const ManageServicesView: React.FC<{
     services: ServiceDefinition[];
     fetchData: () => Promise<void>; // Prop para recarregar todos os dados
@@ -1874,11 +1951,6 @@ const ManageServicesView: React.FC<{
     );
 };
 
-// =================================================================
-// ===== FIM DA SEÇÃO MODIFICADA: ManageServicesView ==============
-// =================================================================
-
-
 // --- Componente Principal ---
 const App = () => {
   const [view, setView] = useState<View>('LOGIN');
@@ -1888,10 +1960,7 @@ const App = () => {
   const [locations, setLocations] = useState<LocationRecord[]>([]);
   const [records, setRecords] = useState<ServiceRecord[]>([]);
   
-  // ===== ALTERAÇÃO #1: Removido useLocalStorage para 'services' =====
   const [services, setServices] = useState<ServiceDefinition[]>([]);
-  // =================================================================
-
   const [goals, setGoals] = useLocalStorage<Goal[]>('crbGoals', []);
   const [auditLog, setAuditLog] = useLocalStorage<AuditLogEntry[]>('crbAuditLog', []);
   
@@ -1902,7 +1971,6 @@ const App = () => {
   const [history, setHistory] = useState<View[]>([]);
   const [isLoading, setIsLoading] = useState<string | null>(null);
 
-  // NOVO: Estado e funções para multi-delete
   const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
 
   const handleToggleRecordSelection = (recordId: string) => {
@@ -1939,7 +2007,6 @@ const App = () => {
     }
   };
 
-  // Efeito para ouvir o evento de sincronização
   useEffect(() => {
     const handleSyncSuccess = (event: Event) => {
       const { tempId, newId } = (event as CustomEvent).detail;
@@ -2000,21 +2067,17 @@ const App = () => {
     setIsLoading('Carregando dados...');
     try {
         if (currentUser.role === 'ADMIN') {
-            // ===== ALTERAÇÃO #2: Adicionado 'apiFetch' para '/api/services' =====
             const [locs, recs, usrs, srvs] = await Promise.all([
                 apiFetch('/api/locations'),
                 apiFetch('/api/records'),
                 apiFetch('/api/users'),
-                apiFetch('/api/services') // <-- Adicionado
+                apiFetch('/api/services')
             ]);
             setLocations(locs.map((l: any) => ({...l, id: String(l.id) })));
             setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
             setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
-            setServices(srvs.map((s: any) => ({...s, id: String(s.id) }))); // <-- Adicionado
-            // ====================================================================
-
+            setServices(srvs.map((s: any) => ({...s, id: String(s.id) })));
         } else if (currentUser.role === 'FISCAL') {
-             // ===== ALTERAÇÃO #3: Buscando serviços para o Fiscal também =====
             const [recs, srvs] = await Promise.all([
                 apiFetch('/api/records'),
                 apiFetch('/api/services')
@@ -2025,10 +2088,7 @@ const App = () => {
                 .map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) }))
             );
             setServices(srvs.map((s: any) => ({...s, id: String(s.id) })));
-            // ===============================================================
-
         } else if (currentUser.role === 'OPERATOR') {
-             // ===== ALTERAÇÃO #4: Buscando serviços para o Operador também =====
              const [locs, recs, srvs] = await Promise.all([
                 apiFetch('/api/locations'),
                 apiFetch(`/api/records?operatorId=${currentUser.id}`),
@@ -2037,7 +2097,6 @@ const App = () => {
              setLocations(locs.map((l: any) => ({...l, id: String(l.id) })));
              setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
              setServices(srvs.map((s: any) => ({...s, id: String(s.id) })));
-             // =================================================================
         }
     } catch (error) {
         console.error("Failed to fetch data", error);
@@ -2281,9 +2340,7 @@ const App = () => {
         case 'ADMIN':
             switch(view) {
                 case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} onBackup={handleBackup} onRestore={handleRestore} />;
-                // ===== ALTERAÇÃO #5: Passando a prop 'fetchData' para o componente =====
                 case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} fetchData={fetchData} />;
-                // =======================================================================
                 case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} setLocations={setLocations} services={services} fetchData={fetchData} />;
                 case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
                 case 'ADMIN_MANAGE_GOALS': return <ManageGoalsView goals={goals} setGoals={setGoals} records={records} locations={locations} />;
