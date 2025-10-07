@@ -150,7 +150,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
             
             <div className="header-content">
                 {/* O logo só aparece na tela de login/inicial */}
-                {view === 'LOGIN' && <img src="/Logo.png" alt="Logo CRB Serviços" className="header-logo" />}
+                {view === 'LOGIN' && <img src={logoSrc} alt="Logo CRB Serviços" className="header-logo" />}
                 <h1>{getTitle()}</h1>
             </div>
 
@@ -298,7 +298,7 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
         // A tela de login não é renderizada dentro do Header, então o logo não apareceria.
         // Adicionamos ele aqui também para consistência.
         <div className="login-container card">
-            <img src="/Logo.png" alt="Logo CRB Serviços" className="header-logo" style={{marginBottom: '1rem'}}/>
+            // <img src="/Logo.png" alt="Logo CRB Serviços" className="header-logo" style={{marginBottom: '1rem'}}/>
             <h2>Login de Acesso</h2>
             <p>Entre com suas credenciais.</p>
             {error && <p className="text-danger">{error}</p>}
