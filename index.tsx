@@ -10,14 +10,16 @@ import { Bar, Line } from 'react-chartjs-2';
 
 ChartJS.register( CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend );
 
-// --- (As seções API Client & Helpers, Tipos, Funções Auxiliares e Hooks permanecem inalteradas) ---
+// --- Tipos, Helpers, Hooks ---
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 let API_TOKEN: string | null = localStorage.getItem('crbApiToken');
+
 const setApiToken = (token: string | null) => {
     API_TOKEN = token;
     if (token) { localStorage.setItem('crbApiToken', token); }
     else { localStorage.removeItem('crbApiToken'); }
 };
+
 const apiFetch = async (path: string, options: RequestInit = {}) => {
     const headers = new Headers(options.headers || {});
     if (API_TOKEN) { headers.append('Authorization', `Bearer ${API_TOKEN}`); }
@@ -33,6 +35,7 @@ const apiFetch = async (path: string, options: RequestInit = {}) => {
     if (response.status === 204 || response.headers.get('content-length') === '0') { return null; }
     return response.json();
 };
+
 const dataURLtoFile = (dataurl: string, filename: string): File => {
     const arr = dataurl.split(','), mimeMatch = arr[0].match(/:(.*?);/);
     if (!mimeMatch) throw new Error("Invalid data URL");
@@ -50,6 +53,7 @@ type View =
   | 'ADMIN_MANAGE_LOCATIONS'
   | 'ADMIN_MANAGE_USERS'
   | 'ADMIN_MANAGE_GOALS'
+  | 'ADMIN_MANAGE_CYCLES'
   | 'ADMIN_EDIT_RECORD'
   | 'AUDIT_LOG'
   | 'FISCAL_DASHBOARD'
@@ -62,6 +66,7 @@ type View =
   | 'PHOTO_STEP'
   | 'OPERATOR_SERVICE_IN_PROGRESS'
   | 'CONFIRM_STEP';
+  
 interface ServiceDefinition { id: string; name: string; unit: 'm²' | 'm linear'; }
 interface UserAssignment { contractGroup: string; serviceNames: string[]; }
 interface User { id: string; username: string; email?: string; password?: string; role: Role; assignments?: UserAssignment[]; }
@@ -70,20 +75,18 @@ interface LocationRecord { id: string; contractGroup: string; name: string; area
 interface ServiceRecord { id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: 'm²' | 'm linear'; locationId?: string; locationName: string; contractGroup: string; locationArea?: number; gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[]; tempId?: string; }
 interface Goal { id: string; contractGroup: string; month: string; targetArea: number; }
 interface AuditLogEntry { id: string; timestamp: string; adminId: string; adminUsername: string; action: 'UPDATE' | 'DELETE'; recordId: string; details: string; }
+interface ContractConfig { id: number; contractGroup: string; cycleStartDay: number; }
 
 const formatDateTime = (isoString: string) => new Date(isoString).toLocaleString('pt-BR');
 const calculateDistance = (p1: GeolocationCoords, p2: GeolocationCoords) => {
     if (!p1 || !p2) return Infinity;
     const R = 6371e3;
-    const φ1 = p1.latitude * Math.PI / 180;
-    const φ2 = p2.latitude * Math.PI / 180;
-    const Δφ = (p2.latitude - p1.latitude) * Math.PI / 180;
-    const Δλ = (p2.longitude - p1.longitude) * Math.PI / 180;
+    const φ1 = p1.latitude * Math.PI / 180; const φ2 = p2.latitude * Math.PI / 180;
+    const Δφ = (p2.latitude - p1.latitude) * Math.PI / 180; const Δλ = (p2.longitude - p1.longitude) * Math.PI / 180;
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
 };
-
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
     const [storedValue, setStoredValue] = useState<T>(() => {
         try { const item = window.localStorage.getItem(key); return item ? JSON.parse(item) : initialValue; }
@@ -101,16 +104,11 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
 
 // --- Componentes ---
 
-// =================================================================
-// ===== #3 - ATUALIZAÇÃO DO HEADER PARA INCLUIR LOGO =============
-// =================================================================
 const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => void; onLogout: () => void; }> = ({ view, currentUser, onBack, onLogout }) => {
     const isAdmin = currentUser?.role === 'ADMIN';
     const showBackButton = onBack && view !== 'LOGIN' && view !== 'ADMIN_DASHBOARD' && view !== 'FISCAL_DASHBOARD';
     const showLogoutButton = currentUser;
-
     const getTitle = () => {
-        // A lógica de getTitle permanece a mesma
         if (!currentUser) return 'CRB SERVIÇOS';
         if (isAdmin) {
             switch(view) {
@@ -118,7 +116,8 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 case 'ADMIN_MANAGE_SERVICES': return 'Gerenciar Tipos de Serviço';
                 case 'ADMIN_MANAGE_LOCATIONS': return 'Gerenciar Locais';
                 case 'ADMIN_MANAGE_USERS': return 'Gerenciar Funcionários';
-                case 'ADMIN_MANAGE_GOALS': return 'Metas de Desempenho';
+                case 'ADMIN_MANAGE_GOALS': return 'Metas & Gráficos';
+                case 'ADMIN_MANAGE_CYCLES': return 'Gerenciar Ciclos de Medição';
                 case 'REPORTS': return 'Gerador de Relatórios';
                 case 'HISTORY': return 'Histórico Geral';
                 case 'DETAIL': return 'Detalhes do Serviço';
@@ -147,98 +146,62 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
             default: return 'Registro de Serviço';
         }
     };
-    
     return (
         <header className={isAdmin ? 'admin-header' : ''}>
             {showBackButton && <button className="button button-sm button-secondary header-back-button" onClick={onBack}>&lt; Voltar</button>}
-            
             <div className="header-content">
-                {/* O logo só aparece na tela de login/inicial */}
                 {view === 'LOGIN' && <img src={logoSrc} alt="Logo CRB Serviços" className="header-logo" />}
                 <h1>{getTitle()}</h1>
             </div>
-
             {showLogoutButton && <button className="button button-sm button-danger header-logout-button" onClick={onLogout}>Sair</button>}
         </header>
     );
 };
 
-const Loader: React.FC<{ text?: string }> = ({ text = "Carregando..." }) => (
-    <div className="loader-container"><div className="spinner"></div><p>{text}</p></div>
-);
+const Loader: React.FC<{ text?: string }> = ({ text = "Carregando..." }) => ( <div className="loader-container"><div className="spinner"></div><p>{text}</p></div> );
 
-// =================================================================
-// ===== #2 - ATUALIZAÇÃO DA CÂMERA PARA TELA CHEIA ================
-// =================================================================
-const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () => void; onFinish: () => void; photoCount: number }> = 
-({ onCapture, onCancel, onFinish, photoCount }) => {
+const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () => void; onFinish: () => void; photoCount: number }> = ({ onCapture, onCancel, onFinish, photoCount }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const cameraViewRef = useRef<HTMLDivElement>(null);
-
-    // Efeito para Fullscreen e Orientação
     useEffect(() => {
         const elem = cameraViewRef.current;
         if (!elem) return;
-        
         const enterFullscreen = async () => {
             try {
                 if (document.fullscreenElement) return;
-                if (elem.requestFullscreen) {
-                    await elem.requestFullscreen();
-                }
-                if (screen.orientation && screen.orientation.lock) {
-                    await screen.orientation.lock('landscape');
-                }
-            } catch (err) {
-                console.warn("Não foi possível ativar tela cheia ou travar orientação:", err);
-            }
+                if (elem.requestFullscreen) { await elem.requestFullscreen(); }
+                if (screen.orientation && screen.orientation.lock) { await screen.orientation.lock('landscape'); }
+            } catch (err) { console.warn("Não foi possível ativar tela cheia ou travar orientação:", err); }
         };
-
         enterFullscreen();
-
         return () => {
             try {
-                if (document.fullscreenElement) {
-                    document.exitFullscreen();
-                }
-                if (screen.orientation && screen.orientation.unlock) {
-                    screen.orientation.unlock();
-                }
-            } catch (err) {
-                console.warn("Não foi possível sair da tela cheia ou destravar orientação:", err);
-            }
+                if (document.fullscreenElement) { document.exitFullscreen(); }
+                if (screen.orientation && screen.orientation.unlock) { screen.orientation.unlock(); }
+            } catch (err) { console.warn("Não foi possível sair da tela cheia ou destravar orientação:", err); }
         };
     }, []);
-
-    // EFEITO CORRIGIDO PARA EVITAR O LOOP
     useEffect(() => {
         let mediaStream: MediaStream | null = null;
         let isMounted = true;
-
         navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
             .then(streamInstance => {
                 if (isMounted) {
                     mediaStream = streamInstance;
-                    if (videoRef.current) {
-                        videoRef.current.srcObject = streamInstance;
-                    }
+                    if (videoRef.current) { videoRef.current.srcObject = streamInstance; }
                 }
             }).catch(err => {
                 if (isMounted) {
                     console.error("Camera access failed:", err);
-                    // ... (lógica de mensagem de erro)
-                    alert("Acesso à câmera falhou.");
+                    alert("Acesso à câmera falhou. Verifique as permissões do navegador.");
                     onCancel();
                 }
             });
-
         return () => {
             isMounted = false;
-            // Limpeza: garante que a câmera seja desligada corretamente
             mediaStream?.getTracks().forEach(track => track.stop());
         };
-    }, [onCancel]); // Depende apenas de onCancel, rodando uma única vez
-
+    }, [onCancel]);
     const handleTakePhoto = () => {
         const canvas = document.createElement('canvas');
         if (videoRef.current) {
@@ -249,7 +212,6 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
             onCapture(canvas.toDataURL('image/jpeg'));
         }
     };
-    
     return (
         <div className="camera-view" ref={cameraViewRef}>
             <video ref={videoRef} autoPlay playsInline muted />
@@ -267,25 +229,14 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-
     const handleLogin = async () => {
         setError('');
         setIsLoading(true);
         try {
-            const { access_token } = await apiFetch('/api/auth/login', {
-                method: 'POST',
-                body: JSON.stringify({ email, password }),
-            });
+            const { access_token } = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
             setApiToken(access_token);
             const me = await apiFetch('/api/auth/me');
-            
-            const user: User = {
-                id: String(me.id),
-                username: me.name || me.email,
-                email: me.email,
-                role: me.role,
-                assignments: me.assignments || [] 
-            };
+            const user: User = { id: String(me.id), username: me.name || me.email, email: me.email, role: me.role, assignments: me.assignments || [] };
             onLogin(user);
         } catch (err) {
             setError('E-mail ou senha inválidos.');
@@ -294,11 +245,9 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
             setIsLoading(false);
         }
     };
-
     return (
-        // A tela de login não é renderizada dentro do Header, então o logo não apareceria.
-        // Adicionamos ele aqui também para consistência.
         <div className="login-container card">
+            <img src={logoSrc} alt="Logo CRB Serviços" className="header-logo" style={{marginBottom: '1rem'}}/>
             <h2>Login de Acesso</h2>
             <p>Entre com suas credenciais.</p>
             {error && <p className="text-danger">{error}</p>}
@@ -311,23 +260,99 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
     );
 };
 
-const AdminDashboard: React.FC<{ 
-    onNavigate: (view: View) => void;
-    onBackup: () => void;
-    onRestore: () => void;
-}> = ({ onNavigate, onBackup, onRestore }) => (
+const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; }> = ({ onNavigate }) => (
     <div className="admin-dashboard">
         <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_SERVICES')}>Gerenciar Tipos de Serviço</button>
         <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_LOCATIONS')}>Gerenciar Locais</button>
         <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_USERS')}>Gerenciar Funcionários</button>
+        <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_GOALS')}>🎯 Metas de Desempenho</button>
+        {/* BOTÃO NOVO */}
+        <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_CYCLES')}>🗓️ Gerenciar Ciclos de Medição</button>
         <button className="button admin-button" onClick={() => onNavigate('REPORTS')}>Gerador de Relatórios</button>
         <button className="button admin-button" onClick={() => onNavigate('HISTORY')}>Histórico Geral</button>
-        <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_GOALS')}>🎯 Metas de Desempenho</button>
         <button className="button admin-button" onClick={() => onNavigate('AUDIT_LOG')}>📜 Log de Auditoria</button>
-        <button className="button admin-button" onClick={onBackup}>💾 Fazer Backup Geral (Local)</button>
-        <button className="button admin-button" onClick={onRestore}>🔄 Restaurar Backup (Local)</button>
     </div>
 );
+
+// NOVO COMPONENTE PARA GERENCIAR CICLOS
+const ManageCyclesView: React.FC<{
+    locations: LocationRecord[];
+    configs: ContractConfig[];
+    fetchData: () => Promise<void>;
+}> = ({ locations, configs, fetchData }) => {
+    
+    const allContractGroups = [...new Set(locations.map(l => l.contractGroup))].sort();
+    
+    const [cycleConfigs, setCycleConfigs] = useState<Record<string, number>>(() => {
+        const initialState: Record<string, number> = {};
+        allContractGroups.forEach(group => {
+            const existingConfig = configs.find(c => c.contractGroup === group);
+            initialState[group] = existingConfig ? existingConfig.cycleStartDay : 1;
+        });
+        return initialState;
+    });
+
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleDayChange = (contractGroup: string, day: string) => {
+        const dayAsNumber = parseInt(day, 10);
+        if (dayAsNumber >= 1 && dayAsNumber <= 31) {
+            setCycleConfigs(prev => ({...prev, [contractGroup]: dayAsNumber}));
+        } else if (day === '') {
+             setCycleConfigs(prev => ({...prev, [contractGroup]: 1}));
+        }
+    };
+
+    const handleSave = async () => {
+        setIsLoading(true);
+        const payload = {
+            configs: Object.entries(cycleConfigs).map(([group, day]) => ({
+                contractGroup: group,
+                cycleStartDay: day,
+            }))
+        };
+        try {
+            await apiFetch('/api/contract-configs', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            });
+            await fetchData();
+            alert('Ciclos de medição salvos com sucesso!');
+        } catch (error) {
+            alert('Erro ao salvar as configurações. Tente novamente.');
+            console.error(error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="card">
+            <h2>Gerenciar Ciclos de Medição</h2>
+            <p>Para cada contrato, defina o dia em que o ciclo de medição se inicia (ex: 10 para um ciclo que vai do dia 10 ao dia 9 do mês seguinte).</p>
+            
+            <div className="form-container" style={{gap: '1.5rem', marginTop: '1.5rem', textAlign: 'left'}}>
+                {allContractGroups.map(group => (
+                     <div key={group} className="form-group">
+                        <label htmlFor={`cycle-day-${group}`} style={{fontWeight: 'bold'}}>{group}</label>
+                        <input
+                            type="number"
+                            id={`cycle-day-${group}`}
+                            min="1"
+                            max="31"
+                            value={cycleConfigs[group] || 1}
+                            onChange={(e) => handleDayChange(group, e.target.value)}
+                        />
+                     </div>
+                ))}
+            </div>
+
+            <button className="button admin-button" style={{marginTop: '2rem'}} onClick={handleSave} disabled={isLoading}>
+                {isLoading ? 'Salvando...' : 'Salvar Configurações'}
+            </button>
+        </div>
+    );
+};
 
 const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void }> = ({ onNavigate }) => (
     <div className="admin-dashboard">
@@ -1927,8 +1952,8 @@ const App = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [locations, setLocations] = useState<LocationRecord[]>([]);
   const [records, setRecords] = useState<ServiceRecord[]>([]);
-  
   const [services, setServices] = useState<ServiceDefinition[]>([]);
+  const [contractConfigs, setContractConfigs] = useState<ContractConfig[]>([]);
   const [goals, setGoals] = useLocalStorage<Goal[]>('crbGoals', []);
   const [auditLog, setAuditLog] = useLocalStorage<AuditLogEntry[]>('crbAuditLog', []);
   
@@ -2039,8 +2064,41 @@ const App = () => {
                 apiFetch('/api/locations'),
                 apiFetch('/api/records'),
                 apiFetch('/api/users'),
-                apiFetch('/api/services')
+                apiFetch('/api/services'),
+                apiFetch('/api/contract-configs')
             ]);
+
+            if (currentUser.role === 'ADMIN') {
+            apiEndpoints.push(apiFetch('/api/users'));
+            }
+        
+            const results = await Promise.all(apiEndpoints);
+            const [locs, recs, srvs, configs, usrs] = results;
+
+            // Atualiza todos os estados
+        setLocations(locs.map((l: any) => ({...l, id: String(l.id), contractGroup: l.city })));
+        setServices(srvs.map((s: any) => ({...s, id: String(s.id) })));
+        setContractConfigs(configs); // <- SALVA NO ESTADO
+
+        if (currentUser.role === 'ADMIN') {
+            setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
+            if (usrs) setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
+        } else if (currentUser.role === 'OPERATOR') {
+             setRecords(recs.filter((r: any) => String(r.operator_id) === String(currentUser.id)).map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
+        } else { // FISCAL
+             const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
+             setRecords(recs.filter((r: any) => fiscalGroups.includes(r.contractGroup)).map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
+        }
+
+    } catch (error) {
+        console.error("Failed to fetch data", error);
+        alert("Não foi possível carregar os dados do servidor.");
+        handleLogout(); // Desloga o usuário em caso de falha ao carregar dados essenciais
+    } finally {
+        setIsLoading(null);
+    }
+  };
+            
             setLocations(locs.map((l: any) => ({...l, id: String(l.id) })));
             setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
             setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
@@ -2307,11 +2365,12 @@ const App = () => {
     switch(currentUser.role) {
         case 'ADMIN':
             switch(view) {
-                case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} onBackup={handleBackup} onRestore={handleRestore} />;
+                case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} />;
                 case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} fetchData={fetchData} />;
-                case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} setLocations={setLocations} services={services} fetchData={fetchData} />;
+                case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} services={services} fetchData={fetchData} />;
                 case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
-                case 'ADMIN_MANAGE_GOALS': return <ManageGoalsView goals={goals} setGoals={setGoals} records={records} locations={locations} />;
+                case 'ADMIN_MANAGE_GOALS': return <PerformanceView goals={goals} setGoals={setGoals} records={records} locations={locations} />;
+                case 'ADMIN_MANAGE_CYCLES': return <ManageCyclesView locations={locations} configs={contractConfigs} fetchData={fetchData} />;
                 case 'REPORTS': return <ReportsView records={records} services={services} />;
                 case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} selectedIds={selectedRecordIds} onToggleSelect={handleToggleRecordSelection} onDeleteSelected={handleDeleteSelectedRecords} />;
                 case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
@@ -2360,15 +2419,15 @@ const App = () => {
   };
 
   return (
-    <div className="app-container">
-      {isLoading && (
-          <div className="loader-overlay">
-              <div className="spinner"></div>
-              <p>{isLoading}</p>
-          </div>
-      )}
-      <Header view={view} currentUser={currentUser} onBack={view !== 'LOGIN' && view !== 'ADMIN_DASHBOARD' && view !== 'FISCAL_DASHBOARD' ? handleBack : undefined} onLogout={handleLogout} />
-      <main>{renderView()}</main>
+    <div className={`app-container ${view === 'LOGIN' ? 'login-view' : ''}`}>
+        {isLoading && (
+            <div className="loader-overlay">
+                <div className="spinner"></div>
+                <p>{isLoading}</p>
+            </div>
+        )}
+        <Header view={view} currentUser={currentUser} onBack={view !== 'LOGIN' && view !== 'ADMIN_DASHBOARD' && view !== 'FISCAL_DASHBOARD' ? handleBack : undefined} onLogout={handleLogout} />
+        <main>{renderView()}</main>
     </div>
   );
 };
