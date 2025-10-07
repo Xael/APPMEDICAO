@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { queueRecord, addAfterPhotosToPending } from "./syncManager";
+import logoSrc from './assets/Logo.png';
 
 // --- (As seções API Client & Helpers, Tipos, Funções Auxiliares e Hooks permanecem inalteradas) ---
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
