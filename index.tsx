@@ -4,7 +4,7 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { queueRecord, addAfterPhotosToPending } from "./syncManager";
-import logoSrc from './assets/logo.png';
+import logoSrc from './assets/Logo.png';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 
@@ -1200,25 +1200,177 @@ const ManageUsersView: React.FC<{ 
     );
 }
 
-const ManageGoalsView: React.FC<{
-    goals: Goal[];
-    setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
-    records: ServiceRecord[];
-    locations: LocationRecord[];
+const PerformanceView: React.FC<{
+    goals: Goal[];
+    setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
+    records: ServiceRecord[];
+    locations: LocationRecord[];
 }> = ({ goals, setGoals, records, locations }) => {
-    const [contractGroup, setContractGroup] = useState('');
-    const [month, setMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
-    const [targetArea, setTargetArea] = useState('');
-    const [editingId, setEditingId] = useState<string | null>(null);
-    
-    const allGroups = [...new Set(locations.map(l => l.contractGroup).concat(records.map(r => r.contractGroup)))].sort();
+    // Lógica do Gráfico
+    const [chartData, setChartData] = useState<any>(null);
+    const [isLoadingChart, setIsLoadingChart] = useState(false);
+    const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
+    const allContractGroups = [...new Set(locations.map(l => l.contractGroup).concat(records.map(r => r.contractGroup)))].sort();
+    const [selectedContracts, setSelectedContracts] = useState<string[]>(allContractGroups);
+    const defaultEndDate = new Date();
+    const defaultStartDate = new Date();
+    defaultStartDate.setFullYear(defaultStartDate.getFullYear() - 1);
+    const [startDate, setStartDate] = useState(defaultStartDate.toISOString().slice(0, 10));
+    const [endDate, setEndDate] = useState(defaultEndDate.toISOString().slice(0, 10));
 
-    const resetForm = () => {
-        setContractGroup('');
-        setMonth(new Date().toISOString().substring(0, 7));
-        setTargetArea('');
-        setEditingId(null);
-    };
+    const handleContractSelection = (contract: string, isChecked: boolean) => {
+        setSelectedContracts(prev => 
+            isChecked ? [...prev, contract] : prev.filter(c => c !== contract)
+        );
+    };
+
+    const handleGenerateChart = async () => {
+        if (selectedContracts.length === 0) {
+            alert('Por favor, selecione pelo menos um contrato.');
+            return;
+        }
+        setIsLoadingChart(true);
+        setChartData(null);
+        try {
+            const params = new URLSearchParams({ startDate, endDate });
+            selectedContracts.forEach(c => params.append('contractGroups', c));
+            const data = await apiFetch(`/api/reports/performance-graph?${params.toString()}`);
+            setChartData(data);
+        } catch (error) {
+            alert('Erro ao gerar dados para o gráfico.');
+            console.error(error);
+        } finally {
+            setIsLoadingChart(false);
+        }
+    };
+    
+    // Lógica das Metas
+    const [contractGroupGoal, setContractGroupGoal] = useState('');
+    const [monthGoal, setMonthGoal] = useState(new Date().toISOString().substring(0, 7));
+    const [targetAreaGoal, setTargetAreaGoal] = useState('');
+    const [editingIdGoal, setEditingIdGoal] = useState<string | null>(null);
+    
+    const resetFormGoal = () => {
+        setContractGroupGoal('');
+        setMonthGoal(new Date().toISOString().substring(0, 7));
+        setTargetAreaGoal('');
+        setEditingIdGoal(null);
+    };
+
+    const handleSaveGoal = () => {
+        if (!contractGroupGoal || !monthGoal || !targetAreaGoal || isNaN(parseFloat(targetAreaGoal))) {
+            alert('Preencha todos os campos da meta corretamente.');
+            return;
+        }
+        const newGoal: Goal = {
+            id: editingIdGoal || new Date().toISOString(),
+            contractGroup: contractGroupGoal,
+            month: monthGoal,
+            targetArea: parseFloat(targetAreaGoal),
+        };
+        if (editingIdGoal) {
+            setGoals(prevGoals => prevGoals.map(g => g.id === editingIdGoal ? newGoal : g));
+        } else {
+            setGoals(prevGoals => [newGoal, ...prevGoals]);
+        }
+        resetFormGoal();
+    };
+
+    const handleEditGoal = (goal: Goal) => {
+        setEditingIdGoal(goal.id);
+        setContractGroupGoal(goal.contractGroup);
+        setMonthGoal(goal.month);
+        setTargetAreaGoal(String(goal.targetArea));
+    };
+
+    const handleDeleteGoal = (id: string) => {
+        if (window.confirm('Excluir esta meta?')) {
+            setGoals(prevGoals => prevGoals.filter(g => g.id !== id));
+        }
+    };
+
+    return (
+        <div>
+            <div className="card">
+                <h3>Análise Gráfica de Desempenho</h3>
+                <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                    <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
+                        <div className="form-group">
+                            <label htmlFor="start-date-chart">Data de Início</label>
+                            <input id="start-date-chart" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="end-date-chart">Data Final</label>
+                            <input id="end-date-chart" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                        </div>
+                    </div>
+                    <fieldset className="form-group-full">
+                        <legend>Comparar Contratos</legend>
+                        <div className="checkbox-group">
+                            {allContractGroups.map(group => (
+                                <div key={group} className="checkbox-item">
+                                    <input type="checkbox" id={`contract-${group}`} checked={selectedContracts.includes(group)} onChange={e => handleContractSelection(group, e.target.checked)} />
+                                    <label htmlFor={`contract-${group}`}>{group}</label>
+                                </div>
+                            ))}
+                        </div>
+                    </fieldset>
+                    <fieldset className="form-group-full">
+                        <legend>Tipo de Gráfico</legend>
+                        <div style={{display: 'flex', gap: '1rem', justifyContent: 'center'}}>
+                            <div className="checkbox-item"><input type="radio" id="chart-bar" name="chartType" value="bar" checked={chartType === 'bar'} onChange={() => setChartType('bar')} /><label htmlFor="chart-bar">Barras</label></div>
+                            <div className="checkbox-item"><input type="radio" id="chart-line" name="chartType" value="line" checked={chartType === 'line'} onChange={() => setChartType('line')} /><label htmlFor="chart-line">Linhas</label></div>
+                        </div>
+                    </fieldset>
+                    <button className="button admin-button" onClick={handleGenerateChart} disabled={isLoadingChart}>
+                        {isLoadingChart ? 'Gerando...' : 'Gerar Gráfico'}
+                    </button>
+                </div>
+                {isLoadingChart && <Loader text="Carregando dados do gráfico..." />}
+                {chartData && (
+                    <div style={{marginTop: '2rem'}}>
+                        {chartType === 'bar' ? <Bar data={chartData} /> : <Line data={chartData} />}
+                    </div>
+                )}
+            </div>
+            
+            <div className="form-container card">
+                <h3>{editingIdGoal ? 'Editando Meta' : 'Adicionar Nova Meta'} (Local)</h3>
+                <input list="goal-contract-groups" placeholder="Digite ou selecione um Contrato/Cidade" value={contractGroupGoal} onChange={e => setContractGroupGoal(e.target.value)} />
+                <datalist id="goal-contract-groups">
+                    {allContractGroups.map(g => <option key={g} value={g} />)}
+                </datalist>
+                <input type="month" value={monthGoal} onChange={e => setMonthGoal(e.target.value)} />
+                <input type="number" placeholder="Meta de Medição (m² ou m linear)" value={targetAreaGoal} onChange={e => setTargetAreaGoal(e.target.value)} />
+                <button className="button admin-button" onClick={handleSaveGoal}>{editingIdGoal ? 'Salvar Alterações' : 'Adicionar Meta'}</button>
+                {editingIdGoal && <button className="button button-secondary" onClick={resetFormGoal}>Cancelar Edição</button>}
+            </div>
+
+            <ul className="goal-list">
+                {[...goals].sort((a, b) => b.month.localeCompare(a.month) || a.contractGroup.localeCompare(b.contractGroup)).map(goal => {
+                    const realizedArea = records.filter(r => r.contractGroup === goal.contractGroup && r.startTime.startsWith(goal.month)).reduce((sum, r) => sum + (r.locationArea || 0), 0);
+                    const percentage = goal.targetArea > 0 ? (realizedArea / goal.targetArea) * 100 : 0;
+                    return (
+                        <li key={goal.id} className="card list-item progress-card">
+                            <div className="list-item-header">
+                                <h3>{goal.contractGroup} - {goal.month}</h3>
+                                <div>
+                                    <button className="button button-sm admin-button" onClick={() => handleEditGoal(goal)}>Editar</button>
+                                    <button className="button button-sm button-danger" onClick={() => handleDeleteGoal(goal.id)}>Excluir</button>
+                                </div>
+                            </div>
+                            <div className="progress-info">
+                                <span>Realizado: {realizedArea.toLocaleString('pt-BR')} / {goal.targetArea.toLocaleString('pt-BR')}</span>
+                                <span>{percentage.toFixed(1)}%</span>
+                            </div>
+                            <div className="progress-bar-container"><div className="progress-bar" style={{ width: `${Math.min(percentage, 100)}%` }}></div></div>
+                        </li>
+                    );
+                })}
+            </ul>
+        </div>
+    );
+};
 
     const handleSave = () => {
         if (!contractGroup || !month || !targetArea || isNaN(parseFloat(targetArea))) {
