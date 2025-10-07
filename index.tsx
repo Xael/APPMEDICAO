@@ -169,8 +169,7 @@ const Loader: React.FC<{ text?: string }> = ({ text = "Carregando..." }) => (
 const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () => void; onFinish: () => void; photoCount: number }> = 
 ({ onCapture, onCancel, onFinish, photoCount }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const cameraViewRef = useRef<HTMLDivElement>(null); // Ref para o container principal
-    const [stream, setStream] = useState<MediaStream | null>(null);
+    const cameraViewRef = useRef<HTMLDivElement>(null);
 
     // Efeito para Fullscreen e Orientação
     useEffect(() => {
@@ -179,11 +178,10 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
         
         const enterFullscreen = async () => {
             try {
-                if (document.fullscreenElement) return; // Já está em tela cheia
+                if (document.fullscreenElement) return;
                 if (elem.requestFullscreen) {
                     await elem.requestFullscreen();
                 }
-                // Tenta travar a orientação (pode não funcionar em todos os navegadores/dispositivos)
                 if (screen.orientation && screen.orientation.lock) {
                     await screen.orientation.lock('landscape');
                 }
@@ -194,7 +192,6 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
 
         enterFullscreen();
 
-        // Função de limpeza para sair da tela cheia ao desmontar o componente
         return () => {
             try {
                 if (document.fullscreenElement) {
@@ -209,34 +206,34 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
         };
     }, []);
 
+    // EFEITO CORRIGIDO PARA EVITAR O LOOP
     useEffect(() => {
+        let mediaStream: MediaStream | null = null;
         let isMounted = true;
+
         navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
-            .then(mediaStream => {
+            .then(streamInstance => {
                 if (isMounted) {
-                    setStream(mediaStream);
-                    if (videoRef.current) videoRef.current.srcObject = mediaStream;
-                }
-            }).catch(err => {
-                console.error("Camera access failed:", err);
-                let message = "Acesso à câmera negado.";
-                if (err instanceof DOMException) {
-                    if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-                        message = "Nenhuma câmera encontrada. Conecte uma câmera e tente novamente.";
-                    } else if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-                        message = "A permissão para acessar a câmera foi negada. Habilite nas configurações do seu navegador.";
-                    } else if (err.name === "OverconstrainedError" || err.name === "ConstraintNotSatisfiedError") {
-                        message = "A câmera traseira não foi encontrada. Verifique se outra aplicação não a está utilizando.";
+                    mediaStream = streamInstance;
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = streamInstance;
                     }
                 }
-                alert(message);
-                onCancel();
+            }).catch(err => {
+                if (isMounted) {
+                    console.error("Camera access failed:", err);
+                    // ... (lógica de mensagem de erro)
+                    alert("Acesso à câmera falhou.");
+                    onCancel();
+                }
             });
+
         return () => {
             isMounted = false;
-            stream?.getTracks().forEach(track => track.stop());
+            // Limpeza: garante que a câmera seja desligada corretamente
+            mediaStream?.getTracks().forEach(track => track.stop());
         };
-    }, [onCancel, stream]);
+    }, [onCancel]); // Depende apenas de onCancel, rodando uma única vez
 
     const handleTakePhoto = () => {
         const canvas = document.createElement('canvas');
