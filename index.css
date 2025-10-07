@@ -72,7 +72,7 @@ header.admin-header {
 }
 
 header h1 {
-  color: var(--primary-color);
+  color: #352f91;
   font-weight: 700;
   font-size: 1.5rem;
   margin: 0;
