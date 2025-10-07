@@ -764,7 +764,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     });
     
                     // ===== ALTERAÇÃO #3: Otimização do PDF (JPEG com qualidade 0.7) =====
-                    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+                    const imgData = canvas.toDataURL('image/jpeg', 1);
                     const pdfWidth = doc.internal.pageSize.getWidth();
                     const pdfHeight = doc.internal.pageSize.getHeight();
     
