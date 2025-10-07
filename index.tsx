@@ -4,7 +4,11 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { queueRecord, addAfterPhotosToPending } from "./syncManager";
-import logoSrc from './assets/Logo.png';
+import logoSrc from './assets/logo.png';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend } from 'chart.js';
+import { Bar, Line } from 'react-chartjs-2';
+
+ChartJS.register( CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend );
 
 // --- (As seções API Client & Helpers, Tipos, Funções Auxiliares e Hooks permanecem inalteradas) ---
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
@@ -659,7 +663,7 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
 );
 
 // =================================================================
-// ===== INÍCIO DA SEÇÃO MODIFICADA: ReportsView (PDF) =============
+// ===== INÍCIO DA SEÇÃO ATUALIZADA: ReportsView (PDF) =============
 // =================================================================
 
 const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
@@ -754,19 +758,21 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 for (let i = 0; i < pages.length; i++) {
                     const page = pages[i] as HTMLElement;
                     const canvas = await html2canvas(page, {
-                        scale: 2, // Aumenta a resolução
-                        useCORS: true, // Tenta carregar imagens de outros domínios (se aplicável)
+                        scale: 1.5, // Reduzido de 2 para 1.5 para um bom equilíbrio
+                        useCORS: true,
                         logging: false,
                     });
     
-                    const imgData = canvas.toDataURL('image/png');
+                    // ===== ALTERAÇÃO #3: Otimização do PDF (JPEG com qualidade 0.7) =====
+                    const imgData = canvas.toDataURL('image/jpeg', 0.7);
                     const pdfWidth = doc.internal.pageSize.getWidth();
                     const pdfHeight = doc.internal.pageSize.getHeight();
     
                     if (i > 0) {
                         doc.addPage();
                     }
-                    doc.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                    doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+                    // =========================================================================
                 }
     
                 doc.save(`relatorio_fotos_crb_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -776,7 +782,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             } finally {
                 setIsGeneratingPdf(false);
             }
-        }, 500); // Um pequeno delay para garantir que tudo foi renderizado
+        }, 500);
     };
 
     if (!reportType) {
@@ -826,11 +832,20 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                     <div key={record.id} className="pdf-record-block">
                                         <div className="pdf-record-info">
                                             <h3>{record.locationName}</h3>
+                                            {/* ===== ALTERAÇÃO #2: Adicionar Medição ao PDF ===== */}
                                             <p>
                                                 <strong>Contrato/Cidade:</strong> {record.contractGroup} | 
                                                 <strong> Serviço:</strong> {record.serviceType} | 
                                                 <strong> Data:</strong> {formatDateTime(record.startTime)}
+                                                {record.locationArea && record.locationArea > 0 && (
+                                                    <>
+                                                        {' | '}
+                                                        <strong>Medição:</strong>
+                                                        {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
+                                                    </>
+                                                )}
                                             </p>
+                                            {/* ================================================ */}
                                         </div>
                                         
                                         <table className="pdf-photo-table">
@@ -943,7 +958,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 };
 
 // =================================================================
-// ===== FIM DA SEÇÃO MODIFICADA: ReportsView (PDF) ================
+// ===== FIM DA SEÇÃO ATUALIZADA: ReportsView (PDF) ================
 // =================================================================
 
 const ManageLocationsView: React.FC<{ 
