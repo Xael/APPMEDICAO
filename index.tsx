@@ -452,7 +452,7 @@ const servicesWithStatus = getServicesWithStatus();
                             key={service.id}
                             className="button"
                             onClick={() => onSelectService(service)}
-                            disabled={service.status === 'done'} // Desabilita se já foi feito
+                            //disabled={service.status === 'done'} // Desabilita se já foi feito
                             style={{ 
                                 display: 'flex', 
                                 justifyContent: 'space-between', 
