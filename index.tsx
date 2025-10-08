@@ -2103,7 +2103,15 @@ const App = () => {
         }
         const results = await Promise.all(apiEndpoints);
         const [locs, recs, srvs, configs, usrs] = results;
-        setLocations(locs.map((l: any) => ({...l, id: String(l.id) })));
+        setLocations(locs.map((l: any) => ({
+    ...l,
+    id: String(l.id),
+    // Adicionamos este map interno para garantir que o serviceId também seja texto
+    services: (l.services || []).map((s: any) => ({
+        ...s,
+        serviceId: String(s.serviceId)
+    }))
+})));
         setServices(srvs.map((s: any) => ({...s, id: String(s.id) })));
         setContractConfigs(configs || []);
         if (currentUser.role === 'ADMIN') {
