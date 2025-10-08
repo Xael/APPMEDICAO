@@ -76,7 +76,7 @@ interface UserAssignment { contractGroup: string; serviceNames: string[]; }
 interface User { id: string; username: string; email?: string; password?: string; role: Role; assignments?: UserAssignment[]; }
 interface GeolocationCoords { latitude: number; longitude: number; }
 interface LocationRecord {  id: string;  contractGroup: string;  name: string;  coords?: GeolocationCoords;  services?: LocationServiceDetail[]; }
-interface ServiceRecord { id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: 'm²' | 'm linear'; locationId?: string; locationName: string; contractGroup: string; locationArea?: number; gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[]; tempId?: string; }
+interface ServiceRecord { id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: string; locationId?: string; locationName: string; contractGroup: string; locationArea?: number; gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[]; tempId?: string; }
 interface Goal { id: string; contractGroup: string; month: string; targetArea: number; }
 interface AuditLogEntry { id: string; timestamp: string; adminId: string; adminUsername: string; action: 'UPDATE' | 'DELETE'; recordId: string; details: string; }
 interface ContractConfig { id: number; contractGroup: string; cycleStartDay: number; }
@@ -729,7 +729,59 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     };
     const selectedRecords = records.filter(r => selectedIds.includes(r.id));
     const totalArea = selectedRecords.reduce((sum, r) => sum + (r.locationArea || 0), 0);
-    const handleExportExcel = async () => { /* ... (código inalterado) ... */ };
+    const handleExportExcel = async () => {
+    if (selectedRecords.length === 0) {
+        alert("Nenhum registro selecionado para exportar.");
+        return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Relatório de Serviços');
+
+    // Define o cabeçalho da planilha
+    worksheet.columns = [
+        { header: 'ID', key: 'id', width: 10 },
+        { header: 'Data Início', key: 'startTime', width: 20 },
+        { header: 'Data Fim', key: 'endTime', width: 20 },
+        { header: 'Contrato/Cidade', key: 'contractGroup', width: 25 },
+        { header: 'Local', key: 'locationName', width: 40 },
+        { header: 'Serviço', key: 'serviceType', width: 30 },
+        { header: 'Medição', key: 'locationArea', width: 15 },
+        { header: 'Unidade', key: 'serviceUnit', width: 15 },
+        { header: 'Operador', key: 'operatorName', width: 25 },
+        { header: 'Usou GPS', key: 'gpsUsed', width: 10 },
+    ];
+
+    // Adiciona uma linha de dados para cada registro selecionado
+    selectedRecords.forEach(record => {
+        worksheet.addRow({
+            id: record.id,
+            startTime: formatDateTime(record.startTime),
+            endTime: record.endTime ? formatDateTime(record.endTime) : 'Não finalizado',
+            contractGroup: record.contractGroup,
+            locationName: record.locationName,
+            serviceType: record.serviceType,
+            locationArea: record.locationArea,
+            serviceUnit: record.serviceUnit,
+            operatorName: record.operatorName,
+            gpsUsed: record.gpsUsed ? 'Sim' : 'Não',
+        });
+    });
+
+    // Gera o arquivo .xlsx e inicia o download
+    try {
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `relatorio_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    } catch (error) {
+        console.error("Erro ao gerar Excel:", error);
+        alert("Ocorreu um erro ao gerar o arquivo Excel.");
+    }
+};
     const handleExportPdf = async () => {
         if (!printableRef.current || selectedRecords.length === 0) return;
         setIsGeneratingPdf(true);
@@ -766,80 +818,145 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             </div>
         );
     }
-    const PdfLayout = () => {
-        const recordsPerPage = 2;
-        const pages = [];
-        for (let i = 0; i < selectedRecords.length; i += recordsPerPage) {
-            pages.push(selectedRecords.slice(i, i + recordsPerPage));
-        }
-        const today = new Date().toLocaleDateString('pt-BR');
-        return (
-            <div className="printable-report-container" ref={printableRef}>
-                {pages.map((pageRecords, pageIndex) => (
-                    <div key={pageIndex} className="printable-page">
-                        <header className="pdf-page-header">
-                            <div className="pdf-header-left">
-                                <img src={logoSrc} alt="Logo" className="pdf-logo" />
-                                <h2>Relatório Fotográfico</h2>
-                            </div>
-                            <p>CRB Serviços<br/>Data de Emissão: {today}</p>
-                        </header>
-                        <div className="pdf-page-content">
-                            {pageRecords.map(record => {
-                                const maxPhotos = Math.max(record.beforePhotos.length, record.afterPhotos.length);
-                                const photoPairs = [];
-                                for (let i = 0; i < maxPhotos; i++) {
-                                    photoPairs.push({ before: record.beforePhotos[i], after: record.afterPhotos[i] });
-                                }
-                                return (
-                                    <div key={record.id} className="pdf-record-block">
-                                        <div className="pdf-record-info">
-                                            <h3>{record.locationName}</h3>
-                                            <p>
-                                                <strong>Contrato/Cidade:</strong> {record.contractGroup} | 
-                                                <strong> Serviço:</strong> {record.serviceType} | 
-                                                <strong> Data:</strong> {formatDateTime(record.startTime)}
-                                                {record.locationArea && record.locationArea > 0 && (
-                                                    <>
-                                                        {' | '}
-                                                        <strong>Medição:</strong>
-                                                        {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
-                                                    </>
-                                                )}
-                                            </p>
-                                        </div>
-                                        <table className="pdf-photo-table">
-                                            <thead><tr><th>ANTES</th><th>DEPOIS</th></tr></thead>
-                                            <tbody>
-                                                {photoPairs.map((pair, index) => (
-                                                    <tr key={index}>
-                                                        <td>
-                                                            {pair.before && <img src={`${API_BASE}${pair.before}`} alt={`Antes ${index + 1}`} />}
-                                                            <p className="caption">Foto Antes {index + 1}</p>
-                                                        </td>
-                                                        <td>
-                                                            {pair.after && <img src={`${API_BASE}${pair.after}`} alt={`Depois ${index + 1}`} />}
-                                                            <p className="caption">Foto Depois {index + 1}</p>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        <footer className="pdf-page-footer">
-                            Página {pageIndex + 1} de {pages.length}
-                        </footer>
-                    </div>
-                ))}
-            </div>
-        );
+const PdfLayout = () => {
+    const recordsPerPage = 2;
+    const [pages, setPages] = useState<ServiceRecord[][]>([]);
+    const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
+    const [isLoadingImages, setIsLoadingImages] = useState(true);
+
+    // Função auxiliar para converter URL de imagem para base64
+    const getBase64Image = (url: string): Promise<string> => {
+        return new Promise(async (resolve, reject) => {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const blob = await response.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            } catch (error) {
+                console.error(`Failed to fetch image ${url}:`, error);
+                // Retorna um placeholder ou uma string vazia em caso de erro
+                resolve("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"); // Imagem transparente 1x1
+            }
+        });
     };
+
+    useEffect(() => {
+        const processRecords = async () => {
+            setIsLoadingImages(true);
+            const allImageUrls = selectedRecords.flatMap(r => [...(r.beforePhotos || []), ...(r.afterPhotos || [])]);
+            const uniqueImageUrls = [...new Set(allImageUrls)];
+
+            const imagePromises = uniqueImageUrls.map(url =>
+                getBase64Image(`${API_BASE}${url}`).then(base64 => ({ url, base64 }))
+            );
+
+            const results = await Promise.all(imagePromises);
+            const imageMap = results.reduce((acc, { url, base64 }) => {
+                acc[`${API_BASE}${url}`] = base64;
+                return acc;
+            }, {} as Record<string, string>);
+
+            setLoadedImages(imageMap);
+
+            const paginatedRecords = [];
+            for (let i = 0; i < selectedRecords.length; i += recordsPerPage) {
+                paginatedRecords.push(selectedRecords.slice(i, i + recordsPerPage));
+            }
+            setPages(paginatedRecords);
+            setIsLoadingImages(false);
+        };
+
+        if (selectedRecords.length > 0) {
+            processRecords();
+        } else {
+            setIsLoadingImages(false);
+        }
+    }, [selectedRecords]);
+
+    useEffect(() => {
+        // Dispara a geração do PDF automaticamente quando as imagens terminam de carregar
+        if (!isLoadingImages && pages.length > 0) {
+            handleExportPdf();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isLoadingImages, pages]);
+
+
+    if (isLoadingImages && selectedRecords.length > 0) {
+        // Atualiza o estado global de loading para o usuário ver
+        useEffect(() => {
+            setIsGeneratingPdf(true);
+            return () => setIsGeneratingPdf(false);
+        }, []);
+        return null; // Não renderiza nada na tela, apenas o loader global
+    }
+
+    const today = new Date().toLocaleDateString('pt-BR');
+
     return (
-        <div>
-            {/* ... (o resto do jsx do ReportsView, que não muda) ... */}
+        <div className="printable-report-container" ref={printableRef}>
+            {pages.map((pageRecords, pageIndex) => (
+                <div key={pageIndex} className="printable-page">
+                    <header className="pdf-page-header">
+                        <div className="pdf-header-left">
+                            <img src={logoSrc} alt="Logo" style={{ maxHeight: '25px', width: 'auto' }} />
+                            <h2 style={{fontSize: '16pt', margin: '0 0 0 10px'}}>Relatório Fotográfico</h2>
+                        </div>
+                        <p style={{textAlign: 'right', fontSize: '10pt'}}>CRB Serviços<br/>Data de Emissão: {today}</p>
+                    </header>
+                    <div className="pdf-page-content">
+                        {pageRecords.map(record => {
+                            const maxPhotos = Math.max((record.beforePhotos || []).length, (record.afterPhotos || []).length);
+                            const photoPairs = [];
+                            for (let i = 0; i < maxPhotos; i++) {
+                                photoPairs.push({ before: record.beforePhotos?.[i], after: record.afterPhotos?.[i] });
+                            }
+                            return (
+                                <div key={record.id} className="pdf-record-block">
+                                    <div className="pdf-record-info">
+                                        <h3>{record.locationName}</h3>
+                                        <p>
+                                            <strong>Contrato/Cidade:</strong> {record.contractGroup} |
+                                            <strong> Serviço:</strong> {record.serviceType} |
+                                            <strong> Data:</strong> {formatDateTime(record.startTime)}
+                                            {record.locationArea && record.locationArea > 0 && (
+                                                <>
+                                                    {' | '}
+                                                    <strong>Medição:</strong>
+                                                    {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
+                                                </>
+                                            )}
+                                        </p>
+                                    </div>
+                                    <table className="pdf-photo-table">
+                                        <thead><tr><th>ANTES</th><th>DEPOIS</th></tr></thead>
+                                        <tbody>
+                                            {photoPairs.map((pair, index) => (
+                                                <tr key={index}>
+                                                    <td>
+                                                        {pair.before && <img src={loadedImages[`${API_BASE}${pair.before}`]} alt={`Antes ${index + 1}`} />}
+                                                        <p className="caption">Foto Antes {index + 1}</p>
+                                                    </td>
+                                                    <td>
+                                                        {pair.after && <img src={loadedImages[`${API_BASE}${pair.after}`]} alt={`Depois ${index + 1}`} />}
+                                                        <p className="caption">Foto Depois {index + 1}</p>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            );
+                        })}
+                    </div>
+                     <footer className="pdf-page-footer">
+                        Página {pageIndex + 1} de {pages.length}
+                    </footer>
+                </div>
+            ))}
         </div>
     );
 };
