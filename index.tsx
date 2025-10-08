@@ -2305,56 +2305,44 @@ const App = () => {
       navigate('OPERATOR_LOCATION_SELECT');
   }
 
-  const handleLocationSelect = (location: LocationRecord, gpsUsed: boolean) => {
-      setSelectedLocation({ ...location, _gpsUsed: gpsUsed } as any);
+const handleLocationSelect = (location: LocationRecord, gpsUsed: boolean) => {
+    setSelectedLocation({ ...location, _gpsUsed: gpsUsed } as any);
+    navigate('OPERATOR_SERVICE_SELECT');
+};
 
-      const servicesForLocation = location.serviceIds
-          ? services.filter(s => location.serviceIds!.includes(s.id))
-          : [];
+const handleServiceSelect = (service: ServiceDefinition) => {
+    if (!selectedLocation || !selectedLocation.services) return;
 
-      if (servicesForLocation.length === 1) {
-          handleServiceSelect(servicesForLocation[0]);
-      } else {
-          navigate('OPERATOR_SERVICE_SELECT');
-      }
-  };
+    const today = new Date().toISOString().split('T')[0];
+    const isAlreadyDone = records.some(record => 
+        record.locationId === selectedLocation.id &&
+        record.serviceType === service.name &&
+        record.startTime.startsWith(today)
+    );
 
-  const handleServiceSelect = (service: ServiceDefinition) => {
-  if (!selectedLocation || !selectedLocation.services) return;
-  
-  const today = new Date().toISOString().split('T')[0];
-  const isAlreadyDone = records.some(record => 
-    record.locationId === selectedLocation.id &&
-    record.serviceType === service.name &&
-    record.startTime.startsWith(today)
-  );
+    if (isAlreadyDone) {
+        alert('Este serviço já foi realizado para este local hoje. Para adicionar mais informações, use a função "Reabrir" no seu histórico.');
+        return;
+    }
+    
+    const serviceDetail = selectedLocation.services.find(s => s.serviceId === service.id);
+    const measurementForService = serviceDetail ? serviceDetail.measurement : 0;
+    
+    if (!serviceDetail) {
+        alert("Erro: Este serviço não está configurado para este local. Por favor, contate o administrador.");
+        return;
+    }
 
-  if (isAlreadyDone) {
-    alert('Este serviço já foi realizado para este local hoje. Para adicionar mais informações, use a função "Reabrir" no seu histórico.');
-    return;
-  }
-  
-  // AQUI ESTÁ A MUDANÇA: Buscar a medição correta do serviço selecionado
-  const serviceDetail = selectedLocation.services.find(s => s.serviceId === service.id);
-  const measurementForService = serviceDetail ? serviceDetail.measurement : 0;
-  
-  if (!serviceDetail) {
-      alert("Erro: Este serviço não está configurado para este local. Por favor, contate o administrador.");
-      return;
-  }
-
-   setCurrentService({ 
-    serviceType: service.name, 
-    // AGORA a unidade vem do objeto 'unit' dentro do serviço
-    serviceUnit: service.unit.symbol, 
-    contractGroup: selectedLocation.contractGroup,
-    locationId: selectedLocation.id.startsWith('manual-') ? undefined : selectedLocation.id,
-    locationName: selectedLocation.name,
-    // A área agora é a medição específica do serviço
-    locationArea: measurementForService,
-    gpsUsed: (selectedLocation as any)._gpsUsed || false,
-  });
-  navigate('PHOTO_STEP');
+    setCurrentService({ 
+        serviceType: service.name, 
+        serviceUnit: service.unit.symbol, 
+        contractGroup: selectedLocation.contractGroup,
+        locationId: selectedLocation.id.startsWith('manual-') ? undefined : selectedLocation.id,
+        locationName: selectedLocation.name,
+        locationArea: measurementForService,
+        gpsUsed: (selectedLocation as any)._gpsUsed || false,
+    });
+    navigate('PHOTO_STEP');
 };
 
   const handleBeforePhotos = async (photosBefore: string[]) => {
