@@ -251,7 +251,6 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
     };
     return (
         <div className="login-container card">
-            <img src={logoSrc} alt="Logo CRB Serviços" className="header-logo" style={{marginBottom: '1rem'}}/>
             <h2>Login de Acesso</h2>
             <p>Entre com suas credenciais.</p>
             {error && <p className="text-danger">{error}</p>}
