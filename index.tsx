@@ -2337,38 +2337,49 @@ const handleLocationSelect = (location: LocationRecord, gpsUsed: boolean) => {
 };
 
 const handleServiceSelect = (service: ServiceDefinition) => {
-    if (!selectedLocation || !selectedLocation.services) return;
+    if (!selectedLocation) return;
 
-    const today = new Date().toISOString().split('T')[0];
-    const isAlreadyDone = records.some(record => 
+    // Lógica para encontrar o início do ciclo (a mesma que usamos antes)
+    const config = contractConfigs.find(c => c.contractGroup === selectedLocation.contractGroup);
+    const cycleStartDay = config ? config.cycleStartDay : 1;
+    const today = new Date();
+    let cycleStartDate = new Date(today.getFullYear(), today.getMonth(), cycleStartDay);
+    if (today.getDate() < cycleStartDay) {
+        cycleStartDate.setMonth(cycleStartDate.getMonth() - 1);
+    }
+    cycleStartDate.setHours(0, 0, 0, 0);
+
+    // Procura por um registro existente DENTRO do ciclo atual
+    const existingRecord = records.find(record =>
         record.locationId === selectedLocation.id &&
         record.serviceType === service.name &&
-        record.startTime.startsWith(today)
+        new Date(record.startTime) >= cycleStartDate
     );
 
-    if (isAlreadyDone) {
-        alert('Este serviço já foi realizado para este local hoje. Para adicionar mais informações, use a função "Reabrir" no seu histórico.');
-        return;
-    }
-    
-    const serviceDetail = selectedLocation.services.find(s => s.serviceId === service.id);
-    const measurementForService = serviceDetail ? serviceDetail.measurement : 0;
-    
-    if (!serviceDetail) {
-        alert("Erro: Este serviço não está configurado para este local. Por favor, contate o administrador.");
-        return;
-    }
+    if (existingRecord) {
+        // SE JÁ EXISTE UM REGISTRO, REABRE ELE
+        console.log("Reabrindo registro existente:", existingRecord.id);
+        handleEditRecord(existingRecord);
+    } else {
+        // SE NÃO EXISTE, CRIA UM NOVO
+        console.log("Iniciando novo registro para o serviço:", service.name);
+        const serviceDetail = selectedLocation.services?.find(s => s.serviceId === service.id);
+        if (!serviceDetail) {
+            alert("Erro: Este serviço não está configurado para este local. Por favor, contate o administrador.");
+            return;
+        }
 
-    setCurrentService({ 
-        serviceType: service.name, 
-        serviceUnit: service.unit.symbol, 
-        contractGroup: selectedLocation.contractGroup,
-        locationId: selectedLocation.id.startsWith('manual-') ? undefined : selectedLocation.id,
-        locationName: selectedLocation.name,
-        locationArea: measurementForService,
-        gpsUsed: (selectedLocation as any)._gpsUsed || false,
-    });
-    navigate('PHOTO_STEP');
+        setCurrentService({
+            serviceType: service.name,
+            serviceUnit: service.unit.symbol,
+            contractGroup: selectedLocation.contractGroup,
+            locationId: selectedLocation.id.startsWith('manual-') ? undefined : selectedLocation.id,
+            locationName: selectedLocation.name,
+            locationArea: serviceDetail.measurement,
+            gpsUsed: (selectedLocation as any)._gpsUsed || false,
+        });
+        navigate('PHOTO_STEP');
+    }
 };
 
   const handleBeforePhotos = async (photosBefore: string[]) => {
