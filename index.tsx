@@ -706,9 +706,12 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const printableRef = useRef<HTMLDivElement>(null);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
+    
     const handleServiceFilterChange = (service: string, isChecked: boolean) => { setSelectedServices(prev => isChecked ? [...prev, service] : prev.filter(s => s !== service)); };
+    
     const filteredRecords = records.filter(r => {
         const recordDate = new Date(r.startTime);
         const start = startDate ? new Date(startDate) : null;
@@ -719,94 +722,200 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
         return true;
     }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         if(e.target.checked) setSelectedIds(filteredRecords.map(r => r.id));
         else setSelectedIds([]);
     };
+
     const handleSelectOne = (id: string, isChecked: boolean) => {
         if(isChecked) setSelectedIds(ids => [...ids, id]);
         else setSelectedIds(ids => ids.filter(i => i !== id));
     };
+
     const selectedRecords = records.filter(r => selectedIds.includes(r.id));
     const totalArea = selectedRecords.reduce((sum, r) => sum + (r.locationArea || 0), 0);
+
     const handleExportExcel = async () => {
-    if (selectedRecords.length === 0) {
-        alert("Nenhum registro selecionado para exportar.");
-        return;
-    }
-
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Relatório de Serviços');
-
-    // Define o cabeçalho da planilha
-    worksheet.columns = [
-        { header: 'ID', key: 'id', width: 10 },
-        { header: 'Data Início', key: 'startTime', width: 20 },
-        { header: 'Data Fim', key: 'endTime', width: 20 },
-        { header: 'Contrato/Cidade', key: 'contractGroup', width: 25 },
-        { header: 'Local', key: 'locationName', width: 40 },
-        { header: 'Serviço', key: 'serviceType', width: 30 },
-        { header: 'Medição', key: 'locationArea', width: 15 },
-        { header: 'Unidade', key: 'serviceUnit', width: 15 },
-        { header: 'Operador', key: 'operatorName', width: 25 },
-        { header: 'Usou GPS', key: 'gpsUsed', width: 10 },
-    ];
-
-    // Adiciona uma linha de dados para cada registro selecionado
-    selectedRecords.forEach(record => {
-        worksheet.addRow({
-            id: record.id,
-            startTime: formatDateTime(record.startTime),
-            endTime: record.endTime ? formatDateTime(record.endTime) : 'Não finalizado',
-            contractGroup: record.contractGroup,
-            locationName: record.locationName,
-            serviceType: record.serviceType,
-            locationArea: record.locationArea,
-            serviceUnit: record.serviceUnit,
-            operatorName: record.operatorName,
-            gpsUsed: record.gpsUsed ? 'Sim' : 'Não',
+        if (selectedRecords.length === 0) {
+            alert("Nenhum registro selecionado para exportar.");
+            return;
+        }
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Relatório de Serviços');
+        worksheet.columns = [
+            { header: 'ID', key: 'id', width: 10 }, { header: 'Data Início', key: 'startTime', width: 20 },
+            { header: 'Data Fim', key: 'endTime', width: 20 }, { header: 'Contrato/Cidade', key: 'contractGroup', width: 25 },
+            { header: 'Local', key: 'locationName', width: 40 }, { header: 'Serviço', key: 'serviceType', width: 30 },
+            { header: 'Medição', key: 'locationArea', width: 15 }, { header: 'Unidade', key: 'serviceUnit', width: 15 },
+            { header: 'Operador', key: 'operatorName', width: 25 }, { header: 'Usou GPS', key: 'gpsUsed', width: 10 },
+        ];
+        selectedRecords.forEach(record => {
+            worksheet.addRow({
+                id: record.id, startTime: formatDateTime(record.startTime),
+                endTime: record.endTime ? formatDateTime(record.endTime) : 'Não finalizado',
+                contractGroup: record.contractGroup, locationName: record.locationName,
+                serviceType: record.serviceType, locationArea: record.locationArea,
+                serviceUnit: record.serviceUnit, operatorName: record.operatorName,
+                gpsUsed: record.gpsUsed ? 'Sim' : 'Não',
+            });
         });
-    });
-
-    // Gera o arquivo .xlsx e inicia o download
-    try {
-        const buffer = await workbook.xlsx.writeBuffer();
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `relatorio_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-    } catch (error) {
-        console.error("Erro ao gerar Excel:", error);
-        alert("Ocorreu um erro ao gerar o arquivo Excel.");
-    }
-};
-    const handleExportPdf = async () => {
-        if (!printableRef.current || selectedRecords.length === 0) return;
-        setIsGeneratingPdf(true);
-        setTimeout(async () => {
-            try {
-                const doc = new jsPDF('p', 'mm', 'a4');
-                const pages = printableRef.current!.querySelectorAll('.printable-page');
-                for (let i = 0; i < pages.length; i++) {
-                    const page = pages[i] as HTMLElement;
-                    const canvas = await html2canvas(page, { scale: 1.5, useCORS: true, logging: false });
-                    const imgData = canvas.toDataURL('image/jpeg', 0.85);
-                    const pdfWidth = doc.internal.pageSize.getWidth();
-                    const pdfHeight = doc.internal.pageSize.getHeight();
-                    if (i > 0) { doc.addPage(); }
-                    doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-                }
-                doc.save(`relatorio_fotos_crb_${new Date().toISOString().split('T')[0]}.pdf`);
-            } catch (error) {
-                console.error("Erro ao gerar PDF:", error);
-                alert("Ocorreu um erro ao gerar o PDF. Verifique o console para mais detalhes.");
-            } finally {
-                setIsGeneratingPdf(false);
-            }
-        }, 500);
+        try {
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `relatorio_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        } catch (error) {
+            console.error("Erro ao gerar Excel:", error);
+            alert("Ocorreu um erro ao gerar o arquivo Excel.");
+        }
     };
+
+    const handleGeneratePdfClick = () => {
+        if (selectedRecords.length === 0) {
+            alert("Por favor, selecione ao menos um registro para gerar o PDF.");
+            return;
+        }
+        setIsGeneratingPdf(true);
+    };
+
+    const PdfLayout = () => {
+        const recordsPerPage = 2;
+        const [pages, setPages] = useState<ServiceRecord[][]>([]);
+        const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
+        const [isLoadingImages, setIsLoadingImages] = useState(true);
+
+        const getBase64Image = (url: string): Promise<string> => {
+            return new Promise(async (resolve) => {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    const blob = await response.blob();
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.onerror = () => resolve("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
+                    reader.readAsDataURL(blob);
+                } catch (error) {
+                    console.error(`Failed to fetch image ${url}:`, error);
+                    resolve("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
+                }
+            });
+        };
+
+        useEffect(() => {
+            const processRecords = async () => {
+                const allImageUrls = selectedRecords.flatMap(r => [...(r.beforePhotos || []), ...(r.afterPhotos || [])]);
+                const uniqueImageUrls = [...new Set(allImageUrls)];
+                const imagePromises = uniqueImageUrls.map(url => getBase64Image(`${API_BASE}${url}`).then(base64 => ({ url, base64 })));
+                const results = await Promise.all(imagePromises);
+                const imageMap = results.reduce((acc, { url, base64 }) => {
+                    acc[`${API_BASE}${url}`] = base64;
+                    return acc;
+                }, {} as Record<string, string>);
+                setLoadedImages(imageMap);
+                const paginatedRecords = [];
+                for (let i = 0; i < selectedRecords.length; i += recordsPerPage) {
+                    paginatedRecords.push(selectedRecords.slice(i, i + recordsPerPage));
+                }
+                setPages(paginatedRecords);
+                setIsLoadingImages(false);
+            };
+            if (selectedRecords.length > 0) { processRecords(); } else { setIsLoadingImages(false); }
+        }, []);
+
+        useEffect(() => {
+            if (!isLoadingImages && pages.length > 0) {
+                (async () => {
+                    if (!printableRef.current) return;
+                    try {
+                        const doc = new jsPDF('p', 'mm', 'a4');
+                        const pageElements = printableRef.current.querySelectorAll('.printable-page');
+                        for (let i = 0; i < pageElements.length; i++) {
+                            const page = pageElements[i] as HTMLElement;
+                            const canvas = await html2canvas(page, { scale: 2, useCORS: true, logging: false });
+                            if (i > 0) doc.addPage();
+                            doc.addImage(canvas.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight());
+                        }
+                        doc.save(`relatorio_fotos_crb_${new Date().toISOString().split('T')[0]}.pdf`);
+                    } catch (error) {
+                        console.error("Erro ao gerar PDF:", error);
+                        alert("Ocorreu um erro ao gerar o PDF.");
+                    } finally {
+                        setIsGeneratingPdf(false);
+                    }
+                })();
+            }
+        }, [isLoadingImages, pages]);
+        
+        if (isLoadingImages) return null;
+        
+        const today = new Date().toLocaleDateString('pt-BR');
+        return (
+            <div className="printable-report-container" ref={printableRef}>
+                {pages.map((pageRecords, pageIndex) => (
+                    <div key={pageIndex} className="printable-page">
+                        <header className="pdf-page-header">
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <img src={logoSrc} alt="Logo" style={{ maxHeight: '25px', width: 'auto' }} />
+                                <h2 style={{fontSize: '16pt', margin: '0 0 0 10px'}}>Relatório Fotográfico</h2>
+                            </div>
+                            <p style={{textAlign: 'right', fontSize: '10pt'}}>CRB Serviços<br/>Data de Emissão: {today}</p>
+                        </header>
+                        <div className="pdf-page-content">
+                            {pageRecords.map(record => {
+                                const photoPairs = [];
+                                const maxPhotos = Math.max((record.beforePhotos || []).length, (record.afterPhotos || []).length);
+                                for (let i = 0; i < maxPhotos; i++) {
+                                    photoPairs.push({ before: record.beforePhotos?.[i], after: record.afterPhotos?.[i] });
+                                }
+                                return (
+                                    <div key={record.id} className="pdf-record-block">
+                                        <div className="pdf-record-info">
+                                            <h3>{record.locationName}</h3>
+                                            <p><strong>Contrato/Cidade:</strong> {record.contractGroup} | <strong>Serviço:</strong> {record.serviceType} | <strong>Data:</strong> {formatDateTime(record.startTime)}
+                                                {record.locationArea && record.locationArea > 0 && ` | <strong>Medição:</strong> ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
+                                            </p>
+                                        </div>
+                                        <table className="pdf-photo-table">
+                                            <thead><tr><th>ANTES</th><th>DEPOIS</th></tr></thead>
+                                            <tbody>
+                                                {photoPairs.map((pair, index) => (
+                                                    <tr key={index}>
+                                                        <td>
+                                                            {pair.before && <img src={loadedImages[`${API_BASE}${pair.before}`]} alt={`Antes ${index + 1}`} />}
+                                                            <p className="caption">Foto Antes {index + 1}</p>
+                                                        </td>
+                                                        <td>
+                                                            {pair.after && <img src={loadedImages[`${API_BASE}${pair.after}`]} alt={`Depois ${index + 1}`} />}
+                                                            <p className="caption">Foto Depois {index + 1}</p>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                         <footer className="pdf-page-footer">Página {pageIndex + 1} de {pages.length}</footer>
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
+    if (isGeneratingPdf) {
+        return (
+            <>
+                <Loader text="Gerando PDF, por favor aguarde..." />
+                <PdfLayout />
+            </>
+        );
+    }
+
     if (!reportType) {
         return (
             <div className="card">
@@ -818,145 +927,39 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             </div>
         );
     }
-const PdfLayout = () => {
-    const recordsPerPage = 2;
-    const [pages, setPages] = useState<ServiceRecord[][]>([]);
-    const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
-    const [isLoadingImages, setIsLoadingImages] = useState(true);
-
-    // Função auxiliar para converter URL de imagem para base64
-    const getBase64Image = (url: string): Promise<string> => {
-        return new Promise(async (resolve, reject) => {
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error('Network response was not ok');
-                const blob = await response.blob();
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            } catch (error) {
-                console.error(`Failed to fetch image ${url}:`, error);
-                // Retorna um placeholder ou uma string vazia em caso de erro
-                resolve("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"); // Imagem transparente 1x1
-            }
-        });
-    };
-
-    useEffect(() => {
-        const processRecords = async () => {
-            setIsLoadingImages(true);
-            const allImageUrls = selectedRecords.flatMap(r => [...(r.beforePhotos || []), ...(r.afterPhotos || [])]);
-            const uniqueImageUrls = [...new Set(allImageUrls)];
-
-            const imagePromises = uniqueImageUrls.map(url =>
-                getBase64Image(`${API_BASE}${url}`).then(base64 => ({ url, base64 }))
-            );
-
-            const results = await Promise.all(imagePromises);
-            const imageMap = results.reduce((acc, { url, base64 }) => {
-                acc[`${API_BASE}${url}`] = base64;
-                return acc;
-            }, {} as Record<string, string>);
-
-            setLoadedImages(imageMap);
-
-            const paginatedRecords = [];
-            for (let i = 0; i < selectedRecords.length; i += recordsPerPage) {
-                paginatedRecords.push(selectedRecords.slice(i, i + recordsPerPage));
-            }
-            setPages(paginatedRecords);
-            setIsLoadingImages(false);
-        };
-
-        if (selectedRecords.length > 0) {
-            processRecords();
-        } else {
-            setIsLoadingImages(false);
-        }
-    }, [selectedRecords]);
-
-    useEffect(() => {
-        // Dispara a geração do PDF automaticamente quando as imagens terminam de carregar
-        if (!isLoadingImages && pages.length > 0) {
-            handleExportPdf();
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isLoadingImages, pages]);
-
-
-    if (isLoadingImages && selectedRecords.length > 0) {
-        // Atualiza o estado global de loading para o usuário ver
-        useEffect(() => {
-            setIsGeneratingPdf(true);
-            return () => setIsGeneratingPdf(false);
-        }, []);
-        return null; // Não renderiza nada na tela, apenas o loader global
-    }
-
-    const today = new Date().toLocaleDateString('pt-BR');
 
     return (
-        <div className="printable-report-container" ref={printableRef}>
-            {pages.map((pageRecords, pageIndex) => (
-                <div key={pageIndex} className="printable-page">
-                    <header className="pdf-page-header">
-                        <div className="pdf-header-left">
-                            <img src={logoSrc} alt="Logo" style={{ maxHeight: '25px', width: 'auto' }} />
-                            <h2 style={{fontSize: '16pt', margin: '0 0 0 10px'}}>Relatório Fotográfico</h2>
-                        </div>
-                        <p style={{textAlign: 'right', fontSize: '10pt'}}>CRB Serviços<br/>Data de Emissão: {today}</p>
-                    </header>
-                    <div className="pdf-page-content">
-                        {pageRecords.map(record => {
-                            const maxPhotos = Math.max((record.beforePhotos || []).length, (record.afterPhotos || []).length);
-                            const photoPairs = [];
-                            for (let i = 0; i < maxPhotos; i++) {
-                                photoPairs.push({ before: record.beforePhotos?.[i], after: record.afterPhotos?.[i] });
-                            }
-                            return (
-                                <div key={record.id} className="pdf-record-block">
-                                    <div className="pdf-record-info">
-                                        <h3>{record.locationName}</h3>
-                                        <p>
-                                            <strong>Contrato/Cidade:</strong> {record.contractGroup} |
-                                            <strong> Serviço:</strong> {record.serviceType} |
-                                            <strong> Data:</strong> {formatDateTime(record.startTime)}
-                                            {record.locationArea && record.locationArea > 0 && (
-                                                <>
-                                                    {' | '}
-                                                    <strong>Medição:</strong>
-                                                    {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
-                                                </>
-                                            )}
-                                        </p>
-                                    </div>
-                                    <table className="pdf-photo-table">
-                                        <thead><tr><th>ANTES</th><th>DEPOIS</th></tr></thead>
-                                        <tbody>
-                                            {photoPairs.map((pair, index) => (
-                                                <tr key={index}>
-                                                    <td>
-                                                        {pair.before && <img src={loadedImages[`${API_BASE}${pair.before}`]} alt={`Antes ${index + 1}`} />}
-                                                        <p className="caption">Foto Antes {index + 1}</p>
-                                                    </td>
-                                                    <td>
-                                                        {pair.after && <img src={loadedImages[`${API_BASE}${pair.after}`]} alt={`Depois ${index + 1}`} />}
-                                                        <p className="caption">Foto Depois {index + 1}</p>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            );
-                        })}
-                    </div>
-                     <footer className="pdf-page-footer">
-                        Página {pageIndex + 1} de {pages.length}
-                    </footer>
+         <div className="card">
+            <button className="button button-sm button-secondary" onClick={() => setReportType(null)} style={{float: 'right'}}>Trocar Tipo</button>
+            <h2>Filtros para Relatório de {reportType === 'excel' ? 'Excel' : 'Fotos'}</h2>
+            <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch', clear: 'both'}}>
+                <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
+                    <div className="form-group"><label>Data de Início</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+                    <div className="form-group"><label>Data Final</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+                    <div className="form-group"><label>Contrato/Cidade</label><select value={selectedContractGroup} onChange={e => setSelectedContractGroup(e.target.value)}><option value="">Todos</option>{allContractGroups.map(g => <option key={g} value={g}>{g}</option>)}</select></div>
                 </div>
-            ))}
+                <fieldset className="form-group-full"><legend>Filtrar por Serviços</legend><div className="checkbox-group">{allServiceNames.map(name => (<div key={name} className="checkbox-item"><input type="checkbox" id={`service-${name}`} checked={selectedServices.includes(name)} onChange={e => handleServiceFilterChange(name, e.target.checked)} /><label htmlFor={`service-${name}`}>{name}</label></div>))}</div></fieldset>
+            </div>
+            <div className="report-summary">
+                <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
+                {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
+                <div className="button-group">
+                    {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0}>Exportar para Excel</button>}
+                    {reportType === 'photos' && <button className="button" onClick={handleGeneratePdfClick} disabled={selectedIds.length === 0}>Gerar PDF com Fotos</button>}
+                </div>
+            </div>
+            <ul className="report-list" style={{marginTop: '1rem'}}>
+                {filteredRecords.length > 0 && <li><label><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === filteredRecords.length && filteredRecords.length > 0} /> Selecionar Todos</label></li>}
+                {filteredRecords.map(record => (
+                    <li key={record.id} className="report-item">
+                        <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={e => handleSelectOne(record.id, e.target.checked)} />
+                        <div className="report-item-info">
+                            <p><strong>{record.locationName}</strong> - {record.serviceType}</p>
+                            <p><small>{record.contractGroup} | {formatDateTime(record.startTime)}</small></p>
+                        </div>
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 };
