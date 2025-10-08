@@ -875,9 +875,18 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                     <div key={record.id} className="pdf-record-block">
                                         <div className="pdf-record-info">
                                             <h3>{record.locationName}</h3>
-                                            <p><strong>Contrato/Cidade:</strong> {record.contractGroup} | <strong>Serviço:</strong> {record.serviceType} | <strong>Data:</strong> {formatDateTime(record.startTime)}
-                                                {record.locationArea && record.locationArea > 0 && ` | <strong>Medição:</strong> ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
-                                            </p>
+                                            <p>
+    <strong>Contrato/Cidade:</strong> {record.contractGroup} |
+    <strong> Serviço:</strong> {record.serviceType} |
+    <strong> Data:</strong> {formatDateTime(record.startTime)}
+    {record.locationArea && record.locationArea > 0 && (
+        <>
+            {' | '}
+            <strong>Medição:</strong>
+            {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
+        </>
+    )}
+</p>
                                         </div>
                                         <table className="pdf-photo-table">
                                             <thead><tr><th>ANTES</th><th>DEPOIS</th></tr></thead>
