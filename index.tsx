@@ -377,35 +377,100 @@ const OperatorGroupSelect: React.FC<{
     );
 };
 
-const OperatorServiceSelect: React.FC<{ 
+const OperatorServiceSelect: React.FC<{
     location: LocationRecord;
     services: ServiceDefinition[];
     user: User;
-    onSelectService: (service: ServiceDefinition) => void 
-}> = ({ location, services, user, onSelectService }) => {
-       // LÓGICA CORRIGIDA AQUI
-    let availableServices: ServiceDefinition[] = [];
-    
-    // Se o local tem serviços específicos definidos, use-os
-    if (location.services && location.services.length > 0) {
-        const locationServiceIds = new Set(location.services.map(s => s.serviceId));
-        availableServices = services.filter(s => locationServiceIds.has(s.id));
-    } else {
-        // Senão, use a atribuição do usuário como fallback
-        const assignment = user.assignments?.find(a => a.contractGroup === location.contractGroup);
-        const userAssignedServiceNames = assignment?.serviceNames || [];
-        availableServices = services.filter(s => userAssignedServiceNames.includes(s.name));
-    }
-    
+    onSelectService: (service: ServiceDefinition) => void;
+    records: ServiceRecord[];
+    contractConfigs: ContractConfig[];
+}> = ({ location, services, user, onSelectService, records, contractConfigs }) => {
+
+    // 1. LÓGICA PARA CALCULAR O INÍCIO DO CICLO ATUAL
+    const getCurrentCycleStartDate = (contractGroup: string): Date => {
+        const config = contractConfigs.find(c => c.contractGroup === contractGroup);
+        const cycleStartDay = config ? config.cycleStartDay : 1;
+
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        const currentDate = today.getDate();
+
+        let cycleStartDate: Date;
+
+        if (currentDate >= cycleStartDay) {
+            // O ciclo atual começou neste mês
+            cycleStartDate = new Date(currentYear, currentMonth, cycleStartDay);
+        } else {
+            // O ciclo atual começou no mês passado
+            cycleStartDate = new Date(currentYear, currentMonth - 1, cycleStartDay);
+        }
+        
+        // Zera as horas para comparar apenas as datas
+        cycleStartDate.setHours(0, 0, 0, 0);
+        return cycleStartDate;
+    };
+
+    // 2. FILTRA OS SERVIÇOS E VERIFICA O STATUS DE CADA UM
+    const getServicesWithStatus = () => {
+        // Primeiro, pega os IDs dos serviços que ESTÃO configurados para este local
+        const locationServiceIds = new Set(location.services?.map(s => s.serviceId) || []);
+        if (locationServiceIds.size === 0) {
+            // Se o local não tiver serviços específicos, não há o que mostrar.
+            return [];
+        }
+
+        // Filtra a lista global de serviços para pegar apenas os relevantes
+        const availableServices = services.filter(s => locationServiceIds.has(s.id));
+
+        const cycleStartDate = getCurrentCycleStartDate(location.contractGroup);
+
+        // Mapeia cada serviço para um objeto que inclui seu status
+        return availableServices.map(service => {
+            const isDone = records.some(record =>
+                record.locationId === location.id &&
+                record.serviceType === service.name &&
+                new Date(record.startTime) >= cycleStartDate
+            );
+            return {
+                ...service,
+                status: isDone ? 'done' : 'pending'
+            };
+        });
+    };
+const servicesWithStatus = getServicesWithStatus();
+
     return (
         <div className="card">
             <h2>Escolha o Serviço em "{location.name}"</h2>
             <div className="service-selection-list">
-                {availableServices.map(service => (
-                    <button key={service.id} className="button" onClick={() => onSelectService(service)}>
-                        {service.name} ({service.unit.symbol}) {/* Corrigido para usar unit.symbol */}
-                    </button>
-                ))}
+                {servicesWithStatus.length === 0 ? (
+                    <p>Nenhum serviço específico foi configurado para este local. Por favor, contate o administrador.</p>
+                ) : (
+                    servicesWithStatus.map(service => (
+                        <button
+                            key={service.id}
+                            className="button"
+                            onClick={() => onSelectService(service)}
+                            disabled={service.status === 'done'} // Desabilita se já foi feito
+                            style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'center',
+                                backgroundColor: service.status === 'done' ? '#cccccc' : '' // Cor cinza para desabilitado
+                            }}
+                        >
+                            <span>{service.name} ({service.unit.symbol})</span>
+                            
+                            {/* Renderiza o ícone de status */}
+                            {service.status === 'done' ? (
+                                <span style={{color: 'green', fontSize: '1.5rem'}}>✅</span>
+                            ) : (
+                                <span style={{color: '#f0ad4e', fontSize: '1.5rem'}}>⚠️</span>
+                            )}
+                        </button>
+                    ))
+                )}
             </div>
         </div>
     );
@@ -2334,7 +2399,7 @@ const App = () => {
             switch(view) {
                 case 'OPERATOR_GROUP_SELECT': return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} />;
                 case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : null;
-                case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} /> : null;
+                case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} records={records} contractConfigs={contractConfigs} /> : null;
                 case 'OPERATOR_SERVICE_IN_PROGRESS': return <ServiceInProgressView service={currentService} onFinish={() => navigate('PHOTO_STEP')} />;
                 case 'PHOTO_STEP': 
                     if(!currentService.id) {
