@@ -2339,7 +2339,7 @@ const handleLocationSelect = (location: LocationRecord, gpsUsed: boolean) => {
 const handleServiceSelect = (service: ServiceDefinition) => {
     if (!selectedLocation) return;
 
-    // Lógica para encontrar o início do ciclo (a mesma que usamos antes)
+    // Lógica para encontrar o início do ciclo
     const config = contractConfigs.find(c => c.contractGroup === selectedLocation.contractGroup);
     const cycleStartDay = config ? config.cycleStartDay : 1;
     const today = new Date();
@@ -2357,11 +2357,13 @@ const handleServiceSelect = (service: ServiceDefinition) => {
     );
 
     if (existingRecord) {
-        // SE JÁ EXISTE UM REGISTRO, REABRE ELE
-        console.log("Reabrindo registro existente:", existingRecord.id);
-        handleEditRecord(existingRecord);
+        // --- ESTA É A PARTE CORRIGIDA ---
+        // SE JÁ EXISTE UM REGISTRO, REABRE DIRETO PARA TIRAR FOTOS 'DEPOIS'
+        console.log("Reabrindo registro para adicionar fotos:", existingRecord.id);
+        setCurrentService(existingRecord); // Prepara o serviço atual
+        navigate('PHOTO_STEP');         // Vai para a tela de fotos (que vai detectar que é a fase "Depois")
     } else {
-        // SE NÃO EXISTE, CRIA UM NOVO
+        // SE NÃO EXISTE, CRIA UM NOVO (comportamento que já estava correto)
         console.log("Iniciando novo registro para o serviço:", service.name);
         const serviceDetail = selectedLocation.services?.find(s => s.serviceId === service.id);
         if (!serviceDetail) {
