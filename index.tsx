@@ -13,6 +13,7 @@ ChartJS.register( CategoryScale, LinearScale, BarElement, LineElement, PointElem
 // --- Tipos, Helpers, Hooks ---
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 let API_TOKEN: string | null = localStorage.getItem('crbApiToken');
+// NOVA interface para Unidade de Medida
 
 const setApiToken = (token: string | null) => {
     API_TOKEN = token;
@@ -66,12 +67,15 @@ type View =
   | 'PHOTO_STEP'
   | 'OPERATOR_SERVICE_IN_PROGRESS'
   | 'CONFIRM_STEP';
-  
-interface ServiceDefinition { id: string; name: string; unit: 'm²' | 'm linear'; }
+
+
+interface Unit {  id: string;  name: string;  symbol: string;}
+interface ServiceDefinition {  id: string;  name: string;  unit: Unit;  unitId: number;}
+interface LocationServiceDetail {  serviceId: string;  name: string;  measurement: number;  unit: Unit;}
 interface UserAssignment { contractGroup: string; serviceNames: string[]; }
 interface User { id: string; username: string; email?: string; password?: string; role: Role; assignments?: UserAssignment[]; }
 interface GeolocationCoords { latitude: number; longitude: number; }
-interface LocationRecord { id: string; contractGroup: string; name: string; area: number; coords?: GeolocationCoords; serviceIds?: string[]; }
+interface LocationRecord {  id: string;  contractGroup: string;  name: string;  coords?: GeolocationCoords;  services?: LocationServiceDetail[]; }
 interface ServiceRecord { id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: 'm²' | 'm linear'; locationId?: string; locationName: string; contractGroup: string; locationArea?: number; gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[]; tempId?: string; }
 interface Goal { id: string; contractGroup: string; month: string; targetArea: number; }
 interface AuditLogEntry { id: string; timestamp: string; adminId: string; adminUsername: string; action: 'UPDATE' | 'DELETE'; recordId: string; details: string; }
