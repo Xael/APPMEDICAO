@@ -13,7 +13,7 @@ ChartJS.register( CategoryScale, LinearScale, BarElement, LineElement, PointElem
 // --- Tipos, Helpers, Hooks ---
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 let API_TOKEN: string | null = localStorage.getItem('crbApiToken');
-// NOVA interface para Unidade de Medida
+// NOVA interface para Unidade de Medidaconst fetchData = async () => {
 
 const setApiToken = (token: string | null) => {
     API_TOKEN = token;
@@ -2217,49 +2217,63 @@ const App = () => {
       navigate('LOGIN', true);
   }
 
- const fetchData = async () => {
-    if (!currentUser) return;
-    setIsLoading('Carregando dados...');
-    try {
-        const apiEndpoints: Promise<any>[] = [
-            apiFetch('/api/locations'),
-            apiFetch('/api/records'),
-            apiFetch('/api/services'),
-            apiFetch('/api/contract-configs'),
-        ];
-        if (currentUser.role === 'ADMIN') {
-            apiEndpoints.push(apiFetch('/api/users'));
-        }
-        const results = await Promise.all(apiEndpoints);
-        const [locs, recs, srvs, configs, usrs] = results;
-        setLocations(locs.map((l: any) => ({
-    ...l,
-    id: String(l.id),
-    // Adicionamos este map interno para garantir que o serviceId também seja texto
-    services: (l.services || []).map((s: any) => ({
-        ...s,
-        serviceId: String(s.serviceId)
-    }))
-})));
-        setServices(srvs.map((s: any) => ({...s, id: String(s.id) })));
-        setContractConfigs(configs || []);
-        if (currentUser.role === 'ADMIN') {
-            setRecords(recs.map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
-            if (usrs) setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
-        } else if (currentUser.role === 'OPERATOR') {
-             setRecords(recs.filter((r: any) => String(r.operator_id) === String(currentUser.id)).map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
-        } else { // FISCAL
-             const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
-             setRecords(recs.filter((r: any) => fiscalGroups.includes(r.contractGroup)).map((r: any) => ({...r, id: String(r.id), operatorId: String(r.operator_id) })));
-        }
-    } catch (error) {
-        console.error("Failed to fetch data", error);
-        alert("Não foi possível carregar os dados do servidor.");
-        handleLogout();
-    } finally {
-        setIsLoading(null);
-    }
-  };
+const fetchData = async () => {
+    if (!currentUser) return;
+    setIsLoading('Carregando dados...');
+    try {
+        const apiEndpoints: Promise<any>[] = [
+            // Adicionado timestamp para evitar cache no GET
+            apiFetch(`/api/locations?timestamp=${new Date().getTime()}`),
+            apiFetch(`/api/records?timestamp=${new Date().getTime()}`),
+            apiFetch(`/api/services?timestamp=${new Date().getTime()}`),
+            apiFetch('/api/contract-configs'),
+        ];
+        if (currentUser.role === 'ADMIN') {
+            apiEndpoints.push(apiFetch('/api/users'));
+        }
+        const results = await Promise.all(apiEndpoints);
+        const [locs, recs, srvs, configs, usrs] = results;
+        
+        // Normalização dos dados (TODOS OS IDs viram string)
+        setLocations(locs.map((l: any) => ({
+            ...l,
+            id: String(l.id),
+            services: (l.services || []).map((s: any) => ({
+                ...s,
+                serviceId: String(s.serviceId)
+            }))
+        })));
+        
+        setServices(srvs.map((s: any) => ({...s, id: String(s.id), unitId: String(s.unitId) })));
+        
+        setContractConfigs(configs || []);
+        
+        const mapRecord = (r: any) => ({
+            ...r,
+            id: String(r.id),
+            operatorId: String(r.operatorId),
+            // A CORREÇÃO PRINCIPAL ESTÁ AQUI:
+            locationId: r.locationId ? String(r.locationId) : undefined
+        });
+
+        if (currentUser.role === 'ADMIN') {
+            setRecords(recs.map(mapRecord));
+            if (usrs) setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
+        } else if (currentUser.role === 'OPERATOR') {
+            setRecords(recs.filter((r: any) => String(r.operatorId) === String(currentUser.id)).map(mapRecord));
+        } else { // FISCAL
+            const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
+            setRecords(recs.filter((r: any) => fiscalGroups.includes(r.contractGroup)).map(mapRecord));
+        }
+
+    } catch (error) {
+        console.error("Failed to fetch data", error);
+        alert("Não foi possível carregar os dados do servidor.");
+        handleLogout();
+    } finally {
+        setIsLoading(null);
+    }
+};
 
   useEffect(() => {
     const restoreSession = async () => {
