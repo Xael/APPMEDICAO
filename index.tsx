@@ -383,21 +383,27 @@ const OperatorServiceSelect: React.FC<{
     user: User;
     onSelectService: (service: ServiceDefinition) => void 
 }> = ({ location, services, user, onSelectService }) => {
+       // LÓGICA CORRIGIDA AQUI
     let availableServices: ServiceDefinition[] = [];
-    if (location.serviceIds && location.serviceIds.length > 0) {
-        availableServices = services.filter(s => location.serviceIds!.includes(s.id));
+    
+    // Se o local tem serviços específicos definidos, use-os
+    if (location.services && location.services.length > 0) {
+        const locationServiceIds = new Set(location.services.map(s => s.serviceId));
+        availableServices = services.filter(s => locationServiceIds.has(s.id));
     } else {
+        // Senão, use a atribuição do usuário como fallback
         const assignment = user.assignments?.find(a => a.contractGroup === location.contractGroup);
         const userAssignedServiceNames = assignment?.serviceNames || [];
         availableServices = services.filter(s => userAssignedServiceNames.includes(s.name));
     }
+    
     return (
         <div className="card">
             <h2>Escolha o Serviço em "{location.name}"</h2>
             <div className="service-selection-list">
                 {availableServices.map(service => (
                     <button key={service.id} className="button" onClick={() => onSelectService(service)}>
-                        {service.name} ({service.unit})
+                        {service.name} ({service.unit.symbol}) {/* Corrigido para usar unit.symbol */}
                     </button>
                 ))}
             </div>
@@ -2032,7 +2038,7 @@ const App = () => {
         }
         const results = await Promise.all(apiEndpoints);
         const [locs, recs, srvs, configs, usrs] = results;
-        setLocations(locs.map((l: any) => ({...l, id: String(l.id), contractGroup: l.city })));
+        setLocations(locs.map((l: any) => ({...l, id: String(l.id) })));
         setServices(srvs.map((s: any) => ({...s, id: String(s.id) })));
         setContractConfigs(configs || []);
         if (currentUser.role === 'ADMIN') {
