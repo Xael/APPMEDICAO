@@ -2012,11 +2012,12 @@ const ManageServicesView: React.FC<{
         }
     };
     
-    const handleEditService = (service: ServiceDefinition) => {
-        setEditingServiceId(service.id);
-        setServiceName(service.name);
-        setSelectedUnitId(service.unit.id); // Usa o ID da unidade
-    };
+const handleEditService = (service: ServiceDefinition) => {
+    setEditingServiceId(service.id);
+    setServiceName(service.name);
+    // CORREÇÃO: Usa o ID da unidade de medida do objeto aninhado
+    setSelectedUnitId(String(service.unit.id));
+};
 
     const handleDeleteService = async (id: string) => {
         if (window.confirm('Excluir este tipo de serviço?')) {
