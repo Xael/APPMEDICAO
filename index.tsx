@@ -697,224 +697,222 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
     </div>
 );
 
-const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
-    const [reportType, setReportType] = useState<'excel' | 'photos' | null>(null);
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [selectedServices, setSelectedServices] = useState<string[]>([]);
-    const [selectedContractGroup, setSelectedContractGroup] = useState('');
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const printableRef = useRef<HTMLDivElement>(null);
-    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+const ManageLocationsView: React.FC<{
+    locations: LocationRecord[];
+    services: ServiceDefinition[];
+    fetchData: () => Promise<void>;
+}> = ({ locations, services, fetchData }) => {
+    const [selectedGroup, setSelectedGroup] = useState('');
+    const [name, setName] = useState('');
+    const [coords, setCoords] = useState<Partial<GeolocationCoords> | null>(null);
+    const [isFetchingCoords, setIsFetchingCoords] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [serviceMeasurements, setServiceMeasurements] = useState<Record<string, string>>({});
 
-    const allServiceNames = services.map(s => s.name);
-    const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
-    
-    const handleServiceFilterChange = (service: string, isChecked: boolean) => { setSelectedServices(prev => isChecked ? [...prev, service] : prev.filter(s => s !== service)); };
-    
-    const filteredRecords = records.filter(r => {
-        const recordDate = new Date(r.startTime);
-        const start = startDate ? new Date(startDate) : null;
-        const end = endDate ? new Date(endDate) : null;
-        if (start && recordDate < start) return false;
-        if (end) { end.setHours(23, 59, 59, 999); if (recordDate > end) return false; }
-        if (selectedServices.length > 0 && !selectedServices.includes(r.serviceType)) return false;
-        if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
-        return true;
-    }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-    
-    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if(e.target.checked) setSelectedIds(filteredRecords.map(r => r.id));
-        else setSelectedIds([]);
+    const allGroups = [...new Set(locations.map(l => l.contractGroup))].filter(Boolean).sort();
+
+    const resetForm = () => {
+        setName('');
+        setCoords(null);
+        setServiceMeasurements({});
+        setEditingId(null);
     };
 
-    const handleSelectOne = (id: string, isChecked: boolean) => {
-        if(isChecked) setSelectedIds(ids => [...ids, id]);
-        else setSelectedIds(ids => ids.filter(i => i !== id));
-    };
-
-    const selectedRecords = records.filter(r => selectedIds.includes(r.id));
-    const totalArea = selectedRecords.reduce((sum, r) => sum + (r.locationArea || 0), 0);
-
-    const handleExportExcel = async () => {
-        if (selectedRecords.length === 0) {
-            alert("Nenhum registro selecionado para exportar.");
-            return;
-        }
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Relatório de Serviços');
-        worksheet.columns = [
-            { header: 'ID', key: 'id', width: 10 }, { header: 'Data Início', key: 'startTime', width: 20 },
-            { header: 'Data Fim', key: 'endTime', width: 20 }, { header: 'Contrato/Cidade', key: 'contractGroup', width: 25 },
-            { header: 'Local', key: 'locationName', width: 40 }, { header: 'Serviço', key: 'serviceType', width: 30 },
-            { header: 'Medição', key: 'locationArea', width: 15 }, { header: 'Unidade', key: 'serviceUnit', width: 15 },
-            { header: 'Operador', key: 'operatorName', width: 25 }, { header: 'Usou GPS', key: 'gpsUsed', width: 10 },
-        ];
-        selectedRecords.forEach(record => {
-            worksheet.addRow({
-                id: record.id, startTime: formatDateTime(record.startTime),
-                endTime: record.endTime ? formatDateTime(record.endTime) : 'Não finalizado',
-                contractGroup: record.contractGroup, locationName: record.locationName,
-                serviceType: record.serviceType, locationArea: record.locationArea,
-                serviceUnit: record.serviceUnit, operatorName: record.operatorName,
-                gpsUsed: record.gpsUsed ? 'Sim' : 'Não',
-            });
-        });
-        try {
-            const buffer = await workbook.xlsx.writeBuffer();
-            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `relatorio_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
-            link.click();
-            URL.revokeObjectURL(link.href);
-        } catch (error) {
-            console.error("Erro ao gerar Excel:", error);
-            alert("Ocorreu um erro ao gerar o arquivo Excel.");
+    const handleAddNewGroup = () => {
+        const newGroup = prompt('Digite o nome do novo Contrato/Cidade:');
+        if (newGroup) {
+            setSelectedGroup(newGroup.trim());
+            resetForm();
         }
     };
 
-    const handleGeneratePdfClick = () => {
-        if (selectedRecords.length === 0) {
-            alert("Por favor, selecione ao menos um registro para gerar o PDF.");
-            return;
-        }
-        setIsGeneratingPdf(true);
-    };
-
-    const PdfLayout = () => {
-        const recordsPerPage = 2;
-        const [pages, setPages] = useState<ServiceRecord[][]>([]);
-        const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
-        const [isLoadingImages, setIsLoadingImages] = useState(true);
-
-        const getBase64Image = (url: string): Promise<string> => {
-            return new Promise(async (resolve) => {
-                try {
-                    const response = await fetch(url);
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    const blob = await response.blob();
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.onerror = () => resolve("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
-                    reader.readAsDataURL(blob);
-                } catch (error) {
-                    console.error(`Failed to fetch image ${url}:`, error);
-                    resolve("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
-                }
-            });
-        };
-
-        useEffect(() => {
-            const processRecords = async () => {
-                const allImageUrls = selectedRecords.flatMap(r => [...(r.beforePhotos || []), ...(r.afterPhotos || [])]);
-                const uniqueImageUrls = [...new Set(allImageUrls)];
-                const imagePromises = uniqueImageUrls.map(url => getBase64Image(`${API_BASE}${url}`).then(base64 => ({ url, base64 })));
-                const results = await Promise.all(imagePromises);
-                const imageMap = results.reduce((acc, { url, base64 }) => {
-                    acc[`${API_BASE}${url}`] = base64;
-                    return acc;
-                }, {} as Record<string, string>);
-                setLoadedImages(imageMap);
-                const paginatedRecords = [];
-                for (let i = 0; i < selectedRecords.length; i += recordsPerPage) {
-                    paginatedRecords.push(selectedRecords.slice(i, i + recordsPerPage));
-                }
-                setPages(paginatedRecords);
-                setIsLoadingImages(false);
-            };
-            if (selectedRecords.length > 0) { processRecords(); } else { setIsLoadingImages(false); }
-        }, []);
-
-        useEffect(() => {
-            if (!isLoadingImages && pages.length > 0) {
-                (async () => {
-                    if (!printableRef.current) return;
-                    try {
-                        const doc = new jsPDF('p', 'mm', 'a4');
-                        const pageElements = printableRef.current.querySelectorAll('.printable-page');
-                        for (let i = 0; i < pageElements.length; i++) {
-                            const page = pageElements[i] as HTMLElement;
-                            const canvas = await html2canvas(page, { scale: 2, useCORS: true, logging: false });
-                            if (i > 0) doc.addPage();
-                            doc.addImage(canvas.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight());
-                        }
-                        doc.save(`relatorio_fotos_crb_${new Date().toISOString().split('T')[0]}.pdf`);
-                    } catch (error) {
-                        console.error("Erro ao gerar PDF:", error);
-                        alert("Ocorreu um erro ao gerar o PDF.");
-                    } finally {
-                        setIsGeneratingPdf(false);
-                    }
-                })();
-            }
-        }, [isLoadingImages, pages]);
-        
-        if (isLoadingImages) return null;
-        
-        const today = new Date().toLocaleDateString('pt-BR');
-        return (
-            <div className="printable-report-container" ref={printableRef}>
-                {pages.map((pageRecords, pageIndex) => (
-                    <div key={pageIndex} className="printable-page">
-                        <header className="pdf-page-header">
-                            <div style={{ display: 'flex', alignItems: 'center' }}>
-                                <img src={logoSrc} alt="Logo" style={{ maxHeight: '25px', width: 'auto' }} />
-                                <h2 style={{fontSize: '16pt', margin: '0 0 0 10px'}}>Relatório Fotográfico</h2>
-                            </div>
-                            <p style={{textAlign: 'right', fontSize: '10pt'}}>CRB Serviços<br/>Data de Emissão: {today}</p>
-                        </header>
-                        <div className="pdf-page-content">
-                            {pageRecords.map(record => {
-                                const photoPairs = [];
-                                const maxPhotos = Math.max((record.beforePhotos || []).length, (record.afterPhotos || []).length);
-                                for (let i = 0; i < maxPhotos; i++) {
-                                    photoPairs.push({ before: record.beforePhotos?.[i], after: record.afterPhotos?.[i] });
-                                }
-                                return (
-                                    <div key={record.id} className="pdf-record-block">
-                                        <div className="pdf-record-info">
-                                            <h3>{record.locationName}</h3>
-                                            <p>
-    <strong>Contrato/Cidade:</strong> {record.contractGroup} |
-    <strong> Serviço:</strong> {record.serviceType} |
-    <strong> Data:</strong> {formatDateTime(record.startTime)}
-    {record.locationArea && record.locationArea > 0 && (
-        <>
-            {' | '}
-            <strong>Medição:</strong>
-            {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
-        </>
-    )}
-</p>
-                                        </div>
-                                        <table className="pdf-photo-table">
-                                            <thead><tr><th>ANTES</th><th>DEPOIS</th></tr></thead>
-                                            <tbody>
-                                                {photoPairs.map((pair, index) => (
-                                                    <tr key={index}>
-                                                        <td>
-                                                            {pair.before && <img src={loadedImages[`${API_BASE}${pair.before}`]} alt={`Antes ${index + 1}`} />}
-                                                            <p className="caption">Foto Antes {index + 1}</p>
-                                                        </td>
-                                                        <td>
-                                                            {pair.after && <img src={loadedImages[`${API_BASE}${pair.after}`]} alt={`Depois ${index + 1}`} />}
-                                                            <p className="caption">Foto Depois {index + 1}</p>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                         <footer className="pdf-page-footer">Página {pageIndex + 1} de {pages.length}</footer>
-                    </div>
-                ))}
-            </div>
+    const handleGetCoordinates = () => {
+        setIsFetchingCoords(true);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                setCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+                setIsFetchingCoords(false);
+            },
+            (error) => {
+                alert(`Erro ao obter GPS: ${error.message}`);
+                setIsFetchingCoords(false);
+            },
+            { enableHighAccuracy: true }
         );
     };
+
+    const handleCoordChange = (field: 'latitude' | 'longitude', valueStr: string) => {
+        const value = parseFloat(valueStr);
+        setCoords(curr => {
+            const newCoords = { ...(curr || {}) };
+            (newCoords as any)[field] = isNaN(value) ? undefined : value;
+            if (newCoords.latitude === undefined && newCoords.longitude === undefined) return null;
+            return newCoords;
+        });
+    };
+
+    const handleMeasurementChange = (serviceId: string, value: string) => {
+        setServiceMeasurements(prev => ({ ...prev, [serviceId]: value }));
+    };
+
+    const handleServiceToggle = (serviceId: string, isChecked: boolean) => {
+        const newMeasurements = { ...serviceMeasurements };
+        if (isChecked) {
+            newMeasurements[serviceId] = '';
+        } else {
+            delete newMeasurements[serviceId];
+        }
+        setServiceMeasurements(newMeasurements);
+    };
+
+    const handleSave = async () => {
+        if (!selectedGroup || !name) {
+            alert('Contrato/Cidade e Nome do Local são obrigatórios.');
+            return;
+        }
+
+        const servicesPayload = Object.entries(serviceMeasurements)
+            .filter(([_, measurement]) => measurement && !isNaN(parseFloat(measurement)))
+            .map(([service_id, measurement]) => ({
+                service_id,
+                measurement: parseFloat(measurement)
+            }));
+
+        if (servicesPayload.length === 0) {
+            if (!window.confirm("Nenhum serviço com medição foi adicionado. Deseja salvar este local mesmo assim?")) {
+                return;
+            }
+        }
+        
+        const payload = {
+            city: selectedGroup.trim(),
+            name,
+            lat: coords?.latitude,
+            lng: coords?.longitude,
+            services: servicesPayload,
+        };
+
+        try {
+            if (editingId) {
+                await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+            } else {
+                await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
+            }
+            alert(`Local "${name}" salvo com sucesso!`);
+            resetForm();
+            await fetchData();
+        } catch (error) {
+            alert('Falha ao salvar local.');
+            console.error(error);
+        }
+    };
+
+    const handleEdit = (loc: LocationRecord) => {
+        setEditingId(loc.id);
+        setName(loc.name);
+        setCoords(loc.coords || null);
+        setSelectedGroup(loc.contractGroup);
+        const initialMeasurements = (loc.services || []).reduce((acc, srv) => {
+            acc[srv.serviceId] = String(srv.measurement);
+            return acc;
+        }, {} as Record<string, string>);
+        setServiceMeasurements(initialMeasurements);
+    };
+
+    const handleDelete = async (id: string) => {
+        if (window.confirm('Excluir este local?')) {
+            try {
+                await apiFetch(`/api/locations/${id}`, { method: 'DELETE' });
+                await fetchData();
+            } catch (error) {
+                alert('Falha ao excluir local. Tente novamente.');
+                console.error(error);
+            }
+        }
+    };
+
+    const filteredLocations = selectedGroup ? locations.filter(l => l.contractGroup === selectedGroup) : [];
+
+    return (
+        <div>
+            <div className="card">
+                <h3>Gerenciar Locais por Contrato/Cidade</h3>
+                <div className="form-group contract-group-selector">
+                    <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); resetForm(); }}>
+                        <option value="">Selecione um Contrato/Cidade</option>
+                        {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                    <button className="button button-secondary" onClick={handleAddNewGroup}>Adicionar Novo</button>
+                </div>
+            </div>
+
+            {selectedGroup && (
+                <>
+                    <div className="form-container card">
+                        <h3>{editingId ? 'Editando Local' : 'Adicionar Novo Local'} em "{selectedGroup}"</h3>
+                        <input type="text" placeholder="Nome do Local (Endereço)" value={name} onChange={e => setName(e.target.value)} />
+                        
+                        <fieldset className="service-assignment-fieldset">
+                            <legend>Serviços e Medições do Local</legend>
+                            <div className="checkbox-group">
+                                {services.sort((a,b) => a.name.localeCompare(b.name)).map(service => {
+                                    const isChecked = service.id in serviceMeasurements;
+                                    return (
+                                        <div key={service.id} className="checkbox-item" style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', border: '1px solid #eee', padding: '0.5rem', borderRadius: '4px'}}>
+                                            <div>
+                                                <input type="checkbox" id={`service-loc-${service.id}`} checked={isChecked} onChange={e => handleServiceToggle(service.id, e.target.checked)} />
+                                                <label htmlFor={`service-loc-${service.id}`}>{service.name}</label>
+                                            </div>
+                                            {isChecked && (
+                                                <input type="number" placeholder={`Medição (${service.unit.symbol})`} value={serviceMeasurements[service.id] || ''} onChange={e => handleMeasurementChange(service.id, e.target.value)} style={{width: '100%'}} />
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </fieldset>
+
+                        <fieldset className="form-group-full">
+                            <legend>Coordenadas GPS (Opcional)</legend>
+                            <div className="coord-inputs">
+                                <input type="number" placeholder="Latitude" value={coords?.latitude || ''} onChange={e => handleCoordChange('latitude', e.target.value)} />
+                                <input type="number" placeholder="Longitude" value={coords?.longitude || ''} onChange={e => handleCoordChange('longitude', e.target.value)} />
+                            </div>
+                            <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '0.5rem' }}>
+                                {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
+                            </button>
+                        </fieldset>
+                        
+                        <button className="button admin-button" onClick={handleSave}>{editingId ? 'Salvar Alterações' : 'Adicionar Local'}</button>
+                        {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
+                    </div>
+                    
+                    <ul className="location-list">
+                        {filteredLocations.sort((a,b) => a.name.localeCompare(b.name)).map(loc => (
+                            <li key={loc.id} className="card list-item">
+                                <div className="list-item-info">
+                                    <div className="list-item-header">
+                                        <h3>{loc.name}</h3>
+                                        <div>
+                                            <button className="button button-sm admin-button" onClick={() => handleEdit(loc)}>Editar</button>
+                                            <button className="button button-sm button-danger" onClick={() => handleDelete(loc.id)}>Excluir</button>
+                                        </div>
+                                    </div>
+                                    <div className="location-services-list">
+                                        <strong>Serviços:</strong>
+                                        {(loc.services && loc.services.length > 0) ? (
+                                            <ul>{loc.services.map(s => <li key={s.serviceId}>{s.name}: {s.measurement} {s.unit.symbol}</li>)}</ul>
+                                        ) : ' Nenhum atribuído'}
+                                    </div>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                </>
+            )}
+        </div>
+    );
+};
 
     if (isGeneratingPdf) {
         return (
