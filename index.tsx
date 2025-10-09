@@ -1250,7 +1250,7 @@ const ManageUsersView: React.FC<{
     const [newAssignmentGroup, setNewAssignmentGroup] = useState('');
     const [newAssignmentServices, setNewAssignmentServices] = useState<Set<string>>(new Set());
 
-    const allGroups = [...new Set(locations.map(l => l.contractGroup))].filter(Boolean).sort();
+    const allGroups = [...new Set(locations.map(l => l.contractGroup))].sort();
     const allServices = [...services].sort((a, b) => a.name.localeCompare(b.name));
 
     const resetForm = () => {
@@ -2111,7 +2111,7 @@ const ManageServicesView: React.FC<{
                     </button>
                     {editingServiceId && <button className="button button-secondary" onClick={resetServiceForm}>Cancelar</button>}
                 </div>
-                <ul className="location-list" style={{ marginTop: '1.5rem' }}>
+                <ul classNameão="location-list" style={{ marginTop: '1.5rem' }}>
                     {services.sort((a, b) => a.name.localeCompare(b.name)).map(s => (
                         <li key={s.id} className="service-definition-item">
                             <span><strong>{s.name}</strong> (Unidade: {s.unit.symbol})</span>
@@ -2348,30 +2348,23 @@ const App = () => {
 
     const handleLocationSelect = (location: LocationRecord, service: ServiceDefinition | null, measurement: number | null, gpsUsed: boolean) => {
         setSelectedLocation(location);
+        
+        // Se um serviço foi selecionado no passo anterior (criação de local manual)
         if (service) {
-            const serviceDetail = {
-                serviceId: service.id,
-                name: service.name,
-                measurement: measurement!,
-                unit: service.unit,
-            };
-
-            const locationWithService: LocationRecord = {
-                ...location,
-                services: [...(location.services || []), serviceDetail]
-            };
-
             setCurrentService({
-                serviceType: serviceDetail.name,
-                serviceUnit: serviceDetail.unit.symbol,
-                contractGroup: locationWithService.contractGroup,
-                locationId: locationWithService.id.startsWith('manual-') ? undefined : locationWithService.id,
-                locationName: locationWithService.name,
-                locationArea: serviceDetail.measurement,
+                serviceType: service.name,
+                serviceUnit: service.unit.symbol,
+                contractGroup: location.contractGroup,
+                locationId: location.id.startsWith('manual-') ? undefined : location.id,
+                locationName: location.name,
+                locationArea: measurement,
                 gpsUsed: gpsUsed,
+                // Adiciona o coords para a requisição POST futura
+                coords: location.coords,
             });
             navigate('PHOTO_STEP');
         } else {
+            // Se for um local existente, continua para a próxima tela
             navigate('OPERATOR_SERVICE_SELECT');
         }
     };
@@ -2426,16 +2419,24 @@ const App = () => {
             let contractGroup = currentService.contractGroup;
 
             if (locationName && !locationId) {
+                const serviceId = services.find(s => s.name === currentService.serviceType)?.id;
+                const measurement = currentService.locationArea;
+                
+                if (!serviceId || measurement === undefined || measurement === null) {
+                     alert("Erro: Informações de serviço e medição ausentes para novo local.");
+                     throw new Error("Dados de serviço incompletos para novo local.");
+                }
+
                 const newLocation = await apiFetch('/api/locations', {
                     method: 'POST',
                     body: JSON.stringify({
                         city: contractGroup,
                         name: locationName,
-                        lat: currentService.gpsUsed && selectedLocation?.coords ? selectedLocation.coords.latitude : undefined,
-                        lng: currentService.gpsUsed && selectedLocation?.coords ? selectedLocation.coords.longitude : undefined,
+                        lat: currentService.gpsUsed && currentService.coords ? currentService.coords.latitude : undefined,
+                        lng: currentService.gpsUsed && currentService.coords ? currentService.coords.longitude : undefined,
                         services: [{
-                            service_id: services.find(s => s.name === currentService.serviceType)?.id,
-                            measurement: currentService.locationArea
+                            service_id: serviceId,
+                            measurement: measurement
                         }]
                     })
                 });
@@ -2464,7 +2465,8 @@ const App = () => {
             setCurrentService(prev => ({
                 ...prev,
                 ...recordPayload,
-                id: recordPayload.tempId
+                id: recordPayload.tempId,
+                locationId: recordPayload.locationId ? String(recordPayload.locationId) : undefined,
             }));
 
             navigate('OPERATOR_SERVICE_IN_PROGRESS');
