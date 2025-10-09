@@ -1899,25 +1899,20 @@ const ManageServicesView: React.FC<{
     services: ServiceDefinition[];
     fetchData: () => Promise<void>;
 }> = ({ services, fetchData }) => {
-    // === ESTADOS PARA SERVIÇOS ===
-    const [serviceName, setServiceName] = useState('');
-    const [selectedUnitId, setSelectedUnitId] = useState('');
-    const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
-
-    // === ESTADOS PARA UNIDADES ===
+    // ... (estados anteriores)
     const [units, setUnits] = useState<Unit[]>([]);
     const [unitName, setUnitName] = useState('');
     const [unitSymbol, setUnitSymbol] = useState('');
-    const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
+    const [editingUnitId, setEditingUnitId] = useState<string | null>(null); // Garantimos que o ID é string
     
     const [isLoading, setIsLoading] = useState(false);
 
-    // Busca as unidades da API ao carregar o componente
     useEffect(() => {
         const fetchUnits = async () => {
             try {
                 const fetchedUnits = await apiFetch('/api/units');
-                setUnits(fetchedUnits);
+                // Adicione a normalização de ID aqui também
+                setUnits(fetchedUnits.map((u: any) => ({ ...u, id: String(u.id) })));
             } catch (error) {
                 console.error("Failed to fetch units", error);
                 alert("Não foi possível carregar as unidades de medida.");
@@ -1941,26 +1936,31 @@ const ManageServicesView: React.FC<{
         setIsLoading(true);
         try {
             const payload = { name: unitName, symbol: unitSymbol };
+            
+            // --- CORREÇÃO AQUI ---
             if (editingUnitId) {
+                // Se existe um ID de edição, faça um PUT para atualizar
                 await apiFetch(`/api/units/${editingUnitId}`, { method: 'PUT', body: JSON.stringify(payload) });
             } else {
+                // Se não, faça um POST para criar
                 await apiFetch('/api/units', { method: 'POST', body: JSON.stringify(payload) });
             }
+            // --- FIM DA CORREÇÃO ---
+
             resetUnitForm();
-            // Recarrega os dados de tudo (serviços e unidades)
             await fetchData();
             const fetchedUnits = await apiFetch('/api/units');
-            setUnits(fetchedUnits);
-
-        } catch (error) {
+            setUnits(fetchedUnits.map((u: any) => ({ ...u, id: String(u.id) }))); // Normaliza IDs
+        } catch (error: any) {
             alert('Falha ao salvar a unidade.');
+            console.error(error);
         } finally {
             setIsLoading(false);
         }
     };
 
     const handleEditUnit = (unit: Unit) => {
-        setEditingUnitId(unit.id);
+        setEditingUnitId(unit.id); // O ID já é uma string, como esperado
         setUnitName(unit.name);
         setUnitSymbol(unit.symbol);
     };
@@ -1972,7 +1972,7 @@ const ManageServicesView: React.FC<{
                 await apiFetch(`/api/units/${id}`, { method: 'DELETE' });
                 await fetchData();
                 const fetchedUnits = await apiFetch('/api/units');
-                setUnits(fetchedUnits);
+                setUnits(fetchedUnits.map((u: any) => ({ ...u, id: String(u.id) }))); // Normaliza IDs
             } catch (error: any) {
                 alert(`Falha ao excluir: ${error.message}`);
             } finally {
@@ -1995,7 +1995,9 @@ const ManageServicesView: React.FC<{
         }
         setIsLoading(true);
         try {
-            const payload = { name: serviceName, unitId: parseInt(selectedUnitId) };
+            // Converte o selectedUnitId para número, caso a API exija
+            const payload = { name: serviceName, unitId: parseInt(selectedUnitId, 10) };
+            
             if (editingServiceId) {
                 await apiFetch(`/api/services/${editingServiceId}`, { method: 'PUT', body: JSON.stringify(payload) });
             } else {
@@ -2013,7 +2015,7 @@ const ManageServicesView: React.FC<{
     const handleEditService = (service: ServiceDefinition) => {
         setEditingServiceId(service.id);
         setServiceName(service.name);
-        setSelectedUnitId(String(service.unitId));
+        setSelectedUnitId(service.unit.id); // Usa o ID da unidade
     };
 
     const handleDeleteService = async (id: string) => {
