@@ -2369,13 +2369,13 @@ const App = () => {
         }
     };
 
-// SUBSTITUA TODA A SUA FUNÇÃO 'handleBeforePhotos' POR ESTA VERSÃO:
+// SUBSTITUA A FUNÇÃO 'handleBeforePhotos' INTEIRA POR ESTA VERSÃO:
 
 const handleBeforePhotos = async (photosBefore: string[]) => {
-    setIsLoading("Criando registro e salvando fotos 'Antes'...");
+    setIsLoading("Preparando registro...");
     try {
-        // Prepara os dados de texto para o registro.
-        // Note que NÃO há dados de imagem aqui dentro.
+        // 1. Prepara o pacote de dados de TEXTO para o registro.
+        //    Não há dados de imagem aqui dentro, evitando o erro "Payload Too Large".
         const recordPayload = {
             operatorId: parseInt(currentUser!.id, 10),
             serviceType: currentService.serviceType,
@@ -2386,36 +2386,47 @@ const handleBeforePhotos = async (photosBefore: string[]) => {
             locationArea: currentService.locationArea,
             gpsUsed: !!currentService.gpsUsed,
             startTime: new Date().toISOString(),
-            tempId: crypto.randomUUID(),
-            // Informações do novo local para o backend processar, se necessário
+            tempId: crypto.randomUUID(), // ID temporário para o syncManager
+            
+            // Informações do novo local, caso o operador tenha criado um.
+            // O backend e o syncManager usarão isso.
             newLocationInfo: !currentService.locationId 
-                ? { name: currentService.locationName, city: currentService.contractGroup, lat: currentService.coords?.latitude, lng: currentService.coords?.longitude } 
+                ? { 
+                    name: currentService.locationName, 
+                    city: currentService.contractGroup, 
+                    lat: currentService.coords?.latitude, 
+                    lng: currentService.coords?.longitude,
+                    services: [{ 
+                        service_id: services.find(s => s.name === currentService.serviceType)?.id, 
+                        measurement: currentService.locationArea 
+                    }]
+                  } 
                 : undefined
         };
 
-        // Converte as fotos para o formato de arquivo.
+        // 2. Converte as fotos para o formato de ARQUIVO.
         const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
 
-        // Entrega os dados de texto e os arquivos de foto para o syncManager.
+        // 3. Entrega os dados de texto e os arquivos para o syncManager cuidar de tudo.
         await queueRecord(recordPayload, beforeFiles);
 
-        // Atualiza a interface para o usuário.
+        // 4. Atualiza a interface e avança para a próxima tela.
         setCurrentService(prev => ({
             ...prev,
             ...recordPayload,
-            id: recordPayload.tempId 
+            id: recordPayload.tempId,
+            beforePhotos: photosBefore // Guarda as fotos localmente para visualização
         }));
         
         navigate('OPERATOR_SERVICE_IN_PROGRESS');
 
     } catch (err) {
-        console.error("Falha ao colocar registro na fila:", err);
-        alert("Falha ao salvar registro local.");
+        console.error("Falha ao colocar o registro na fila:", err);
+        alert("Falha ao salvar o registro localmente. Tente novamente.");
     } finally {
         setIsLoading(null);
     }
 };
-
                 
                 locationId = String(newLocation.id);
                 console.log("Novo local criado com ID:", locationId);
