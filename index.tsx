@@ -409,8 +409,6 @@ const OperatorServiceSelect: React.FC<{
         const assignment = user.assignments?.find(a => a.contractGroup === location.contractGroup);
         const assignedServiceNames = new Set(assignment?.serviceNames || []);
         
-        // Se for um local manual, todos os serviços atribuídos ao usuário estão disponíveis.
-        // Se for um local existente, apenas os serviços configurados para aquele local estão disponíveis.
         const relevantServices = isManualLocation 
             ? services.filter(s => assignedServiceNames.has(s.name))
             : services.filter(s => (location.services || []).some(ls => ls.serviceId === s.id));
@@ -1831,8 +1829,6 @@ const AdminEditRecordView: React.FC<{
     );
 };
 
-
-
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
     
     const handleExportPdf = () => {
@@ -1911,12 +1907,10 @@ const ManageServicesView: React.FC<{
     services: ServiceDefinition[];
     fetchData: () => Promise<void>;
 }> = ({ services, fetchData }) => {
-    // === ESTADOS PARA SERVIÇOS ===
     const [serviceName, setServiceName] = useState('');
     const [selectedUnitId, setSelectedUnitId] = useState('');
     const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
 
-    // === ESTADOS PARA UNIDADES ===
     const [units, setUnits] = useState<Unit[]>([]);
     const [unitName, setUnitName] = useState('');
     const [unitSymbol, setUnitSymbol] = useState('');
@@ -1924,7 +1918,6 @@ const ManageServicesView: React.FC<{
     
     const [isLoading, setIsLoading] = useState(false);
 
-    // Busca as unidades da API ao carregar o componente
     useEffect(() => {
         const fetchUnits = async () => {
             try {
@@ -1938,7 +1931,6 @@ const ManageServicesView: React.FC<{
         fetchUnits();
     }, []);
 
-    // --- LÓGICA PARA UNIDADES ---
     const resetUnitForm = () => {
         setUnitName('');
         setUnitSymbol('');
@@ -1992,7 +1984,6 @@ const ManageServicesView: React.FC<{
         }
     };
 
-    // --- LÓGICA PARA SERVIÇOS ---
     const resetServiceForm = () => {
         setServiceName('');
         setSelectedUnitId('');
@@ -2043,7 +2034,6 @@ const ManageServicesView: React.FC<{
 
     return (
         <div>
-            {/* Seção 1: Gerenciamento de Unidades de Medida */}
             <div className="card">
                 <h3>Gerenciar Unidades de Medida</h3>
                 <div className="form-container add-service-form" style={{alignItems: 'flex-end'}}>
@@ -2067,7 +2057,6 @@ const ManageServicesView: React.FC<{
                 </ul>
             </div>
 
-            {/* Seção 2: Gerenciamento de Tipos de Serviço */}
             <div className="card" style={{ marginTop: '2rem' }}>
                 <h3>Gerenciar Tipos de Serviço</h3>
                 <div className="form-container add-service-form" style={{alignItems: 'flex-end'}}>
@@ -2286,14 +2275,12 @@ const App = () => {
             }
         };
         restoreSession();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
         if (currentUser) {
             fetchData();
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentUser]);
 
     const resetService = () => {
@@ -2318,10 +2305,39 @@ const App = () => {
         navigate('OPERATOR_SERVICE_SELECT');
     };
 
+    const startNewServiceRecord = (service: ServiceDefinition, measurement?: number) => {
+        if (!selectedLocation) return;
+        const isManual = selectedLocation.id.startsWith('manual-');
+        const serviceDetail = selectedLocation.services?.find(s => s.serviceId === service.id);
+        const locationArea = isManual ? measurement : serviceDetail?.measurement;
+
+        if (locationArea === undefined) {
+            alert("Erro: Medição não encontrada para este serviço. Por favor, contate o administrador.");
+            return;
+        }
+
+        setCurrentService({
+            serviceType: service.name,
+            serviceUnit: service.unit.symbol,
+            contractGroup: selectedLocation.contractGroup,
+            locationId: isManual ? undefined : selectedLocation.id,
+            locationName: selectedLocation.name,
+            locationArea: locationArea,
+            gpsUsed: selectedLocation._gpsUsed || false,
+            coords: selectedLocation.coords
+        });
+        navigate('PHOTO_STEP');
+    };
+
     const handleServiceSelect = (service: ServiceDefinition, measurement?: number) => {
         if (!selectedLocation) return;
         
         const isManual = selectedLocation.id.startsWith('manual-');
+        if(isManual) {
+            startNewServiceRecord(service, measurement);
+            return;
+        }
+        
         const config = contractConfigs.find(c => c.contractGroup === selectedLocation.contractGroup);
         const cycleStartDay = config ? config.cycleStartDay : 1;
         const today = new Date();
@@ -2332,39 +2348,24 @@ const App = () => {
         cycleStartDate.setHours(0, 0, 0, 0);
 
         const existingRecord = records.find(record =>
-            !isManual &&
             record.locationId === selectedLocation.id &&
             record.serviceType === service.name &&
             new Date(record.startTime) >= cycleStartDate
         );
 
         if (existingRecord) {
-            console.log("Reabrindo registro para adicionar fotos 'Depois':", existingRecord.id);
-            setCurrentService(existingRecord);
-            navigate('PHOTO_STEP');
-        } else {
-            console.log("Iniciando novo registro para o serviço:", service.name);
-            const serviceDetail = selectedLocation.services?.find(s => s.serviceId === service.id);
-
-            // For manual locations, measurement is passed in; for existing, it's from serviceDetail
-            const locationArea = isManual ? measurement : serviceDetail?.measurement;
-
-            if (locationArea === undefined) {
-                 alert("Erro: Medição não encontrada para este serviço. Por favor, contate o administrador.");
-                 return;
+            const userChoice = window.confirm(
+                "Este serviço já foi realizado neste ciclo.\n\nClique em 'OK' para iniciar um NOVO registro (novas fotos de antes e depois).\n\nClique em 'Cancelar' para adicionar fotos 'Depois' ao registro existente."
+            );
+            if (userChoice) { // OK - Iniciar Novo
+                startNewServiceRecord(service, measurement);
+            } else { // Cancelar - Adicionar Fotos Depois
+                console.log("Reabrindo registro para adicionar fotos 'Depois':", existingRecord.id);
+                setCurrentService(existingRecord);
+                navigate('PHOTO_STEP');
             }
-
-            setCurrentService({
-                serviceType: service.name,
-                serviceUnit: service.unit.symbol,
-                contractGroup: selectedLocation.contractGroup,
-                locationId: isManual ? undefined : selectedLocation.id,
-                locationName: selectedLocation.name,
-                locationArea: locationArea,
-                gpsUsed: selectedLocation._gpsUsed || false,
-                coords: selectedLocation.coords
-            });
-            navigate('PHOTO_STEP');
+        } else {
+            startNewServiceRecord(service, measurement);
         }
     };
 
@@ -2372,20 +2373,14 @@ const App = () => {
         setIsLoading("Criando registro e salvando fotos 'Antes'...");
         try {
             let locationId = currentService.locationId;
-            let finalServicesPayload = [];
 
-            // If it's a new location (no locationId yet), create it first.
             if (!locationId && currentService.locationName) {
                 const serviceDef = services.find(s => s.name === currentService.serviceType);
                 if (!serviceDef || currentService.locationArea === undefined) {
                     throw new Error("Dados de serviço ou medição ausentes para criar novo local.");
                 }
 
-                finalServicesPayload.push({
-                    service_id: serviceDef.id,
-                    measurement: currentService.locationArea
-                });
-
+                console.log("Tentando criar novo local via API...");
                 const newLocation = await apiFetch('/api/locations', {
                     method: 'POST',
                     body: JSON.stringify({
@@ -2393,10 +2388,14 @@ const App = () => {
                         name: currentService.locationName,
                         lat: currentService.coords?.latitude,
                         lng: currentService.coords?.longitude,
-                        services: finalServicesPayload
+                        services: [{
+                            service_id: serviceDef.id,
+                            measurement: currentService.locationArea
+                        }]
                     })
                 });
                 locationId = String(newLocation.id);
+                console.log("Novo local criado com ID:", locationId);
             }
             
             const recordPayload = {
@@ -2409,20 +2408,18 @@ const App = () => {
                 locationArea: currentService.locationArea,
                 gpsUsed: !!currentService.gpsUsed,
                 startTime: new Date().toISOString(),
-                tempId: crypto.randomUUID()
+                tempId: crypto.randomUUID(),
+                beforePhotosData: photosBefore, // Passando os dados para o syncManager
             };
 
-            const beforeFiles = photosBefore.map((p, i) =>
-                dataURLtoFile(p, `before_${i}.jpg`)
-            );
-
+            const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
             await queueRecord(recordPayload, beforeFiles);
 
             setCurrentService(prev => ({
                 ...prev,
                 ...recordPayload,
                 id: recordPayload.tempId,
-                locationId: locationId, // Store the newly created ID
+                locationId: locationId,
             }));
             
             navigate('OPERATOR_SERVICE_IN_PROGRESS');
@@ -2441,11 +2438,8 @@ const App = () => {
             const afterFiles = photosAfter.map((p, i) =>
                 dataURLtoFile(p, `after_${i}.jpg`)
             );
-
             await addAfterPhotosToPending(currentService.tempId || currentService.id!, afterFiles);
-            
             navigate('CONFIRM_STEP');
-
         } catch (err) {
             console.error(err);
             alert("Falha ao salvar fotos localmente.");
@@ -2566,11 +2560,13 @@ const App = () => {
                     case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : null;
                     case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} records={records} contractConfigs={contractConfigs} /> : null;
                     case 'OPERATOR_SERVICE_IN_PROGRESS': return <ServiceInProgressView service={currentService} onFinish={() => navigate('PHOTO_STEP')} />;
-                    case 'PHOTO_STEP': 
-                        if(!currentService.id) { // New record, or re-opened record with no 'after' photos yet
-                            return <PhotoStep phase="BEFORE" onComplete={handleBeforePhotos} onCancel={resetService} />;
+                    case 'PHOTO_STEP': {
+                        const isAfterPhase = currentService.beforePhotos && currentService.beforePhotos.length > 0;
+                        if (isAfterPhase) {
+                            return <PhotoStep phase="AFTER" onComplete={handleAfterPhotos} onCancel={resetService} />;
                         }
-                        return <PhotoStep phase="AFTER" onComplete={handleAfterPhotos} onCancel={resetService} />;
+                        return <PhotoStep phase="BEFORE" onComplete={handleBeforePhotos} onCancel={resetService} />;
+                    }
                     case 'CONFIRM_STEP': return <ConfirmStep recordData={currentService} onSave={handleSave} onCancel={resetService} />;
                     case 'HISTORY': 
                         const operatorRecords = records.filter(r => String(r.operatorId) === String(currentUser.id));
