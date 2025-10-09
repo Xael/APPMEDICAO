@@ -2369,13 +2369,12 @@ const App = () => {
         }
     };
 
-// SUBSTITUA A FUNÇÃO 'handleBeforePhotos' INTEIRA POR ESTA VERSÃO:
+// APAGUE A SUA FUNÇÃO 'handleBeforePhotos' ANTIGA E SUBSTITUA POR ESTA:
 
 const handleBeforePhotos = async (photosBefore: string[]) => {
     setIsLoading("Preparando registro...");
     try {
         // 1. Prepara o pacote de dados de TEXTO para o registro.
-        //    Não há dados de imagem aqui dentro, evitando o erro "Payload Too Large".
         const recordPayload = {
             operatorId: parseInt(currentUser!.id, 10),
             serviceType: currentService.serviceType,
@@ -2389,7 +2388,7 @@ const handleBeforePhotos = async (photosBefore: string[]) => {
             tempId: crypto.randomUUID(), // ID temporário para o syncManager
             
             // Informações do novo local, caso o operador tenha criado um.
-            // O backend e o syncManager usarão isso.
+            // O backend (junto com o syncManager) usará isso para criar o local.
             newLocationInfo: !currentService.locationId 
                 ? { 
                     name: currentService.locationName, 
@@ -2414,8 +2413,8 @@ const handleBeforePhotos = async (photosBefore: string[]) => {
         setCurrentService(prev => ({
             ...prev,
             ...recordPayload,
-            id: recordPayload.tempId,
-            beforePhotos: photosBefore // Guarda as fotos localmente para visualização
+            id: recordPayload.tempId, // Usa o tempId para o estado do app
+            beforePhotos: photosBefore.map(p => p) // Guarda as fotos localmente para visualização
         }));
         
         navigate('OPERATOR_SERVICE_IN_PROGRESS');
