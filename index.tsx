@@ -386,7 +386,6 @@ const OperatorServiceSelect: React.FC<{
 
     const isManualLocation = location.id.startsWith('manual-');
 
-    // 1. LÓGICA PARA CALCULAR O INÍCIO DO CICLO ATUAL
     const getCurrentCycleStartDate = (contractGroup: string): Date => {
         const config = contractConfigs.find(c => c.contractGroup === contractGroup);
         const cycleStartDay = config ? config.cycleStartDay : 1;
@@ -404,7 +403,6 @@ const OperatorServiceSelect: React.FC<{
         return cycleStartDate;
     };
 
-    // 2. FILTRA OS SERVIÇOS E VERIFICA O STATUS
     const getServicesWithStatus = () => {
         const assignment = user.assignments?.find(a => a.contractGroup === location.contractGroup);
         const assignedServiceNames = new Set(assignment?.serviceNames || []);
@@ -477,6 +475,7 @@ const OperatorServiceSelect: React.FC<{
     );
 };
 
+// =================== COMPONENTE ALTERADO ===================
 const OperatorLocationSelect: React.FC<{ 
     locations: LocationRecord[]; 
     contractGroup: string; 
@@ -488,14 +487,22 @@ const OperatorLocationSelect: React.FC<{
     const [error, setError] = useState<string | null>(null);
     const [nearbyLocation, setNearbyLocation] = useState<LocationRecord | null>(null);
     const contractLocations = locations.filter(l => l.contractGroup === contractGroup);
+    
+    // NOVO ESTADO: para controlar o botão de busca de GPS
+    const [isFetchingCoords, setIsFetchingCoords] = useState(false);
 
+    // Este useEffect continua útil para a função de "Local Próximo"
     useEffect(() => {
         const watchId = navigator.geolocation.watchPosition(
             (pos) => {
                 const currentCoords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
                 setGpsLocation(currentCoords);
                 setError(null);
-                const closest = contractLocations.filter(l => l.coords).map(l => ({ ...l, distance: calculateDistance(currentCoords, l.coords!) })).filter(l => l.distance < 100).sort((a, b) => a.distance - b.distance)[0];
+                const closest = contractLocations
+                    .filter(l => l.coords)
+                    .map(l => ({ ...l, distance: calculateDistance(currentCoords, l.coords!) }))
+                    .filter(l => l.distance < 100)
+                    .sort((a, b) => a.distance - b.distance)[0];
                 setNearbyLocation(closest || null);
             },
             (err) => setError('Não foi possível obter a localização GPS.'),
@@ -503,10 +510,29 @@ const OperatorLocationSelect: React.FC<{
         );
         return () => navigator.geolocation.clearWatch(watchId);
     }, [contractLocations]);
+    
+    // NOVA FUNÇÃO: para ser chamada pelo botão
+    const handleGetCoordinates = () => {
+        setIsFetchingCoords(true);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const newCoords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+                setGpsLocation(newCoords);
+                setIsFetchingCoords(false);
+                alert('Coordenadas GPS capturadas com sucesso!');
+            },
+            (error) => {
+                alert(`Erro ao obter GPS: ${error.message}`);
+                setIsFetchingCoords(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    };
 
     const handleConfirmNearby = () => {
         if(nearbyLocation) { onSelectLocation(nearbyLocation, true); }
     };
+    
     const handleConfirmNewManual = () => {
         if (manualLocationName.trim()) {
             const newManualLocation: LocationRecord = { 
@@ -521,6 +547,7 @@ const OperatorLocationSelect: React.FC<{
             alert('Por favor, digite o nome do novo local.');
         }
     };
+    
     const handleSelectFromList = (loc: LocationRecord) => {
         onSelectLocation(loc, false);
     };
@@ -528,11 +555,12 @@ const OperatorLocationSelect: React.FC<{
     const filteredLocations = contractLocations.filter(loc =>
         loc.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
     return (
         <div className="card">
             <h2>Selecione o Local em "{contractGroup}"</h2>
             {error && <p className="text-danger">{error}</p>}
-            {!gpsLocation && !error && <Loader text="Obtendo sinal de GPS..." />}
+            
             {nearbyLocation && (
                 <div className="card-inset">
                     <h4>Local Próximo Encontrado via GPS</h4>
@@ -553,11 +581,21 @@ const OperatorLocationSelect: React.FC<{
             <div className="card-inset">
                 <h4>Ou, crie um novo local</h4>
                 <input type="text" placeholder="Digite o nome do NOVO local" value={manualLocationName} onChange={e => setManualLocationName(e.target.value)} />
-                <button className="button" onClick={handleConfirmNewManual} disabled={!manualLocationName.trim()}>Confirmar Novo Local</button>
+                
+                {/* NOVO BOTÃO ADICIONADO AQUI */}
+                <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '1rem', width: '100%' }}>
+                    {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
+                </button>
+                {gpsLocation && <p style={{textAlign: 'center', fontSize: '0.8rem', color: 'green'}}>Coordenadas GPS prontas para serem salvas com o novo local.</p>}
+                
+                <button className="button" onClick={handleConfirmNewManual} disabled={!manualLocationName.trim()} style={{ marginTop: '1rem', width: '100%' }}>
+                    Confirmar Novo Local
+                </button>
             </div>
         </div>
     );
 };
+// ==========================================================
 
 const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: string[]) => void; onCancel: () => void }> = ({ phase, onComplete, onCancel }) => {
     const [photos, setPhotos] = useState<string[]>([]);
@@ -2369,64 +2407,63 @@ const App = () => {
         }
     };
 
-// APAGUE A SUA FUNÇÃO 'handleBeforePhotos' ANTIGA E SUBSTITUA POR ESTA:
-
-const handleBeforePhotos = async (photosBefore: string[]) => {
-    setIsLoading("Preparando registro...");
-    try {
-        // 1. Prepara o pacote de dados de TEXTO para o registro.
-        const recordPayload = {
-            operatorId: parseInt(currentUser!.id, 10),
-            serviceType: currentService.serviceType,
-            serviceUnit: currentService.serviceUnit,
-            locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
-            locationName: currentService.locationName,
-            contractGroup: currentService.contractGroup,
-            locationArea: currentService.locationArea,
-            gpsUsed: !!currentService.gpsUsed,
-            startTime: new Date().toISOString(),
-            tempId: crypto.randomUUID(), // ID temporário para o syncManager
-            
-            // Informações do novo local, caso o operador tenha criado um.
-            // O backend (junto com o syncManager) usará isso para criar o local.
-            newLocationInfo: !currentService.locationId 
-                ? { 
-                    name: currentService.locationName, 
-                    city: currentService.contractGroup, 
-                    lat: currentService.coords?.latitude, 
-                    lng: currentService.coords?.longitude,
-                    services: [{ 
-                        service_id: services.find(s => s.name === currentService.serviceType)?.id, 
-                        measurement: currentService.locationArea 
-                    }]
-                  } 
-                : undefined
-        };
-
-        // 2. Converte as fotos para o formato de ARQUIVO.
-        const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
-
-        // 3. Entrega os dados de texto e os arquivos para o syncManager cuidar de tudo.
-        await queueRecord(recordPayload, beforeFiles);
-
-        // 4. Atualiza a interface e avança para a próxima tela.
-        setCurrentService(prev => ({
-            ...prev,
-            ...recordPayload,
-            id: recordPayload.tempId, // Usa o tempId para o estado do app
-            beforePhotos: photosBefore.map(p => p) // Guarda as fotos localmente para visualização
-        }));
-        
-        navigate('OPERATOR_SERVICE_IN_PROGRESS');
-
-    } catch (err) {
-        console.error("Falha ao colocar o registro na fila:", err);
-        alert("Falha ao salvar o registro localmente. Tente novamente.");
-    } finally {
-        setIsLoading(null);
-    }
-};
+    const handleBeforePhotos = async (photosBefore: string[]) => {
+        setIsLoading("Preparando registro...");
+        try {
+            // 1. Prepara o pacote de dados de TEXTO para o registro.
+            //    Não há dados de imagem aqui dentro, evitando o erro "Payload Too Large".
+            const recordPayload = {
+                operatorId: parseInt(currentUser!.id, 10),
+                serviceType: currentService.serviceType,
+                serviceUnit: currentService.serviceUnit,
+                locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
+                locationName: currentService.locationName,
+                contractGroup: currentService.contractGroup,
+                locationArea: currentService.locationArea,
+                gpsUsed: !!currentService.gpsUsed,
+                startTime: new Date().toISOString(),
+                tempId: crypto.randomUUID(), // ID temporário para o syncManager
                 
+                // Informações do novo local, caso o operador tenha criado um.
+                // O backend (junto com o syncManager) usará isso para criar o local.
+                newLocationInfo: !currentService.locationId 
+                    ? { 
+                        name: currentService.locationName, 
+                        city: currentService.contractGroup, 
+                        lat: currentService.coords?.latitude, 
+                        lng: currentService.coords?.longitude,
+                        services: [{ 
+                            service_id: services.find(s => s.name === currentService.serviceType)?.id, 
+                            measurement: currentService.locationArea 
+                        }]
+                      } 
+                    : undefined
+            };
+    
+            // 2. Converte as fotos para o formato de ARQUIVO.
+            const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
+    
+            // 3. Entrega os dados de texto e os arquivos para o syncManager cuidar de tudo.
+            await queueRecord(recordPayload, beforeFiles);
+    
+            // 4. Atualiza a interface e avança para a próxima tela.
+            setCurrentService(prev => ({
+                ...prev,
+                ...recordPayload,
+                id: recordPayload.tempId, // Usa o tempId para o estado do app
+                beforePhotos: photosBefore.map(p => p) // Guarda as fotos localmente para visualização
+            }));
+            
+            navigate('OPERATOR_SERVICE_IN_PROGRESS');
+    
+        } catch (err) {
+            console.error("Falha ao colocar o registro na fila:", err);
+            alert("Falha ao salvar o registro localmente. Tente novamente.");
+        } finally {
+            setIsLoading(null);
+        }
+    };
+
     const handleAfterPhotos = async (photosAfter: string[]) => {
         setIsLoading("Salvando fotos 'Depois'...");
         try {
