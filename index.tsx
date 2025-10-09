@@ -2433,7 +2433,7 @@ const handleBeforePhotos = async (photosBefore: string[]) => {
             const afterFiles = photosAfter.map((p, i) =>
                 dataURLtoFile(p, `after_${i}.jpg`)
             );
-            await addAfterPhotosToPending(currentService.tempId || currentService.id!, afterFiles);
+            await addAfterPhotosToPending(currentService.id || currentService.tempId!, afterFiles);
             navigate('CONFIRM_STEP');
         } catch (err) {
             console.error(err);
