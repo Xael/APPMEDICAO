@@ -76,6 +76,8 @@ export async function trySync() {
       // 4. Remove da fila
       await deletePendingRecord(item.id);
       console.log("Registro sincronizado:", item.payload.tempId, "-> Novo ID:", newRecord.id);
+
+      window.dispatchEvent(new CustomEvent('syncSuccess', { detail: { tempId: item.payload.tempId, newId: newRecord.id } }));
       
       // A LINHA ABAIXO PRECISA SER ATIVADA:
       localStorage.removeItem(`sync_map_${item.payload.tempId}`);
