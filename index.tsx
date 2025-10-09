@@ -7,9 +7,8 @@ import { queueRecord, addAfterPhotosToPending } from "./syncManager";
 import logoSrc from './assets/Logo.png';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
-import { apiFetch } from "./api";
 
-ChartJS.register( CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend );
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend);
 
 // --- Tipos, Helpers, Hooks ---
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
@@ -68,9 +67,9 @@ type View =
     | 'OPERATOR_SERVICE_IN_PROGRESS'
     | 'CONFIRM_STEP';
 
-interface Unit { id: string; name: string; symbol: string;}
-interface ServiceDefinition { id: string; name: string; unit: Unit; unitId: number;}
-interface LocationServiceDetail { serviceId: string; name: string; measurement: number; unit: Unit;}
+interface Unit { id: string; name: string; symbol: string; }
+interface ServiceDefinition { id: string; name: string; unit: Unit; unitId: number; }
+interface LocationServiceDetail { serviceId: string; name: string; measurement: number; unit: Unit; }
 interface UserAssignment { contractGroup: string; serviceNames: string[]; }
 interface User { id: string; username: string; email?: string; password?: string; role: Role; assignments?: UserAssignment[]; }
 interface GeolocationCoords { latitude: number; longitude: number; }
@@ -114,23 +113,23 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
     const getTitle = () => {
         if (!currentUser) return 'CRB SERVIÇOS';
         if (isAdmin) {
-            switch(view) {
+            switch (view) {
                 case 'ADMIN_DASHBOARD': return 'Painel do Administrador';
                 case 'ADMIN_MANAGE_SERVICES': return 'Gerenciar Tipos de Serviço';
                 case 'ADMIN_MANAGE_LOCATIONS': return 'Gerenciar Locais';
                 case 'ADMIN_MANAGE_USERS': return 'Gerenciar Funcionários';
-                case 'ADMIN_MANAGE_GOALS': return 'Metas & Gráficos';
-                case 'ADMIN_MANAGE_CYCLES': return 'Gerenciar Ciclos de Medição';
+                case 'ADMIN_MANAGE_GOALS': return '🎯 Metas & Gráficos';
+                case 'ADMIN_MANAGE_CYCLES': return '🗓️ Gerenciar Ciclos de Medição';
                 case 'REPORTS': return 'Gerador de Relatórios';
                 case 'HISTORY': return 'Histórico Geral';
                 case 'DETAIL': return 'Detalhes do Serviço';
                 case 'ADMIN_EDIT_RECORD': return 'Editar Registro de Serviço';
-                case 'AUDIT_LOG': return 'Log de Auditoria';
+                case 'AUDIT_LOG': return '📜 Log de Auditoria';
                 default: return 'Modo Administrador';
             }
         }
         if (currentUser.role === 'FISCAL') {
-             switch(view) {
+            switch (view) {
                 case 'FISCAL_DASHBOARD': return 'Painel de Fiscalização';
                 case 'REPORTS': return 'Relatórios';
                 case 'HISTORY': return 'Histórico de Serviços';
@@ -138,7 +137,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 default: return 'Modo Fiscalização';
             }
         }
-        switch(view) {
+        switch (view) {
             case 'OPERATOR_GROUP_SELECT': return 'Selecione o Contrato/Cidade';
             case 'OPERATOR_LOCATION_SELECT': return 'Selecione o Local';
             case 'OPERATOR_SERVICE_SELECT': return `Selecione o Serviço`;
@@ -161,7 +160,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
     );
 };
 
-const Loader: React.FC<{ text?: string }> = ({ text = "Carregando..." }) => ( <div className="loader-container"><div className="spinner"></div><p>{text}</p></div> );
+const Loader: React.FC<{ text?: string }> = ({ text = "Carregando..." }) => (<div className="loader-container"><div className="spinner"></div><p>{text}</p></div>);
 
 const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () => void; onFinish: () => void; photoCount: number }> = ({ onCapture, onCancel, onFinish, photoCount }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -297,7 +296,7 @@ const ManageCyclesView: React.FC<{
     const handleDayChange = (contractGroup: string, day: string) => {
         const dayAsNumber = parseInt(day, 10);
         if (day === '' || (dayAsNumber >= 1 && dayAsNumber <= 31)) {
-            setCycleConfigs(prev => ({...prev, [contractGroup]: day === '' ? 1 : dayAsNumber}));
+            setCycleConfigs(prev => ({ ...prev, [contractGroup]: day === '' ? 1 : dayAsNumber }));
         }
     };
 
@@ -328,11 +327,11 @@ const ManageCyclesView: React.FC<{
         <div className="card">
             <h2>Gerenciar Ciclos de Medição</h2>
             <p>Para cada contrato, defina o dia em que o ciclo de medição se inicia (ex: 10 para um ciclo que vai do dia 10 ao dia 9 do mês seguinte).</p>
-            
-            <div className="form-container" style={{gap: '1.5rem', marginTop: '1.5rem', textAlign: 'left'}}>
+
+            <div className="form-container" style={{ gap: '1.5rem', marginTop: '1.5rem', textAlign: 'left' }}>
                 {allContractGroups.map(group => (
-                     <div key={group} className="form-group">
-                        <label htmlFor={`cycle-day-${group}`} style={{fontWeight: 'bold'}}>{group}</label>
+                    <div key={group} className="form-group">
+                        <label htmlFor={`cycle-day-${group}`} style={{ fontWeight: 'bold' }}>{group}</label>
                         <input
                             type="number"
                             id={`cycle-day-${group}`}
@@ -341,11 +340,11 @@ const ManageCyclesView: React.FC<{
                             value={cycleConfigs[group] || 1}
                             onChange={(e) => handleDayChange(group, e.target.value)}
                         />
-                     </div>
+                    </div>
                 ))}
             </div>
 
-            <button className="button admin-button" style={{marginTop: '2rem'}} onClick={handleSave} disabled={isLoading}>
+            <button className="button admin-button" style={{ marginTop: '2rem' }} onClick={handleSave} disabled={isLoading}>
                 {isLoading ? 'Salvando...' : 'Salvar Configurações'}
             </button>
         </div>
@@ -359,9 +358,9 @@ const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void }> = ({ onNav
     </div>
 );
 
-const OperatorGroupSelect: React.FC<{ 
+const OperatorGroupSelect: React.FC<{
     user: User;
-    onSelectGroup: (group: string) => void 
+    onSelectGroup: (group: string) => void
 }> = ({ user, onSelectGroup }) => {
     const assignedGroups = [...new Set(user.assignments?.map(a => a.contractGroup) || [])].sort();
     return (
@@ -404,7 +403,7 @@ const OperatorServiceSelect: React.FC<{
             // O ciclo atual começou no mês passado
             cycleStartDate = new Date(currentYear, currentMonth - 1, cycleStartDay);
         }
-        
+
         // Zera as horas para comparar apenas as datas
         cycleStartDate.setHours(0, 0, 0, 0);
         return cycleStartDate;
@@ -452,20 +451,20 @@ const OperatorServiceSelect: React.FC<{
                             className="button"
                             onClick={() => onSelectService(service)}
                             //disabled={service.status === 'done'} // Desabilita se já foi feito
-                            style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
+                            style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
                                 alignItems: 'center',
                                 backgroundColor: service.status === 'done' ? '#cccccc' : '' // Cor cinza para desabilitado
                             }}
                         >
                             <span>{service.name} ({service.unit.symbol})</span>
-                            
+
                             {/* Renderiza o ícone de status */}
                             {service.status === 'done' ? (
-                                <span style={{color: 'green', fontSize: '1.5rem'}}>✅</span>
+                                <span style={{ color: 'green', fontSize: '1.5rem' }}>✅</span>
                             ) : (
-                                <span style={{color: '#f0ad4e', fontSize: '1.5rem'}}>⚠️</span>
+                                <span style={{ color: '#f0ad4e', fontSize: '1.5rem' }}>⚠️</span>
                             )}
                         </button>
                     ))
@@ -480,7 +479,7 @@ const OperatorLocationSelect: React.FC<{
     contractGroup: string;
     onSelectLocation: (loc: LocationRecord, service: ServiceDefinition | null, measurement: number | null, gpsUsed: boolean) => void;
     services: ServiceDefinition[];
-    currentUser: User | null; // Adicionado para acessar as atribuições
+    currentUser: User | null;
 }> = ({ locations, contractGroup, onSelectLocation, services, currentUser }) => {
     const [manualLocationName, setManualLocationName] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
@@ -593,358 +592,6 @@ const OperatorLocationSelect: React.FC<{
         </div>
     );
 };
-
-// ... (rest of your code, unchanged components)
-
-// --- Componente Principal ---
-const App = () => {
-    const [view, setView] = useState<View>('LOGIN');
-    const [currentUser, setCurrentUser] = useLocalStorage<User | null>('crbCurrentUser', null);
-
-    const [users, setUsers] = useState<User[]>([]);
-    const [locations, setLocations] = useState<LocationRecord[]>([]);
-    const [records, setRecords] = useState<ServiceRecord[]>([]);
-    const [services, setServices] = useState<ServiceDefinition[]>([]);
-    const [contractConfigs, setContractConfigs] = useState<ContractConfig[]>([]);
-    const [goals, setGoals] = useLocalStorage<Goal[]>('crbGoals', []);
-    const [auditLog, setAuditLog] = useLocalStorage<AuditLogEntry[]>('crbAuditLog', []);
-
-    const [currentService, setCurrentService] = useLocalStorage<Partial<ServiceRecord>>('crbCurrentService', {});
-    const [selectedRecord, setSelectedRecord] = useState<ServiceRecord | null>(null);
-    const [selectedContractGroup, setSelectedContractGroup] = useState<string | null>(null);
-    const [selectedLocation, setSelectedLocation] = useState<LocationRecord | null>(null);
-    const [history, setHistory] = useState<View[]>([]);
-    const [isLoading, setIsLoading] = useState<string | null>(null);
-
-    const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
-
-    const handleToggleRecordSelection = (recordId: string) => {
-        setSelectedRecordIds(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(recordId)) {
-                newSet.delete(recordId);
-            } else {
-                newSet.add(recordId);
-            }
-            return newSet;
-        });
-    };
-
-    const handleDeleteSelectedRecords = async () => {
-        if (selectedRecordIds.size === 0) return;
-        if (window.confirm(`Tem certeza que deseja excluir os ${selectedRecordIds.size} registros selecionados?`)) {
-            setIsLoading("Excluindo registros...");
-            try {
-                const deletePromises = Array.from(selectedRecordIds).map(id =>
-                    apiFetch(`/api/records/${id}`, { method: 'DELETE' })
-                );
-                await Promise.all(deletePromises);
-
-                setRecords(prev => prev.filter(r => !selectedRecordIds.has(r.id)));
-                setSelectedRecordIds(new Set());
-                alert("Registros excluídos com sucesso.");
-            } catch (e) {
-                alert("Falha ao excluir um ou mais registros.");
-                console.error(e);
-            } finally {
-                setIsLoading(null);
-            }
-        }
-    };
-
-    useEffect(() => {
-        const handleSyncSuccess = (event: Event) => {
-            const { tempId, newId } = (event as CustomEvent).detail;
-            setCurrentService(prev => {
-                if (prev.id === tempId || prev.tempId === tempId) {
-                    console.log(`ID do serviço atualizado de ${tempId} para ${newId}`);
-                    return { ...prev, id: String(newId) };
-                }
-                return prev;
-            });
-        };
-        window.addEventListener('syncSuccess', handleSyncSuccess);
-        return () => {
-            window.removeEventListener('syncSuccess', handleSyncSuccess);
-        };
-    }, [setCurrentService]);
-
-    const navigate = (newView: View, replace = false) => {
-        if (!replace) setHistory(h => [...h, view]);
-        setView(newView);
-    }
-
-    const handleBack = () => {
-        const lastView = history.pop();
-        if (lastView) {
-            setHistory([...history]);
-            setView(lastView);
-        } else if (currentUser) {
-            redirectUser(currentUser);
-        }
-    }
-
-    const redirectUser = (user: User) => {
-        if (user.role === 'ADMIN') {
-            navigate('ADMIN_DASHBOARD', true);
-        } else if (user.role === 'OPERATOR') {
-            navigate('OPERATOR_GROUP_SELECT', true);
-        } else if (user.role === 'FISCAL') {
-            navigate('FISCAL_DASHBOARD', true);
-        }
-    };
-
-    const handleLogout = () => {
-        setCurrentUser(null);
-        setApiToken(null);
-        setHistory([]);
-        setSelectedContractGroup(null);
-        setSelectedLocation(null);
-        setCurrentService({});
-        setLocations([]);
-        setRecords([]);
-        setUsers([]);
-        navigate('LOGIN', true);
-    }
-
-    const fetchData = async () => {
-        if (!currentUser) return;
-        setIsLoading('Carregando dados...');
-        try {
-            const apiEndpoints: Promise<any>[] = [
-                apiFetch(`/api/locations?timestamp=${new Date().getTime()}`),
-                apiFetch(`/api/records?timestamp=${new Date().getTime()}`),
-                apiFetch(`/api/services?timestamp=${new Date().getTime()}`),
-                apiFetch('/api/contract-configs'),
-            ];
-            if (currentUser.role === 'ADMIN') {
-                apiEndpoints.push(apiFetch('/api/users'));
-            }
-            const results = await Promise.all(apiEndpoints);
-            const [locs, recs, srvs, configs, usrs] = results;
-
-            setLocations(locs.map((l: any) => ({
-                ...l,
-                id: String(l.id),
-                services: (l.services || []).map((s: any) => ({
-                    ...s,
-                    serviceId: String(s.serviceId)
-                }))
-            })));
-
-            setServices(srvs.map((s: any) => ({ ...s, id: String(s.id), unitId: String(s.unitId) })));
-
-            setContractConfigs(configs || []);
-
-            const mapRecord = (r: any) => ({
-                ...r,
-                id: String(r.id),
-                operatorId: String(r.operatorId),
-                locationId: r.locationId ? String(r.locationId) : undefined
-            });
-
-            if (currentUser.role === 'ADMIN') {
-                setRecords(recs.map(mapRecord));
-                if (usrs) setUsers(usrs.map((u: any) => ({ ...u, id: String(u.id), username: u.name })));
-            } else if (currentUser.role === 'OPERATOR') {
-                setRecords(recs.filter((r: any) => String(r.operatorId) === String(currentUser.id)).map(mapRecord));
-            } else {
-                const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
-                setRecords(recs.filter((r: any) => fiscalGroups.includes(r.contractGroup)).map(mapRecord));
-            }
-
-        } catch (error) {
-            console.error("Failed to fetch data", error);
-            alert("Não foi possível carregar os dados do servidor.");
-            handleLogout();
-        } finally {
-            setIsLoading(null);
-        }
-    };
-
-    useEffect(() => {
-        const restoreSession = async () => {
-            if (API_TOKEN) {
-                setIsLoading("Verificando sessão...");
-                try {
-                    const me = await apiFetch('/api/auth/me');
-                    const user: User = { id: String(me.id), username: me.name, email: me.email, role: me.role, assignments: me.assignments || [] };
-                    setCurrentUser(user);
-                    if (view === 'LOGIN') {
-                        redirectUser(user);
-                    }
-                } catch (error) {
-                    console.error("Session restore failed", error);
-                    handleLogout();
-                } finally {
-                    setIsLoading(null);
-                }
-            }
-        };
-        restoreSession();
-    }, []);
-
-    useEffect(() => {
-        if (currentUser) {
-            fetchData();
-        }
-    }, [currentUser]);
-
-    const resetService = () => {
-        setCurrentService({});
-        setSelectedContractGroup(null);
-        setSelectedLocation(null);
-        redirectUser(currentUser!);
-    }
-
-    const handleLogin = (user: User) => {
-        setCurrentUser(user);
-        redirectUser(user);
-    };
-
-    const handleBackup = () => {
-        alert("O backup agora deve ser realizado diretamente no servidor/banco de dados.");
-    };
-
-    const handleRestore = () => {
-        alert("A restauração de dados agora deve ser realizada diretamente no servidor/banco de dados.");
-    };
-
-    const handleGroupSelect = (group: string) => {
-        setSelectedContractGroup(group);
-        navigate('OPERATOR_LOCATION_SELECT');
-    }
-
-    const handleLocationSelect = (location: LocationRecord, service: ServiceDefinition | null, measurement: number | null, gpsUsed: boolean) => {
-        setSelectedLocation(location);
-        if (service) {
-            const serviceDetail = {
-                serviceId: service.id,
-                name: service.name,
-                measurement: measurement!,
-                unit: service.unit,
-            };
-
-            const locationWithService: LocationRecord = {
-                ...location,
-                services: [...(location.services || []), serviceDetail]
-            };
-
-            setCurrentService({
-                serviceType: serviceDetail.name,
-                serviceUnit: serviceDetail.unit.symbol,
-                contractGroup: locationWithService.contractGroup,
-                locationId: locationWithService.id.startsWith('manual-') ? undefined : locationWithService.id,
-                locationName: locationWithService.name,
-                locationArea: serviceDetail.measurement,
-                gpsUsed: gpsUsed,
-            });
-            navigate('PHOTO_STEP');
-        } else {
-            navigate('OPERATOR_SERVICE_SELECT');
-        }
-    };
-
-    const handleServiceSelect = (service: ServiceDefinition) => {
-        if (!selectedLocation) return;
-        const config = contractConfigs.find(c => c.contractGroup === selectedLocation.contractGroup);
-        const cycleStartDay = config ? config.cycleStartDay : 1;
-        const today = new Date();
-        let cycleStartDate = new Date(today.getFullYear(), today.getMonth(), cycleStartDay);
-        if (today.getDate() < cycleStartDay) {
-            cycleStartDate.setMonth(cycleStartDate.getMonth() - 1);
-        }
-        cycleStartDate.setHours(0, 0, 0, 0);
-
-        const existingRecord = records.find(record =>
-            record.locationId === selectedLocation.id &&
-            record.serviceType === service.name &&
-            new Date(record.startTime) >= cycleStartDate
-        );
-
-        if (existingRecord) {
-            console.log("Reabrindo registro para adicionar fotos:", existingRecord.id);
-            setCurrentService(existingRecord);
-            navigate('PHOTO_STEP');
-        } else {
-            console.log("Iniciando novo registro para o serviço:", service.name);
-            const serviceDetail = selectedLocation.services?.find(s => s.serviceId === service.id);
-            if (!serviceDetail) {
-                alert("Erro: Este serviço não está configurado para este local. Por favor, contate o administrador.");
-                return;
-            }
-
-            setCurrentService({
-                serviceType: service.name,
-                serviceUnit: service.unit.symbol,
-                contractGroup: selectedLocation.contractGroup,
-                locationId: selectedLocation.id.startsWith('manual-') ? undefined : selectedLocation.id,
-                locationName: selectedLocation.name,
-                locationArea: serviceDetail.measurement,
-                gpsUsed: (selectedLocation as any)._gpsUsed || false,
-            });
-            navigate('PHOTO_STEP');
-        }
-    };
-
-    const handleBeforePhotos = async (photosBefore: string[]) => {
-        setIsLoading("Criando registro e salvando fotos 'Antes'...");
-        try {
-            let locationId = currentService.locationId;
-            let locationName = currentService.locationName;
-            let contractGroup = currentService.contractGroup;
-
-            if (locationName && !locationId) {
-                const newLocation = await apiFetch('/api/locations', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        city: contractGroup,
-                        name: locationName,
-                        lat: currentService.gpsUsed && selectedLocation?.coords ? selectedLocation.coords.latitude : undefined,
-                        lng: currentService.gpsUsed && selectedLocation?.coords ? selectedLocation.coords.longitude : undefined,
-                        services: [{
-                            service_id: services.find(s => s.name === currentService.serviceType)?.id,
-                            measurement: currentService.locationArea
-                        }]
-                    })
-                });
-                locationId = String(newLocation.id);
-            }
-
-            const recordPayload = {
-                operatorId: parseInt(currentUser!.id, 10),
-                serviceType: currentService.serviceType,
-                serviceUnit: currentService.serviceUnit,
-                locationId: locationId ? parseInt(locationId, 10) : undefined,
-                locationName: currentService.locationName,
-                contractGroup: currentService.contractGroup,
-                locationArea: currentService.locationArea,
-                gpsUsed: !!currentService.gpsUsed,
-                startTime: new Date().toISOString(),
-                tempId: crypto.randomUUID()
-            };
-
-            const beforeFiles = photosBefore.map((p, i) =>
-                dataURLtoFile(p, `before_${i}.jpg`)
-            );
-
-            await queueRecord(recordPayload, beforeFiles);
-
-            setCurrentService(prev => ({
-                ...prev,
-                ...recordPayload,
-                id: recordPayload.tempId
-            }));
-
-            navigate('OPERATOR_SERVICE_IN_PROGRESS');
-
-        } catch (err) {
-            console.error(err);
-            alert("Falha ao salvar registro local.");
-        } finally {
-            setIsLoading(null);
-        }
-    };
 
 const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: string[]) => void; onCancel: () => void }> = ({ phase, onComplete, onCancel }) => {
     const [photos, setPhotos] = useState<string[]>([]);
@@ -1603,7 +1250,7 @@ const ManageUsersView: React.FC<{
     const [newAssignmentGroup, setNewAssignmentGroup] = useState('');
     const [newAssignmentServices, setNewAssignmentServices] = useState<Set<string>>(new Set());
 
-    const allGroups = [...new Set(locations.map(l => l.contractGroup))].sort();
+    const allGroups = [...new Set(locations.map(l => l.contractGroup))].filter(Boolean).sort();
     const allServices = [...services].sort((a, b) => a.name.localeCompare(b.name));
 
     const resetForm = () => {
@@ -2215,8 +1862,6 @@ const AdminEditRecordView: React.FC<{
     );
 };
 
-
-
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
 
     const handleExportPdf = () => {
@@ -2299,7 +1944,7 @@ const ManageServicesView: React.FC<{
     const [units, setUnits] = useState<Unit[]>([]);
     const [unitName, setUnitName] = useState('');
     const [unitSymbol, setUnitSymbol] = useState('');
-    const [editingUnitId, setEditingUnitId] = useState<string | null>(null); // Garantimos que o ID é string
+    const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
 
     const [isLoading, setIsLoading] = useState(false);
 
@@ -2307,7 +1952,6 @@ const ManageServicesView: React.FC<{
         const fetchUnits = async () => {
             try {
                 const fetchedUnits = await apiFetch('/api/units');
-                // Adicione a normalização de ID aqui também
                 setUnits(fetchedUnits.map((u: any) => ({ ...u, id: String(u.id) })));
             } catch (error) {
                 console.error("Failed to fetch units", error);
@@ -2333,20 +1977,16 @@ const ManageServicesView: React.FC<{
         try {
             const payload = { name: unitName, symbol: unitSymbol };
 
-            // --- CORREÇÃO AQUI ---
             if (editingUnitId) {
-                // Se existe um ID de edição, faça um PUT para atualizar
                 await apiFetch(`/api/units/${editingUnitId}`, { method: 'PUT', body: JSON.stringify(payload) });
             } else {
-                // Se não, faça um POST para criar
                 await apiFetch('/api/units', { method: 'POST', body: JSON.stringify(payload) });
             }
-            // --- FIM DA CORREÇÃO ---
 
             resetUnitForm();
             await fetchData();
             const fetchedUnits = await apiFetch('/api/units');
-            setUnits(fetchedUnits.map((u: any) => ({ ...u, id: String(u.id) }))); // Normaliza IDs
+            setUnits(fetchedUnits.map((u: any) => ({ ...u, id: String(u.id) })));
         } catch (error: any) {
             alert('Falha ao salvar a unidade.');
             console.error(error);
@@ -2356,7 +1996,7 @@ const ManageServicesView: React.FC<{
     };
 
     const handleEditUnit = (unit: Unit) => {
-        setEditingUnitId(unit.id); // O ID já é uma string, como esperado
+        setEditingUnitId(unit.id);
         setUnitName(unit.name);
         setUnitSymbol(unit.symbol);
     };
@@ -2368,7 +2008,7 @@ const ManageServicesView: React.FC<{
                 await apiFetch(`/api/units/${id}`, { method: 'DELETE' });
                 await fetchData();
                 const fetchedUnits = await apiFetch('/api/units');
-                setUnits(fetchedUnits.map((u: any) => ({ ...u, id: String(u.id) }))); // Normaliza IDs
+                setUnits(fetchedUnits.map((u: any) => ({ ...u, id: String(u.id) })));
             } catch (error: any) {
                 alert(`Falha ao excluir: ${error.message}`);
             } finally {
@@ -2391,7 +2031,6 @@ const ManageServicesView: React.FC<{
         }
         setIsLoading(true);
         try {
-            // Converte o selectedUnitId para número, caso a API exija
             const payload = { name: serviceName, unitId: parseInt(selectedUnitId, 10) };
 
             if (editingServiceId) {
@@ -2411,7 +2050,6 @@ const ManageServicesView: React.FC<{
     const handleEditService = (service: ServiceDefinition) => {
         setEditingServiceId(service.id);
         setServiceName(service.name);
-        // CORREÇÃO: Usa o ID da unidade de medida do objeto aninhado
         setSelectedUnitId(String(service.unit.id));
     };
 
@@ -2847,7 +2485,7 @@ const App = () => {
             );
 
             await addAfterPhotosToPending(currentService.tempId || currentService.id!, afterFiles);
-            
+
             navigate('CONFIRM_STEP');
 
         } catch (err) {
@@ -2860,7 +2498,7 @@ const App = () => {
 
     const handleSave = () => {
         alert("Registro salvo com sucesso.");
-        fetchData(); 
+        fetchData();
         resetService();
     };
 
@@ -2893,10 +2531,10 @@ const App = () => {
             };
             setSelectedRecord(fullRecord);
             navigate('ADMIN_EDIT_RECORD');
-        } catch(e) {
-             alert('Não foi possível carregar o registro para edição.');
+        } catch (e) {
+            alert('Não foi possível carregar o registro para edição.');
         } finally {
-             setIsLoading(null);
+            setIsLoading(null);
         }
     };
 
@@ -2907,7 +2545,7 @@ const App = () => {
 
     const handleDeleteRecord = async (recordId: string) => {
         if (!currentUser || currentUser.role !== 'ADMIN') return;
-        
+
         const recordToDelete = records.find(r => r.id === recordId);
         if (!recordToDelete) return;
 
@@ -2917,7 +2555,7 @@ const App = () => {
                 await apiFetch(`/api/records/${recordId}`, { method: 'DELETE' });
                 setRecords(prev => prev.filter(r => r.id !== recordId));
                 alert("Registro excluído com sucesso.");
-            } catch(e) {
+            } catch (e) {
                 alert("Falha ao excluir o registro.");
                 console.error(e);
             } finally {
@@ -2933,10 +2571,10 @@ const App = () => {
         if (!currentUser) {
             return <Login onLogin={handleLogin} />;
         }
-        
-        switch(currentUser.role) {
+
+        switch (currentUser.role) {
             case 'ADMIN':
-                switch(view) {
+                switch (view) {
                     case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} />;
                     case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} fetchData={fetchData} />;
                     case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} services={services} fetchData={fetchData} />;
@@ -2950,14 +2588,14 @@ const App = () => {
                     case 'AUDIT_LOG': return <AuditLogView log={auditLog} />;
                     default: return <AdminDashboard onNavigate={navigate} />;
                 }
-            
+
             case 'FISCAL':
                 const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
                 const fiscalRecords = records.filter(r => fiscalGroups.includes(r.contractGroup));
-                switch(view) {
+                switch (view) {
                     case 'FISCAL_DASHBOARD': return <FiscalDashboard onNavigate={navigate} />;
                     case 'REPORTS': return <ReportsView records={fiscalRecords} services={services} />;
-                    case 'HISTORY': return <HistoryView records={fiscalRecords} onSelect={handleSelectRecord} isAdmin={false} selectedIds={new Set()} onToggleSelect={() => {}} />;
+                    case 'HISTORY': return <HistoryView records={fiscalRecords} onSelect={handleSelectRecord} isAdmin={false} selectedIds={new Set()} onToggleSelect={() => { }} />;
                     case 'DETAIL':
                         const canView = selectedRecord && fiscalGroups.includes(selectedRecord.contractGroup);
                         return canView ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado ou acesso não permitido.</p>;
@@ -2965,28 +2603,28 @@ const App = () => {
                 }
 
             case 'OPERATOR':
-                switch(view) {
+                switch (view) {
                     case 'OPERATOR_GROUP_SELECT': return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} />;
-                    case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : null;
+                    case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} services={services} currentUser={currentUser} /> : null;
                     case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} records={records} contractConfigs={contractConfigs} /> : null;
                     case 'OPERATOR_SERVICE_IN_PROGRESS': return <ServiceInProgressView service={currentService} onFinish={() => navigate('PHOTO_STEP')} />;
-                    case 'PHOTO_STEP': 
-                        if(!currentService.id) {
+                    case 'PHOTO_STEP':
+                        if (!currentService.id) {
                             return <PhotoStep phase="BEFORE" onComplete={handleBeforePhotos} onCancel={resetService} />;
                         }
                         return <PhotoStep phase="AFTER" onComplete={handleAfterPhotos} onCancel={resetService} />;
                     case 'CONFIRM_STEP': return <ConfirmStep recordData={currentService} onSave={handleSave} onCancel={resetService} />;
-                    case 'HISTORY': 
+                    case 'HISTORY':
                         const operatorRecords = records.filter(r => String(r.operatorId) === String(currentUser.id));
-                        return <HistoryView records={operatorRecords} onSelect={handleSelectRecord} isAdmin={false} onEdit={handleEditRecord} selectedIds={new Set()} onToggleSelect={() => {}} />;
+                        return <HistoryView records={operatorRecords} onSelect={handleSelectRecord} isAdmin={false} onEdit={handleEditRecord} selectedIds={new Set()} onToggleSelect={() => { }} />;
                     case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
                     case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado para edição.</p>;
                     default: return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} />;
                 }
-            
+
             default:
-                 handleLogout();
-                 return null;
+                handleLogout();
+                return null;
         }
     };
 
