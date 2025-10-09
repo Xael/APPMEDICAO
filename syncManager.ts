@@ -77,8 +77,8 @@ export async function trySync() {
       await deletePendingRecord(item.id);
       console.log("Registro sincronizado:", item.payload.tempId, "-> Novo ID:", newRecord.id);
       
-      // A LINHA ABAIXO FOI REMOVIDA PARA CORRIGIR O BUG
-      // localStorage.removeItem(`sync_map_${item.payload.tempId}`);
+      // A LINHA ABAIXO PRECISA SER ATIVADA:
+      localStorage.removeItem(`sync_map_${item.payload.tempId}`);
 
     } catch (err) {
       console.warn("Falha ao sincronizar:", item.id, err);
