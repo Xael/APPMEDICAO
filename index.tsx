@@ -948,7 +948,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     <div className="form-group"><label>Contrato/Cidade</label><select value={selectedContractGroup} onChange={e => setSelectedContractGroup(e.target.value)}><option value="">Todos</option>{allContractGroups.map(g => <option key={g} value={g}>{g}</option>)}</select></div>
                 </div>
                 <fieldset className="form-group-full"><legend>Filtrar por Serviços</legend><div className="checkbox-group">{allServiceNames.map(name => (<div key={name} className="checkbox-item"><input type="checkbox" id={`service-${name}`} checked={selectedServices.includes(name)} onChange={e => handleServiceFilterChange(name, e.target.checked)} /><label htmlFor={`service-${name}`}>{name}</label></div>))}</div></fieldset>
-            </div>
+                </div>
+             
             <div className="report-summary">
                 <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
                 {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
@@ -1176,7 +1177,31 @@ const ManageLocationsView: React.FC<{ 
               </div>
             </fieldset>
 
-            {/* ... (código para Coordenadas GPS, igual ao anterior) ... */}
+            <fieldset className="form-group-full">
+                <legend>Coordenadas GPS (Opcional)</legend>
+                <div className="coord-inputs">
+                    <input 
+                        type="number" 
+                        placeholder="Latitude" 
+                        value={coords?.latitude || ''} 
+                        onChange={e => handleCoordChange('latitude', e.target.value)} 
+                    />
+                    <input 
+                        type="number" 
+                        placeholder="Longitude" 
+                        value={coords?.longitude || ''} 
+                        onChange={e => handleCoordChange('longitude', e.target.value)} 
+                    />
+                </div>
+                <button 
+                    className="button button-secondary" 
+                    onClick={handleGetCoordinates} 
+                    disabled={isFetchingCoords}
+                    style={{ marginTop: '0.5rem' }}
+                >
+                    {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
+                </button>
+            </fieldset>
             
             <button className="button admin-button" onClick={handleSave}>{editingId ? 'Salvar Alterações' : 'Adicionar Local'}</button>
             {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
