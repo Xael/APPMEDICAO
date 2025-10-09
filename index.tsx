@@ -2409,7 +2409,7 @@ const App = () => {
                 gpsUsed: !!currentService.gpsUsed,
                 startTime: new Date().toISOString(),
                 tempId: crypto.randomUUID(),
-                beforePhotosData: photosBefore, // Passando os dados para o syncManager
+               
             };
 
             const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
