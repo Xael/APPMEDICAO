@@ -98,7 +98,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
         try {
             const valueToStore = value instanceof Function ? value(storedValue) : value;
             setStoredValue(valueToStore);
-            window.localStorage.localStorage.setItem(key, JSON.stringify(valueToStore));
+            window.localStorage.setItem(key, JSON.stringify(valueToStore));
         } catch (error) { console.error(error); }
     };
     return [storedValue, setValue];
@@ -506,7 +506,7 @@ const OperatorLocationSelect: React.FC<{
     };
     const handleConfirmNewManual = () => {
         if (manualLocationName.trim()) {
-            const newManualLocation: LocationRecord = { id: `manual-${new Date().getTime()}`, name: manualLocationName.trim(), contractGroup: contractGroup, area: 0, serviceIds: [] };
+            const newManualLocation: LocationRecord = { id: `manual-${new Date().getTime()}`, name: manualLocationName.trim(), contractGroup: contractGroup, services: [] };
             onSelectLocation(newManualLocation, false);
         } else {
             alert('Por favor, digite o nome do novo local.');
@@ -874,17 +874,17 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                         <div className="pdf-record-info">
                                             <h3>{record.locationName}</h3>
                                             <p>
-    <strong>Contrato/Cidade:</strong> {record.contractGroup} |
-    <strong> Serviço:</strong> {record.serviceType} |
-    <strong> Data:</strong> {formatDateTime(record.startTime)}
-    {record.locationArea && record.locationArea > 0 && (
-        <>
-            {' | '}
-            <strong>Medição:</strong>
-            {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
-        </>
-    )}
-</p>
+                                                <strong>Contrato/Cidade:</strong> {record.contractGroup} |
+                                                <strong> Serviço:</strong> {record.serviceType} |
+                                                <strong> Data:</strong> {formatDateTime(record.startTime)}
+                                                {record.locationArea && record.locationArea > 0 && (
+                                                    <>
+                                                        {' | '}
+                                                        <strong>Medição:</strong>
+                                                        {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
+                                                    </>
+                                                )}
+                                            </p>
                                         </div>
                                         <table className="pdf-photo-table">
                                             <thead><tr><th>ANTES</th><th>DEPOIS</th></tr></thead>
@@ -1443,6 +1443,51 @@ const GoalsAndChartsView: React.FC<{
         scales: { y: { beginAtZero: true } }
     };
 
+    const [goals, setGoals] = useLocalStorage<Goal[]>('crbGoals', []);
+    const [contractGroupGoal, setContractGroupGoal] = useState('');
+    const [monthGoal, setMonthGoal] = useState(new Date().toISOString().substring(0, 7));
+    const [targetAreaGoal, setTargetAreaGoal] = useState('');
+    const [editingIdGoal, setEditingIdGoal] = useState<string | null>(null);
+
+    const resetFormGoal = () => {
+        setContractGroupGoal('');
+        setMonthGoal(new Date().toISOString().substring(0, 7));
+        setTargetAreaGoal('');
+        setEditingIdGoal(null);
+    };
+
+    const handleSaveGoal = () => {
+        if (!contractGroupGoal || !monthGoal || !targetAreaGoal || isNaN(parseFloat(targetAreaGoal))) {
+            alert('Preencha todos os campos da meta corretamente.');
+            return;
+        }
+        const newGoal: Goal = {
+            id: editingIdGoal || new Date().toISOString(),
+            contractGroup: contractGroupGoal,
+            month: monthGoal,
+            targetArea: parseFloat(targetAreaGoal),
+        };
+        if (editingIdGoal) {
+            setGoals(prevGoals => prevGoals.map(g => g.id === editingIdGoal ? newGoal : g));
+        } else {
+            setGoals(prevGoals => [newGoal, ...prevGoals]);
+        }
+        resetFormGoal();
+    };
+
+    const handleEditGoal = (goal: Goal) => {
+        setEditingIdGoal(goal.id);
+        setContractGroupGoal(goal.contractGroup);
+        setMonthGoal(goal.month);
+        setTargetAreaGoal(String(goal.targetArea));
+    };
+
+    const handleDeleteGoal = (id: string) => {
+        if (window.confirm('Excluir esta meta?')) {
+            setGoals(prevGoals => prevGoals.filter(g => g.id !== id));
+        }
+    };
+
     return (
         <div>
             <div className="card">
@@ -1487,26 +1532,44 @@ const GoalsAndChartsView: React.FC<{
                 {isLoadingChart && <Loader text="Carregando dados do gráfico..." />}
                 {chartData && (
                     <div style={{marginTop: '2rem'}}>
-                        {chartType === 'bar' ? <Bar data={chartData} /> : <Line data={chartData} />}
+                        {chartType === 'bar' ? <Bar options={chartOptions} data={chartData} /> : <Line options={chartOptions} data={chartData} />}
                     </div>
                 )}
             </div>
             
-            {/* Lógica das Metas */}
             <div className="form-container card">
-                <h3>Adicionar/Editar Meta</h3>
-                <input list="goal-contract-groups" placeholder="Digite ou selecione um Contrato/Cidade" value={/* código omitido para brevidade */} />
+                <h3>{editingIdGoal ? 'Editando Meta' : 'Adicionar Nova Meta'} (Local)</h3>
+                <input list="goal-contract-groups" placeholder="Digite ou selecione um Contrato/Cidade" value={contractGroupGoal} onChange={e => setContractGroupGoal(e.target.value)} />
                 <datalist id="goal-contract-groups">
                     {allContractGroups.map(g => <option key={g} value={g} />)}
                 </datalist>
-                <input type="month" value={/* código omitido para brevidade */} />
-                <input type="number" placeholder="Meta de Medição (m² ou m linear)" value={/* código omitido para brevidade */} />
-                <button className="button admin-button" onClick={/* código omitido para brevidade */}>{/* texto do botão omitido para brevidade */}</button>
-                {/* código omitido para brevidade */}
+                <input type="month" value={monthGoal} onChange={e => setMonthGoal(e.target.value)} />
+                <input type="number" placeholder="Meta de Medição (m² ou m linear)" value={targetAreaGoal} onChange={e => setTargetAreaGoal(e.target.value)} />
+                <button className="button admin-button" onClick={handleSaveGoal}>{editingIdGoal ? 'Salvar Alterações' : 'Adicionar Meta'}</button>
+                {editingIdGoal && <button className="button button-secondary" onClick={resetFormGoal}>Cancelar Edição</button>}
             </div>
 
             <ul className="goal-list">
-                {/* código omitido para brevidade */}
+                {[...goals].sort((a, b) => b.month.localeCompare(a.month) || a.contractGroup.localeCompare(b.contractGroup)).map(goal => {
+                    const realizedArea = records.filter(r => r.contractGroup === goal.contractGroup && r.startTime.startsWith(goal.month)).reduce((sum, r) => sum + (r.locationArea || 0), 0);
+                    const percentage = goal.targetArea > 0 ? (realizedArea / goal.targetArea) * 100 : 0;
+                    return (
+                        <li key={goal.id} className="card list-item progress-card">
+                            <div className="list-item-header">
+                                <h3>{goal.contractGroup} - {goal.month}</h3>
+                                <div>
+                                    <button className="button button-sm admin-button" onClick={() => handleEditGoal(goal)}>Editar</button>
+                                    <button className="button button-sm button-danger" onClick={() => handleDeleteGoal(goal.id)}>Excluir</button>
+                                </div>
+                            </div>
+                            <div className="progress-info">
+                                <span>Realizado: {realizedArea.toLocaleString('pt-BR')} / {goal.targetArea.toLocaleString('pt-BR')}</span>
+                                <span>{percentage.toFixed(1)}%</span>
+                            </div>
+                            <div className="progress-bar-container"><div className="progress-bar" style={{ width: `${Math.min(percentage, 100)}%` }}></div></div>
+                        </li>
+                    );
+                })}
             </ul>
         </div>
     );
