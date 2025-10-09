@@ -2369,31 +2369,54 @@ const App = () => {
         }
     };
 
-    const handleBeforePhotos = async (photosBefore: string[]) => {
-        setIsLoading("Criando registro e salvando fotos 'Antes'...");
-        try {
-            let locationId = currentService.locationId;
+// SUBSTITUA TODA A SUA FUNÇÃO 'handleBeforePhotos' POR ESTA VERSÃO:
 
-            if (!locationId && currentService.locationName) {
-                const serviceDef = services.find(s => s.name === currentService.serviceType);
-                if (!serviceDef || currentService.locationArea === undefined) {
-                    throw new Error("Dados de serviço ou medição ausentes para criar novo local.");
-                }
+const handleBeforePhotos = async (photosBefore: string[]) => {
+    setIsLoading("Criando registro e salvando fotos 'Antes'...");
+    try {
+        // Prepara os dados de texto para o registro.
+        // Note que NÃO há dados de imagem aqui dentro.
+        const recordPayload = {
+            operatorId: parseInt(currentUser!.id, 10),
+            serviceType: currentService.serviceType,
+            serviceUnit: currentService.serviceUnit,
+            locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
+            locationName: currentService.locationName,
+            contractGroup: currentService.contractGroup,
+            locationArea: currentService.locationArea,
+            gpsUsed: !!currentService.gpsUsed,
+            startTime: new Date().toISOString(),
+            tempId: crypto.randomUUID(),
+            // Informações do novo local para o backend processar, se necessário
+            newLocationInfo: !currentService.locationId 
+                ? { name: currentService.locationName, city: currentService.contractGroup, lat: currentService.coords?.latitude, lng: currentService.coords?.longitude } 
+                : undefined
+        };
 
-                console.log("Tentando criar novo local via API...");
-                const newLocation = await apiFetch('/api/locations', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        city: currentService.contractGroup,
-                        name: currentService.locationName,
-                        lat: currentService.coords?.latitude,
-                        lng: currentService.coords?.longitude,
-                        services: [{
-                            service_id: serviceDef.id,
-                            measurement: currentService.locationArea
-                        }]
-                    })
-                });
+        // Converte as fotos para o formato de arquivo.
+        const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
+
+        // Entrega os dados de texto e os arquivos de foto para o syncManager.
+        await queueRecord(recordPayload, beforeFiles);
+
+        // Atualiza a interface para o usuário.
+        setCurrentService(prev => ({
+            ...prev,
+            ...recordPayload,
+            id: recordPayload.tempId 
+        }));
+        
+        navigate('OPERATOR_SERVICE_IN_PROGRESS');
+
+    } catch (err) {
+        console.error("Falha ao colocar registro na fila:", err);
+        alert("Falha ao salvar registro local.");
+    } finally {
+        setIsLoading(null);
+    }
+};
+
+                
                 locationId = String(newLocation.id);
                 console.log("Novo local criado com ID:", locationId);
             }
