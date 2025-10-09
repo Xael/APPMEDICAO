@@ -7,6 +7,7 @@ import { queueRecord, addAfterPhotosToPending } from "./syncManager";
 import logoSrc from './assets/Logo.png';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
+import { apiFetch } from "./api";
 
 ChartJS.register( CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend );
 
@@ -474,16 +475,19 @@ const OperatorServiceSelect: React.FC<{
     );
 };
 
-const OperatorLocationSelect: React.FC<{ 
-    locations: LocationRecord[]; 
-    contractGroup: string; 
-    onSelectLocation: (loc: LocationRecord, gpsUsed: boolean) => void; 
-}> = ({ locations, contractGroup, onSelectLocation }) => {
+const OperatorLocationSelect: React.FC<{
+    locations: LocationRecord[];
+    contractGroup: string;
+    onSelectLocation: (loc: LocationRecord, service: ServiceDefinition | null, measurement: number | null, gpsUsed: boolean) => void;
+    services: ServiceDefinition[];
+}> = ({ locations, contractGroup, onSelectLocation, services }) => {
     const [manualLocationName, setManualLocationName] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [gpsLocation, setGpsLocation] = useState<GeolocationCoords | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [nearbyLocation, setNearbyLocation] = useState<LocationRecord | null>(null);
+    const [selectedService, setSelectedService] = useState<ServiceDefinition | null>(null);
+    const [measurement, setMeasurement] = useState<number | ''>('');
     const contractLocations = locations.filter(l => l.contractGroup === contractGroup);
 
     useEffect(() => {
@@ -495,30 +499,57 @@ const OperatorLocationSelect: React.FC<{
                 const closest = contractLocations.filter(l => l.coords).map(l => ({ ...l, distance: calculateDistance(currentCoords, l.coords!) })).filter(l => l.distance < 100).sort((a, b) => a.distance - b.distance)[0];
                 setNearbyLocation(closest || null);
             },
-            (err) => setError('Não foi possível obter a localização GPS.'),
+            (err) => {
+                console.error("GPS error:", err);
+                setError('Não foi possível obter a localização GPS.');
+            },
             { enableHighAccuracy: true }
         );
         return () => navigator.geolocation.clearWatch(watchId);
     }, [contractLocations]);
 
     const handleConfirmNearby = () => {
-        if(nearbyLocation) { onSelectLocation(nearbyLocation, true); }
-    };
-    const handleConfirmNewManual = () => {
-        if (manualLocationName.trim()) {
-            const newManualLocation: LocationRecord = { id: `manual-${new Date().getTime()}`, name: manualLocationName.trim(), contractGroup: contractGroup, services: [] };
-            onSelectLocation(newManualLocation, false);
-        } else {
-            alert('Por favor, digite o nome do novo local.');
+        if (nearbyLocation) {
+            onSelectLocation(nearbyLocation, null, null, true);
         }
     };
+
     const handleSelectFromList = (loc: LocationRecord) => {
-        onSelectLocation(loc, false);
+        onSelectLocation(loc, null, null, false);
     };
-    
+
+    const handleCreateAndSelectNew = () => {
+        if (!manualLocationName.trim()) {
+            alert('Por favor, digite o nome do novo local.');
+            return;
+        }
+        if (!selectedService || measurement === null || measurement === '' || isNaN(Number(measurement))) {
+            alert('Por favor, selecione um serviço e digite a medição.');
+            return;
+        }
+
+        const newManualLocation: LocationRecord = {
+            id: `manual-${new Date().getTime()}`,
+            name: manualLocationName.trim(),
+            contractGroup: contractGroup,
+            coords: gpsLocation || undefined,
+            services: [] // Não precisamos popular isso aqui, apenas no `handleBeforePhotos`
+        };
+
+        onSelectLocation(newManualLocation, selectedService, Number(measurement), !!gpsLocation);
+    };
+
     const filteredLocations = contractLocations.filter(loc =>
         loc.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    
+    const assignedServices = services.filter(s => {
+        // Encontra a atribuição do usuário para o grupo de contrato atual
+        const assignment = (currentUser?.assignments || []).find(a => a.contractGroup === contractGroup);
+        // Retorna o serviço apenas se ele estiver na lista de serviços atribuídos
+        return assignment?.serviceNames.includes(s.name);
+    });
+
     return (
         <div className="card">
             <h2>Selecione o Local em "{contractGroup}"</h2>
@@ -534,7 +565,7 @@ const OperatorLocationSelect: React.FC<{
             )}
             <div className="card-inset">
                 <h4>Ou, busque na lista</h4>
-                <input type="search" placeholder="Digite para buscar um local..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{marginBottom: '1rem'}} />
+                <input type="search" placeholder="Digite para buscar um local..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ marginBottom: '1rem' }} />
                 <div className="location-selection-list">
                     {filteredLocations.length > 0 ? filteredLocations.map(loc => (
                         <button key={loc.id} className="button button-secondary" onClick={() => handleSelectFromList(loc)}>{loc.name}</button>
@@ -542,9 +573,23 @@ const OperatorLocationSelect: React.FC<{
                 </div>
             </div>
             <div className="card-inset">
-                <h4>Ou, crie um novo local</h4>
+                <h4>Ou, crie um novo local e inicie o serviço</h4>
                 <input type="text" placeholder="Digite o nome do NOVO local" value={manualLocationName} onChange={e => setManualLocationName(e.target.value)} />
-                <button className="button" onClick={handleConfirmNewManual} disabled={!manualLocationName.trim()}>Confirmar Novo Local</button>
+                <select value={selectedService?.id || ""} onChange={e => setSelectedService(assignedServices.find(s => String(s.id) === e.target.value) || null)} style={{ marginTop: '1rem' }}>
+                    <option value="">Selecione o serviço a ser executado</option>
+                    {assignedServices.map(s => <option key={s.id} value={s.id}>{s.name} ({s.unit.symbol})</option>)}
+                </select>
+                {selectedService && (
+                    <input
+                        type="number"
+                        placeholder={`Medição em ${selectedService.unit.symbol}`}
+                        value={measurement}
+                        onChange={e => setMeasurement(e.target.value)}
+                        style={{ marginTop: '1rem' }}
+                    />
+                )}
+                {gpsLocation && <p className="gps-indicator" style={{ textAlign: 'center', marginTop: '1rem' }}>📍 Coordenadas GPS disponíveis para este novo local.</p>}
+                <button className="button" onClick={handleCreateAndSelectNew} disabled={!manualLocationName.trim() || !selectedService || measurement === '' || isNaN(Number(measurement))}>Confirmar Novo Local e Iniciar Serviço</button>
             </div>
         </div>
     );
@@ -577,7 +622,7 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
     const handleUploadClick = () => {
         fileInputRef.current?.click();
     };
-    if(isTakingPhoto) {
+    if (isTakingPhoto) {
         return <CameraView onCapture={handleCapture} onCancel={() => setIsTakingPhoto(false)} onFinish={() => setIsTakingPhoto(false)} photoCount={photos.length} />
     }
     return (
@@ -587,7 +632,7 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
             <div className="photo-section">
                 <h3>Fotos Capturadas ({photos.length})</h3>
                 <div className="photo-gallery">
-                    {photos.map((p, i) => <img key={i} src={p} alt={`Foto ${i+1}`} className="image-preview" />)}
+                    {photos.map((p, i) => <img key={i} src={p} alt={`Foto ${i + 1}`} className="image-preview" />)}
                 </div>
                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} accept="image/*" multiple />
                 <div className="photo-actions">
@@ -595,7 +640,7 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
                     <button className="button button-secondary" onClick={handleUploadClick}>🖼️ Adicionar Foto do Dispositivo</button>
                 </div>
             </div>
-            <div style={{display: 'flex', gap: '1rem', marginTop: '1rem'}}>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                 <button className="button button-danger" onClick={onCancel}>Cancelar</button>
                 <button className="button button-success" onClick={() => onComplete(photos)} disabled={photos.length === 0}>✅ Encerrar Captação</button>
             </div>
@@ -606,7 +651,7 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
 const ConfirmStep: React.FC<{ recordData: Partial<ServiceRecord>; onSave: () => void; onCancel: () => void }> = ({ recordData, onSave, onCancel }) => (
     <div className="card">
         <h2>Confirmação e Salvamento</h2>
-        <div className="detail-section" style={{textAlign: 'left'}}>
+        <div className="detail-section" style={{ textAlign: 'left' }}>
             <p><strong>Contrato/Cidade:</strong> {recordData.contractGroup}</p>
             <p><strong>Serviço:</strong> {recordData.serviceType}</p>
             <p><strong>Local:</strong> {recordData.locationName} {recordData.gpsUsed && '📍(GPS)'}</p>
@@ -622,8 +667,8 @@ const ConfirmStep: React.FC<{ recordData: Partial<ServiceRecord>; onSave: () => 
 );
 
 interface HistoryViewProps {
-    records: ServiceRecord[]; 
-    onSelect: (record: ServiceRecord) => void; 
+    records: ServiceRecord[];
+    onSelect: (record: ServiceRecord) => void;
     isAdmin: boolean;
     onEdit?: (record: ServiceRecord) => void;
     onDelete?: (recordId: string) => void;
@@ -640,40 +685,40 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
                 </button>
             </div>
         )}
-        {records.length === 0 ? <p style={{textAlign: 'center'}}>Nenhum serviço registrado ainda.</p>
-        : (
-            <ul className="history-list">
-                {records.map(record => (
-                    <li key={record.id} className="list-item" style={{alignItems: 'center'}}>
-                        {isAdmin && (
-                            <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0, marginRight: '1rem' }}>
-                                <input type="checkbox" checked={selectedIds.has(record.id)} onChange={() => onToggleSelect(record.id)} style={{ width: '24px', height: '24px' }} />
+        {records.length === 0 ? <p style={{ textAlign: 'center' }}>Nenhum serviço registrado ainda.</p>
+            : (
+                <ul className="history-list">
+                    {records.map(record => (
+                        <li key={record.id} className="list-item" style={{ alignItems: 'center' }}>
+                            {isAdmin && (
+                                <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0, marginRight: '1rem' }}>
+                                    <input type="checkbox" checked={selectedIds.has(record.id)} onChange={() => onToggleSelect(record.id)} style={{ width: '24px', height: '24px' }} />
+                                </div>
+                            )}
+                            <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer' }}>
+                                <p><strong>Local:</strong> {record.locationName}, {record.contractGroup} {record.gpsUsed && <span className="gps-indicator">📍</span>}</p>
+                                <p><strong>Serviço:</strong> {record.serviceType}</p>
+                                <p><strong>Data:</strong> {formatDateTime(record.startTime)}</p>
+                                {isAdmin && <p><strong>Operador:</strong> {record.operatorName}</p>}
+                                <div className="history-item-photos">
+                                    {(record.beforePhotos || []).slice(0, 2).map((p, i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt="antes" />)}
+                                    {(record.afterPhotos || []).slice(0, 2).map((p, i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt="depois" />)}
+                                </div>
                             </div>
-                        )}
-                        <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer'}}>
-                            <p><strong>Local:</strong> {record.locationName}, {record.contractGroup} {record.gpsUsed && <span className="gps-indicator">📍</span>}</p>
-                            <p><strong>Serviço:</strong> {record.serviceType}</p>
-                            <p><strong>Data:</strong> {formatDateTime(record.startTime)}</p>
-                            {isAdmin && <p><strong>Operador:</strong> {record.operatorName}</p>}
-                            <div className="history-item-photos">
-                               {(record.beforePhotos || []).slice(0,2).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt="antes" />)}
-                               {(record.afterPhotos || []).slice(0,2).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt="depois" />)}
+                            <div className="list-item-actions">
+                                {isAdmin && onEdit && (<button className="button button-sm admin-button" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Editar</button>)}
+                                {!isAdmin && onEdit && (<button className="button button-sm" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Reabrir</button>)}
+                                {isAdmin && onDelete && (<button className="button button-sm button-danger" onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}>Excluir</button>)}
                             </div>
-                        </div>
-                         <div className="list-item-actions">
-                             {isAdmin && onEdit && ( <button className="button button-sm admin-button" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Editar</button> )}
-                             {!isAdmin && onEdit && ( <button className="button button-sm" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Reabrir</button> )}
-                             {isAdmin && onDelete && ( <button className="button button-sm button-danger" onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}>Excluir</button> )}
-                         </div>
-                    </li>
-                ))}
-            </ul>
-        )}
+                        </li>
+                    ))}
+                </ul>
+            )}
     </div>
 );
 
 const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
-     <div className="detail-view">
+    <div className="detail-view">
         <div className="detail-section card">
             <h3>Resumo</h3>
             <p><strong>Contrato/Cidade:</strong> {record.contractGroup}</p>
@@ -686,11 +731,11 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
         </div>
         <div className="detail-section card">
             <h3>Fotos "Antes" ({(record.beforePhotos || []).length})</h3>
-            <div className="photo-gallery">{(record.beforePhotos || []).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />)}</div>
+            <div className="photo-gallery">{(record.beforePhotos || []).map((p, i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt={`Antes ${i + 1}`} />)}</div>
         </div>
         <div className="detail-section card">
             <h3>Fotos "Depois" ({(record.afterPhotos || []).length})</h3>
-            <div className="photo-gallery">{(record.afterPhotos || []).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />)}</div>
+            <div className="photo-gallery">{(record.afterPhotos || []).map((p, i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt={`Depois ${i + 1}`} />)}</div>
         </div>
     </div>
 );
@@ -707,9 +752,9 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
-    
+
     const handleServiceFilterChange = (service: string, isChecked: boolean) => { setSelectedServices(prev => isChecked ? [...prev, service] : prev.filter(s => s !== service)); };
-    
+
     const filteredRecords = records.filter(r => {
         const recordDate = new Date(r.startTime);
         const start = startDate ? new Date(startDate) : null;
@@ -720,14 +765,14 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
         return true;
     }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-    
+
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if(e.target.checked) setSelectedIds(filteredRecords.map(r => r.id));
+        if (e.target.checked) setSelectedIds(filteredRecords.map(r => r.id));
         else setSelectedIds([]);
     };
 
     const handleSelectOne = (id: string, isChecked: boolean) => {
-        if(isChecked) setSelectedIds(ids => [...ids, id]);
+        if (isChecked) setSelectedIds(ids => [...ids, id]);
         else setSelectedIds(ids => ids.filter(i => i !== id));
     };
 
@@ -847,9 +892,9 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 })();
             }
         }, [isLoadingImages, pages]);
-        
+
         if (isLoadingImages) return null;
-        
+
         const today = new Date().toLocaleDateString('pt-BR');
         return (
             <div className="printable-report-container" ref={printableRef}>
@@ -858,9 +903,9 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                         <header className="pdf-page-header">
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                                 <img src={logoSrc} alt="Logo" style={{ maxHeight: '25px', width: 'auto' }} />
-                                <h2 style={{fontSize: '16pt', margin: '0 0 0 10px'}}>Relatório Fotográfico</h2>
+                                <h2 style={{ fontSize: '16pt', margin: '0 0 0 10px' }}>Relatório Fotográfico</h2>
                             </div>
-                            <p style={{textAlign: 'right', fontSize: '10pt'}}>CRB Serviços<br/>Data de Emissão: {today}</p>
+                            <p style={{ textAlign: 'right', fontSize: '10pt' }}>CRB Serviços<br />Data de Emissão: {today}</p>
                         </header>
                         <div className="pdf-page-content">
                             {pageRecords.map(record => {
@@ -907,7 +952,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                 );
                             })}
                         </div>
-                         <footer className="pdf-page-footer">Página {pageIndex + 1} de {pages.length}</footer>
+                        <footer className="pdf-page-footer">Página {pageIndex + 1} de {pages.length}</footer>
                     </div>
                 ))}
             </div>
@@ -927,7 +972,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         return (
             <div className="card">
                 <h2>Selecione o Tipo de Relatório</h2>
-                <div className="button-group" style={{flexDirection: 'column', gap: '1rem'}}>
+                <div className="button-group" style={{ flexDirection: 'column', gap: '1rem' }}>
                     <button className="button" onClick={() => setReportType('excel')}>📊 Relatório Planilha de Excel</button>
                     <button className="button button-secondary" onClick={() => setReportType('photos')}>🖼️ Relatório de Fotografias (PDF)</button>
                 </div>
@@ -936,18 +981,18 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     }
 
     return (
-         <div className="card">
-            <button className="button button-sm button-secondary" onClick={() => setReportType(null)} style={{float: 'right'}}>Trocar Tipo</button>
+        <div className="card">
+            <button className="button button-sm button-secondary" onClick={() => setReportType(null)} style={{ float: 'right' }}>Trocar Tipo</button>
             <h2>Filtros para Relatório de {reportType === 'excel' ? 'Excel' : 'Fotos'}</h2>
-            <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch', clear: 'both'}}>
-                <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
+            <div className="report-filters" style={{ flexDirection: 'column', alignItems: 'stretch', clear: 'both' }}>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                     <div className="form-group"><label>Data de Início</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
                     <div className="form-group"><label>Data Final</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
                     <div className="form-group"><label>Contrato/Cidade</label><select value={selectedContractGroup} onChange={e => setSelectedContractGroup(e.target.value)}><option value="">Todos</option>{allContractGroups.map(g => <option key={g} value={g}>{g}</option>)}</select></div>
                 </div>
                 <fieldset className="form-group-full"><legend>Filtrar por Serviços</legend><div className="checkbox-group">{allServiceNames.map(name => (<div key={name} className="checkbox-item"><input type="checkbox" id={`service-${name}`} checked={selectedServices.includes(name)} onChange={e => handleServiceFilterChange(name, e.target.checked)} /><label htmlFor={`service-${name}`}>{name}</label></div>))}</div></fieldset>
             </div>
-          
+
             <div className="report-summary">
                 <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
                 {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
@@ -956,7 +1001,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     {reportType === 'photos' && <button className="button" onClick={handleGeneratePdfClick} disabled={selectedIds.length === 0}>Gerar PDF com Fotos</button>}
                 </div>
             </div>
-            <ul className="report-list" style={{marginTop: '1rem'}}>
+            <ul className="report-list" style={{ marginTop: '1rem' }}>
                 {filteredRecords.length > 0 && <li><label><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === filteredRecords.length && filteredRecords.length > 0} /> Selecionar Todos</label></li>}
                 {filteredRecords.map(record => (
                     <li key={record.id} className="report-item">
@@ -1058,7 +1103,7 @@ const ManageLocationsView: React.FC<{
                 return;
             }
         }
-        
+
         const payload = {
             city: selectedGroup.trim(),
             name,
@@ -1126,20 +1171,20 @@ const ManageLocationsView: React.FC<{
                     <div className="form-container card">
                         <h3>{editingId ? 'Editando Local' : 'Adicionar Novo Local'} em "{selectedGroup}"</h3>
                         <input type="text" placeholder="Nome do Local (Endereço)" value={name} onChange={e => setName(e.target.value)} />
-                        
+
                         <fieldset className="service-assignment-fieldset">
                             <legend>Serviços e Medições do Local</legend>
                             <div className="checkbox-group">
-                                {services.sort((a,b) => a.name.localeCompare(b.name)).map(service => {
+                                {services.sort((a, b) => a.name.localeCompare(b.name)).map(service => {
                                     const isChecked = service.id in serviceMeasurements;
                                     return (
-                                        <div key={service.id} className="checkbox-item" style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', border: '1px solid #eee', padding: '0.5rem', borderRadius: '4px'}}>
+                                        <div key={service.id} className="checkbox-item" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', border: '1px solid #eee', padding: '0.5rem', borderRadius: '4px' }}>
                                             <div>
                                                 <input type="checkbox" id={`service-loc-${service.id}`} checked={isChecked} onChange={e => handleServiceToggle(service.id, e.target.checked)} />
                                                 <label htmlFor={`service-loc-${service.id}`}>{service.name}</label>
                                             </div>
                                             {isChecked && (
-                                                <input type="number" placeholder={`Medição (${service.unit.symbol})`} value={serviceMeasurements[service.id] || ''} onChange={e => handleMeasurementChange(service.id, e.target.value)} style={{width: '100%'}} />
+                                                <input type="number" placeholder={`Medição (${service.unit.symbol})`} value={serviceMeasurements[service.id] || ''} onChange={e => handleMeasurementChange(service.id, e.target.value)} style={{ width: '100%' }} />
                                             )}
                                         </div>
                                     );
@@ -1157,13 +1202,13 @@ const ManageLocationsView: React.FC<{
                                 {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
                             </button>
                         </fieldset>
-                        
+
                         <button className="button admin-button" onClick={handleSave}>{editingId ? 'Salvar Alterações' : 'Adicionar Local'}</button>
                         {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
                     </div>
-                    
+
                     <ul className="location-list">
-                        {filteredLocations.sort((a,b) => a.name.localeCompare(b.name)).map(loc => (
+                        {filteredLocations.sort((a, b) => a.name.localeCompare(b.name)).map(loc => (
                             <li key={loc.id} className="card list-item">
                                 <div className="list-item-info">
                                     <div className="list-item-header">
@@ -1189,7 +1234,7 @@ const ManageLocationsView: React.FC<{
     );
 };
 
-const ManageUsersView: React.FC<{ 
+const ManageUsersView: React.FC<{
     users: User[];
     onUsersUpdate: () => Promise<void>;
     services: ServiceDefinition[];
@@ -1200,9 +1245,9 @@ const ManageUsersView: React.FC<{
     const [password, setPassword] = useState('');
     const [role, setRole] = useState<Role>('OPERATOR');
     const [assignments, setAssignments] = useState<UserAssignment[]>([]);
-    const [editingId, setEditingId] = useState<string|null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    
+
     // State for the 'add new assignment' form
     const [newAssignmentGroup, setNewAssignmentGroup] = useState('');
     const [newAssignmentServices, setNewAssignmentServices] = useState<Set<string>>(new Set());
@@ -1218,7 +1263,7 @@ const ManageUsersView: React.FC<{
         setAssignments([]);
         setEditingId(null);
     };
-    
+
     const handleAddAssignment = () => {
         if (!newAssignmentGroup) {
             alert('Por favor, selecione um Contrato/Cidade.');
@@ -1228,7 +1273,7 @@ const ManageUsersView: React.FC<{
             alert('Por favor, selecione pelo menos um serviço.');
             return;
         }
-         if (assignments.some(a => a.contractGroup === newAssignmentGroup)) {
+        if (assignments.some(a => a.contractGroup === newAssignmentGroup)) {
             alert('Este contrato já foi atribuído. Remova o antigo para adicionar um novo com serviços diferentes.');
             return;
         }
@@ -1236,12 +1281,12 @@ const ManageUsersView: React.FC<{
         setAssignments(prev => [
             ...prev,
             { contractGroup: newAssignmentGroup, serviceNames: Array.from(newAssignmentServices) }
-        ].sort((a,b) => a.contractGroup.localeCompare(b.contractGroup)));
-        
+        ].sort((a, b) => a.contractGroup.localeCompare(b.contractGroup)));
+
         setNewAssignmentGroup('');
         setNewAssignmentServices(new Set());
     };
-    
+
     const handleRemoveAssignment = (groupToRemove: string) => {
         setAssignments(prev => prev.filter(a => a.contractGroup !== groupToRemove));
     };
@@ -1249,7 +1294,7 @@ const ManageUsersView: React.FC<{
     const handleServiceCheckbox = (serviceName: string, checked: boolean) => {
         setNewAssignmentServices(prev => {
             const newSet = new Set(prev);
-            if(checked) {
+            if (checked) {
                 newSet.add(serviceName);
             } else {
                 newSet.delete(serviceName);
@@ -1308,7 +1353,7 @@ const ManageUsersView: React.FC<{
     };
 
     const handleDelete = async (id: string) => {
-        if(window.confirm('Excluir este usuário? Esta ação não pode ser desfeita.')) {
+        if (window.confirm('Excluir este usuário? Esta ação não pode ser desfeita.')) {
             setIsLoading(true);
             try {
                 await apiFetch(`/api/users/${id}`, { method: 'DELETE' });
@@ -1321,7 +1366,7 @@ const ManageUsersView: React.FC<{
             }
         }
     };
-    
+
     return (
         <div>
             <div className="form-container card">
@@ -1334,23 +1379,23 @@ const ManageUsersView: React.FC<{
                     <option value="FISCAL">Fiscalização</option>
                     <option value="ADMIN">Administrador</option>
                 </select>
-                
+
                 {(role === 'OPERATOR' || role === 'FISCAL') && (
                     <fieldset className="assignment-section">
                         <legend>Atribuições (Contratos/Serviços)</legend>
-                        
+
                         {assignments.length > 0 && (
-                             <ul className="assignment-list">
-                                 {assignments.map(assign => (
-                                     <li key={assign.contractGroup} className="assignment-item">
-                                         <div className="assignment-item-info">
-                                             <strong>{assign.contractGroup}</strong>
-                                             <p>{assign.serviceNames.join(', ')}</p>
-                                         </div>
-                                         <button className="button button-sm button-danger" onClick={() => handleRemoveAssignment(assign.contractGroup)}>Remover</button>
-                                     </li>
-                                 ))}
-                             </ul>
+                            <ul className="assignment-list">
+                                {assignments.map(assign => (
+                                    <li key={assign.contractGroup} className="assignment-item">
+                                        <div className="assignment-item-info">
+                                            <strong>{assign.contractGroup}</strong>
+                                            <p>{assign.serviceNames.join(', ')}</p>
+                                        </div>
+                                        <button className="button button-sm button-danger" onClick={() => handleRemoveAssignment(assign.contractGroup)}>Remover</button>
+                                    </li>
+                                ))}
+                            </ul>
                         )}
 
                         <div className="add-assignment-form">
@@ -1361,12 +1406,12 @@ const ManageUsersView: React.FC<{
                             </select>
                             <div className="checkbox-group">
                                 {allServices.map(service => (
-                                 <div key={service.id} className="checkbox-item">
-                                     <input type="checkbox" id={`service-assign-${service.id}`} 
-                                         checked={newAssignmentServices.has(service.name)} 
-                                         onChange={e => handleServiceCheckbox(service.name, e.target.checked)} />
-                                     <label htmlFor={`service-assign-${service.id}`}>{service.name}</label>
-                                 </div>
+                                    <div key={service.id} className="checkbox-item">
+                                        <input type="checkbox" id={`service-assign-${service.id}`}
+                                            checked={newAssignmentServices.has(service.name)}
+                                            onChange={e => handleServiceCheckbox(service.name, e.target.checked)} />
+                                        <label htmlFor={`service-assign-${service.id}`}>{service.name}</label>
+                                    </div>
                                 ))}
                             </div>
                             <button type="button" className="button button-sm" onClick={handleAddAssignment}>Adicionar Atribuição</button>
@@ -1378,23 +1423,23 @@ const ManageUsersView: React.FC<{
                 {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar</button>}
             </div>
             <ul className="location-list">
-                 {users.map(user => (
-                     <li key={user.id} className="card list-item">
-                         <div className="list-item-header">
-                             <h3>{user.username}</h3>
-                             <div>
-                                 <button className="button button-sm admin-button" onClick={() => handleEdit(user)}>Editar</button>
-                                 <button className="button button-sm button-danger" onClick={() => handleDelete(user.id)}>Excluir</button>
-                             </div>
-                         </div>
-                         <p><strong>Função:</strong> {user.role}</p>
-                         <p><strong>Email:</strong> {user.email}</p>
-                     </li>
-                 ))}
+                {users.map(user => (
+                    <li key={user.id} className="card list-item">
+                        <div className="list-item-header">
+                            <h3>{user.username}</h3>
+                            <div>
+                                <button className="button button-sm admin-button" onClick={() => handleEdit(user)}>Editar</button>
+                                <button className="button button-sm button-danger" onClick={() => handleDelete(user.id)}>Excluir</button>
+                            </div>
+                        </div>
+                        <p><strong>Função:</strong> {user.role}</p>
+                        <p><strong>Email:</strong> {user.email}</p>
+                    </li>
+                ))}
             </ul>
         </div>
     );
-}
+};
 
 const GoalsAndChartsView: React.FC<{
     records: ServiceRecord[];
@@ -1405,7 +1450,7 @@ const GoalsAndChartsView: React.FC<{
     const [isLoadingChart, setIsLoadingChart] = useState(false);
     const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
     const allContractGroups = [...new Set(locations.map(l => l.contractGroup).concat(records.map(r => r.contractGroup)))].filter(Boolean).sort();
-    
+
     const [selectedContracts, setSelectedContracts] = useState<string[]>(allContractGroups);
     const defaultEndDate = new Date();
     const defaultStartDate = new Date();
@@ -1436,7 +1481,7 @@ const GoalsAndChartsView: React.FC<{
             setIsLoadingChart(false);
         }
     };
-    
+
     const chartOptions = {
         responsive: true,
         plugins: { legend: { position: 'top' as const }, title: { display: true, text: 'Volume de Medição Mensal' } },
@@ -1492,8 +1537,8 @@ const GoalsAndChartsView: React.FC<{
         <div>
             <div className="card">
                 <h3>Análise Gráfica de Desempenho</h3>
-                <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch'}}>
-                    <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
+                <div className="report-filters" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                         <div className="form-group">
                             <label htmlFor="start-date-chart">Data de Início</label>
                             <input id="start-date-chart" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
@@ -1505,9 +1550,9 @@ const GoalsAndChartsView: React.FC<{
                     </div>
                     <fieldset className="form-group-full">
                         <legend>Comparar Contratos</legend>
-                        <div className="button-group" style={{justifyContent: 'flex-start', marginBottom: '1rem'}}>
-                           <button className="button button-sm" onClick={() => setSelectedContracts(allContractGroups)}>Selecionar Todos</button>
-                           <button className="button button-sm button-secondary" onClick={() => setSelectedContracts([])}>Limpar Seleção</button>
+                        <div className="button-group" style={{ justifyContent: 'flex-start', marginBottom: '1rem' }}>
+                            <button className="button button-sm" onClick={() => setSelectedContracts(allContractGroups)}>Selecionar Todos</button>
+                            <button className="button button-sm button-secondary" onClick={() => setSelectedContracts([])}>Limpar Seleção</button>
                         </div>
                         <div className="checkbox-group">
                             {allContractGroups.map(group => (
@@ -1520,7 +1565,7 @@ const GoalsAndChartsView: React.FC<{
                     </fieldset>
                     <fieldset className="form-group-full">
                         <legend>Tipo de Gráfico</legend>
-                        <div style={{display: 'flex', gap: '1rem', justifyContent: 'center'}}>
+                        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                             <div className="checkbox-item"><input type="radio" id="chart-bar" name="chartType" value="bar" checked={chartType === 'bar'} onChange={() => setChartType('bar')} /><label htmlFor="chart-bar">Barras</label></div>
                             <div className="checkbox-item"><input type="radio" id="chart-line" name="chartType" value="line" checked={chartType === 'line'} onChange={() => setChartType('line')} /><label htmlFor="chart-line">Linhas</label></div>
                         </div>
@@ -1531,12 +1576,12 @@ const GoalsAndChartsView: React.FC<{
                 </div>
                 {isLoadingChart && <Loader text="Carregando dados do gráfico..." />}
                 {chartData && (
-                    <div style={{marginTop: '2rem'}}>
+                    <div style={{ marginTop: '2rem' }}>
                         {chartType === 'bar' ? <Bar options={chartOptions} data={chartData} /> : <Line options={chartOptions} data={chartData} />}
                     </div>
                 )}
             </div>
-            
+
             <div className="form-container card">
                 <h3>{editingIdGoal ? 'Editando Meta' : 'Adicionar Nova Meta'} (Local)</h3>
                 <input list="goal-contract-groups" placeholder="Digite ou selecione um Contrato/Cidade" value={contractGroupGoal} onChange={e => setContractGroupGoal(e.target.value)} />
@@ -1579,7 +1624,7 @@ const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinis
     return (
         <div className="card">
             <h2>Serviço em Andamento</h2>
-            <div className="detail-section" style={{textAlign: 'left', marginBottom: '1.5rem'}}>
+            <div className="detail-section" style={{ textAlign: 'left', marginBottom: '1.5rem' }}>
                 <p><strong>Contrato/Cidade:</strong> {service.contractGroup}</p>
                 <p><strong>Serviço:</strong> {service.serviceType}</p>
                 <p><strong>Local:</strong> {service.locationName}</p>
@@ -1587,7 +1632,7 @@ const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinis
             </div>
             <p>O registro inicial e as fotos "Antes" foram salvos. Complete o serviço no local.</p>
             <p>Quando terminar, clique no botão abaixo para tirar as fotos "Depois".</p>
-            <button className="button button-success" style={{marginTop: '1.5rem'}} onClick={onFinish}>
+            <button className="button button-success" style={{ marginTop: '1.5rem' }} onClick={onFinish}>
                 ✅ Finalizar e Tirar Fotos "Depois"
             </button>
         </div>
@@ -1615,7 +1660,7 @@ const AdminEditRecordView: React.FC<{
                 method: 'PUT',
                 body: JSON.stringify(formData),
             });
-             const fullRecord = {
+            const fullRecord = {
                 ...updated,
                 id: String(updated.id),
                 operatorId: String(updated.operatorId),
@@ -1646,7 +1691,7 @@ const AdminEditRecordView: React.FC<{
                 id: String(updated.id),
                 operatorId: String(updated.operatorId),
             };
-            setFormData(fullRecord); 
+            setFormData(fullRecord);
         } catch (err) {
             alert(`Falha ao enviar fotos '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
             console.error(err);
@@ -1670,7 +1715,7 @@ const AdminEditRecordView: React.FC<{
                     afterPhotos: newAfter,
                 })
             });
-             const fullRecord = {
+            const fullRecord = {
                 ...updated,
                 id: String(updated.id),
                 operatorId: String(updated.operatorId),
@@ -1743,7 +1788,7 @@ const AdminEditRecordView: React.FC<{
                 <label>Início</label>
                 <input
                     type="datetime-local"
-                    value={formData.startTime ? new Date(new Date(formData.startTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
+                    value={formData.startTime ? new Date(new Date(formData.startTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : ""}
                     onChange={e => handleChange("startTime", new Date(e.target.value).toISOString())}
                     readOnly={isOperator}
                 />
@@ -1753,7 +1798,7 @@ const AdminEditRecordView: React.FC<{
                 <label>Fim</label>
                 <input
                     type="datetime-local"
-                    value={formData.endTime ? new Date(new Date(formData.endTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
+                    value={formData.endTime ? new Date(new Date(formData.endTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : ""}
                     onChange={e => handleChange("endTime", new Date(e.target.value).toISOString())}
                     readOnly={isOperator}
                 />
@@ -1764,7 +1809,7 @@ const AdminEditRecordView: React.FC<{
                 <div className="edit-photo-gallery">
                     {(formData.beforePhotos || []).map((p, i) => (
                         <div key={`b-${i}`} className="edit-photo-item">
-                            <img src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />
+                            <img src={`${API_BASE}${p}`} alt={`Antes ${i + 1}`} />
                             <button
                                 className="delete-photo-btn"
                                 onClick={() => handlePhotoRemove(p)}
@@ -1774,14 +1819,14 @@ const AdminEditRecordView: React.FC<{
                         </div>
                     ))}
                 </div>
-                <label htmlFor="before-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar Foto "Antes"</label>
+                <label htmlFor="before-upload" className="button button-sm" style={{ marginTop: '0.5rem' }}>Adicionar Foto "Antes"</label>
                 <input
                     id="before-upload"
                     type="file"
                     accept="image/*"
                     multiple
                     onChange={e => handlePhotoUpload("BEFORE", e.target.files)}
-                    style={{display: 'none'}}
+                    style={{ display: 'none' }}
                 />
             </div>
 
@@ -1790,24 +1835,24 @@ const AdminEditRecordView: React.FC<{
                 <div className="edit-photo-gallery">
                     {(formData.afterPhotos || []).map((p, i) => (
                         <div key={`a-${i}`} className="edit-photo-item">
-                            <img src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />
-                             <button
-                                 className="delete-photo-btn"
-                                 onClick={() => handlePhotoRemove(p)}
-                             >
-                                 &times;
-                             </button>
+                            <img src={`${API_BASE}${p}`} alt={`Depois ${i + 1}`} />
+                            <button
+                                className="delete-photo-btn"
+                                onClick={() => handlePhotoRemove(p)}
+                            >
+                                &times;
+                            </button>
                         </div>
                     ))}
                 </div>
-                <label htmlFor="after-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar Foto "Depois"</label>
+                <label htmlFor="after-upload" className="button button-sm" style={{ marginTop: '0.5rem' }}>Adicionar Foto "Depois"</label>
                 <input
                     id="after-upload"
                     type="file"
                     accept="image/*"
                     multiple
                     onChange={e => handlePhotoUpload("AFTER", e.target.files)}
-                    style={{display: 'none'}}
+                    style={{ display: 'none' }}
                 />
             </div>
 
@@ -1822,7 +1867,7 @@ const AdminEditRecordView: React.FC<{
 
 
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
-    
+
     const handleExportPdf = () => {
         const doc = new jsPDF();
         doc.setFont('Helvetica', 'normal');
@@ -1842,23 +1887,23 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
             doc.setFont('Helvetica', 'bold');
             doc.text(`Data: ${formatDateTime(entry.timestamp)}`, pageMargin, y);
             y += 7;
-            
+
             doc.setFontSize(10);
             doc.setFont('Helvetica', 'normal');
-            
+
             const details = [
                 `Usuário: ${entry.adminUsername}`,
                 `Ação: ${entry.action === 'UPDATE' ? 'Atualização' : 'Exclusão'}`,
                 `ID do Registro: ${entry.recordId}`,
                 `Detalhes: ${entry.details}`
             ];
-            
+
             details.forEach(line => {
                 const splitText = doc.splitTextToSize(line, pageWidth);
                 doc.text(splitText, pageMargin, y);
                 y += (splitText.length * 5);
             });
-            
+
             y += 5;
             doc.setDrawColor(200);
             doc.line(pageMargin, y, pageWidth + pageMargin, y);
@@ -1904,7 +1949,7 @@ const ManageServicesView: React.FC<{
     const [unitName, setUnitName] = useState('');
     const [unitSymbol, setUnitSymbol] = useState('');
     const [editingUnitId, setEditingUnitId] = useState<string | null>(null); // Garantimos que o ID é string
-    
+
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
@@ -1936,7 +1981,7 @@ const ManageServicesView: React.FC<{
         setIsLoading(true);
         try {
             const payload = { name: unitName, symbol: unitSymbol };
-            
+
             // --- CORREÇÃO AQUI ---
             if (editingUnitId) {
                 // Se existe um ID de edição, faça um PUT para atualizar
@@ -1964,7 +2009,7 @@ const ManageServicesView: React.FC<{
         setUnitName(unit.name);
         setUnitSymbol(unit.symbol);
     };
-    
+
     const handleDeleteUnit = async (id: string) => {
         if (window.confirm('Excluir esta unidade? Ela não pode estar em uso por nenhum serviço.')) {
             setIsLoading(true);
@@ -1997,7 +2042,7 @@ const ManageServicesView: React.FC<{
         try {
             // Converte o selectedUnitId para número, caso a API exija
             const payload = { name: serviceName, unitId: parseInt(selectedUnitId, 10) };
-            
+
             if (editingServiceId) {
                 await apiFetch(`/api/services/${editingServiceId}`, { method: 'PUT', body: JSON.stringify(payload) });
             } else {
@@ -2011,13 +2056,13 @@ const ManageServicesView: React.FC<{
             setIsLoading(false);
         }
     };
-    
-const handleEditService = (service: ServiceDefinition) => {
-    setEditingServiceId(service.id);
-    setServiceName(service.name);
-    // CORREÇÃO: Usa o ID da unidade de medida do objeto aninhado
-    setSelectedUnitId(String(service.unit.id));
-};
+
+    const handleEditService = (service: ServiceDefinition) => {
+        setEditingServiceId(service.id);
+        setServiceName(service.name);
+        // CORREÇÃO: Usa o ID da unidade de medida do objeto aninhado
+        setSelectedUnitId(String(service.unit.id));
+    };
 
     const handleDeleteService = async (id: string) => {
         if (window.confirm('Excluir este tipo de serviço?')) {
@@ -2026,7 +2071,7 @@ const handleEditService = (service: ServiceDefinition) => {
                 await apiFetch(`/api/services/${id}`, { method: 'DELETE' });
                 await fetchData();
             } catch (error: any) {
-                 alert(`Falha ao excluir: ${error.message}`);
+                alert(`Falha ao excluir: ${error.message}`);
             } finally {
                 setIsLoading(false);
             }
@@ -2038,15 +2083,15 @@ const handleEditService = (service: ServiceDefinition) => {
             {/* Seção 1: Gerenciamento de Unidades de Medida */}
             <div className="card">
                 <h3>Gerenciar Unidades de Medida</h3>
-                <div className="form-container add-service-form" style={{alignItems: 'flex-end'}}>
+                <div className="form-container add-service-form" style={{ alignItems: 'flex-end' }}>
                     <input type="text" placeholder="Nome da Unidade (ex: Horas)" value={unitName} onChange={e => setUnitName(e.target.value)} />
-                    <input type="text" placeholder="Símbolo (ex: h)" value={unitSymbol} onChange={e => setUnitSymbol(e.target.value)} style={{flexGrow: 0, width: '100px'}}/>
+                    <input type="text" placeholder="Símbolo (ex: h)" value={unitSymbol} onChange={e => setUnitSymbol(e.target.value)} style={{ flexGrow: 0, width: '100px' }} />
                     <button className="button admin-button" onClick={handleSaveUnit} disabled={isLoading}>
                         {editingUnitId ? 'Salvar' : 'Adicionar'}
                     </button>
                     {editingUnitId && <button className="button button-secondary" onClick={resetUnitForm}>Cancelar</button>}
                 </div>
-                <ul className="location-list" style={{marginTop: '1.5rem'}}>
+                <ul className="location-list" style={{ marginTop: '1.5rem' }}>
                     {units.map(u => (
                         <li key={u.id} className="service-definition-item">
                             <span><strong>{u.name}</strong> ({u.symbol})</span>
@@ -2062,7 +2107,7 @@ const handleEditService = (service: ServiceDefinition) => {
             {/* Seção 2: Gerenciamento de Tipos de Serviço */}
             <div className="card" style={{ marginTop: '2rem' }}>
                 <h3>Gerenciar Tipos de Serviço</h3>
-                <div className="form-container add-service-form" style={{alignItems: 'flex-end'}}>
+                <div className="form-container add-service-form" style={{ alignItems: 'flex-end' }}>
                     <input type="text" placeholder="Nome do Serviço" value={serviceName} onChange={e => setServiceName(e.target.value)} />
                     <select value={selectedUnitId} onChange={e => setSelectedUnitId(e.target.value)}>
                         <option value="">Selecione uma unidade</option>
@@ -2077,7 +2122,7 @@ const handleEditService = (service: ServiceDefinition) => {
                     </button>
                     {editingServiceId && <button className="button button-secondary" onClick={resetServiceForm}>Cancelar</button>}
                 </div>
-                <ul className="location-list" style={{marginTop: '1.5rem'}}>
+                <ul className="location-list" style={{ marginTop: '1.5rem' }}>
                     {services.sort((a, b) => a.name.localeCompare(b.name)).map(s => (
                         <li key={s.id} className="service-definition-item">
                             <span><strong>{s.name}</strong> (Unidade: {s.unit.symbol})</span>
@@ -2097,7 +2142,7 @@ const handleEditService = (service: ServiceDefinition) => {
 const App = () => {
     const [view, setView] = useState<View>('LOGIN');
     const [currentUser, setCurrentUser] = useLocalStorage<User | null>('crbCurrentUser', null);
-    
+
     const [users, setUsers] = useState<User[]>([]);
     const [locations, setLocations] = useState<LocationRecord[]>([]);
     const [records, setRecords] = useState<ServiceRecord[]>([]);
@@ -2105,7 +2150,7 @@ const App = () => {
     const [contractConfigs, setContractConfigs] = useState<ContractConfig[]>([]);
     const [goals, setGoals] = useLocalStorage<Goal[]>('crbGoals', []);
     const [auditLog, setAuditLog] = useLocalStorage<AuditLogEntry[]>('crbAuditLog', []);
-    
+
     const [currentService, setCurrentService] = useLocalStorage<Partial<ServiceRecord>>('crbCurrentService', {});
     const [selectedRecord, setSelectedRecord] = useState<ServiceRecord | null>(null);
     const [selectedContractGroup, setSelectedContractGroup] = useState<string | null>(null);
@@ -2132,11 +2177,11 @@ const App = () => {
         if (window.confirm(`Tem certeza que deseja excluir os ${selectedRecordIds.size} registros selecionados?`)) {
             setIsLoading("Excluindo registros...");
             try {
-                const deletePromises = Array.from(selectedRecordIds).map(id => 
+                const deletePromises = Array.from(selectedRecordIds).map(id =>
                     apiFetch(`/api/records/${id}`, { method: 'DELETE' })
                 );
                 await Promise.all(deletePromises);
-                
+
                 setRecords(prev => prev.filter(r => !selectedRecordIds.has(r.id)));
                 setSelectedRecordIds(new Set());
                 alert("Registros excluídos com sucesso.");
@@ -2180,7 +2225,7 @@ const App = () => {
             redirectUser(currentUser);
         }
     }
-    
+
     const redirectUser = (user: User) => {
         if (user.role === 'ADMIN') {
             navigate('ADMIN_DASHBOARD', true);
@@ -2192,16 +2237,16 @@ const App = () => {
     };
 
     const handleLogout = () => {
-         setCurrentUser(null);
-         setApiToken(null);
-         setHistory([]);
-         setSelectedContractGroup(null);
-         setSelectedLocation(null);
-         setCurrentService({});
-         setLocations([]);
-         setRecords([]);
-         setUsers([]);
-         navigate('LOGIN', true);
+        setCurrentUser(null);
+        setApiToken(null);
+        setHistory([]);
+        setSelectedContractGroup(null);
+        setSelectedLocation(null);
+        setCurrentService({});
+        setLocations([]);
+        setRecords([]);
+        setUsers([]);
+        navigate('LOGIN', true);
     }
 
     const fetchData = async () => {
@@ -2220,7 +2265,7 @@ const App = () => {
             }
             const results = await Promise.all(apiEndpoints);
             const [locs, recs, srvs, configs, usrs] = results;
-            
+
             // Normalização dos dados (TODOS OS IDs viram string)
             setLocations(locs.map((l: any) => ({
                 ...l,
@@ -2230,11 +2275,11 @@ const App = () => {
                     serviceId: String(s.serviceId)
                 }))
             })));
-            
-            setServices(srvs.map((s: any) => ({...s, id: String(s.id), unitId: String(s.unitId) })));
-            
+
+            setServices(srvs.map((s: any) => ({ ...s, id: String(s.id), unitId: String(s.unitId) })));
+
             setContractConfigs(configs || []);
-            
+
             const mapRecord = (r: any) => ({
                 ...r,
                 id: String(r.id),
@@ -2245,7 +2290,7 @@ const App = () => {
 
             if (currentUser.role === 'ADMIN') {
                 setRecords(recs.map(mapRecord));
-                if (usrs) setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
+                if (usrs) setUsers(usrs.map((u: any) => ({ ...u, id: String(u.id), username: u.name })));
             } else if (currentUser.role === 'OPERATOR') {
                 setRecords(recs.filter((r: any) => String(r.operatorId) === String(currentUser.id)).map(mapRecord));
             } else { // FISCAL
@@ -2289,7 +2334,7 @@ const App = () => {
         if (currentUser) {
             fetchData();
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentUser]);
 
     const resetService = () => {
@@ -2317,9 +2362,35 @@ const App = () => {
         navigate('OPERATOR_LOCATION_SELECT');
     }
 
-    const handleLocationSelect = (location: LocationRecord, gpsUsed: boolean) => {
-        setSelectedLocation({ ...location, _gpsUsed: gpsUsed } as any);
-        navigate('OPERATOR_SERVICE_SELECT');
+    const handleLocationSelect = (location: LocationRecord, service: ServiceDefinition | null, measurement: number | null, gpsUsed: boolean) => {
+        setSelectedLocation(location);
+        if (service) {
+            const serviceDetail = {
+                serviceId: service.id,
+                name: service.name,
+                measurement: measurement!,
+                unit: service.unit,
+            };
+
+            const locationWithService: LocationRecord = {
+                ...location,
+                services: [...(location.services || []), serviceDetail]
+            };
+
+            setCurrentService({
+                serviceType: serviceDetail.name,
+                serviceUnit: serviceDetail.unit.symbol,
+                contractGroup: locationWithService.contractGroup,
+                locationId: locationWithService.id.startsWith('manual-') ? undefined : locationWithService.id,
+                locationName: locationWithService.name,
+                locationArea: serviceDetail.measurement,
+                gpsUsed: gpsUsed,
+            });
+
+            navigate('PHOTO_STEP');
+        } else {
+            navigate('OPERATOR_SERVICE_SELECT');
+        }
     };
 
     const handleServiceSelect = (service: ServiceDefinition) => {
@@ -2367,11 +2438,33 @@ const App = () => {
     const handleBeforePhotos = async (photosBefore: string[]) => {
         setIsLoading("Criando registro e salvando fotos 'Antes'...");
         try {
+            let locationId = currentService.locationId;
+            let locationName = currentService.locationName;
+            let contractGroup = currentService.contractGroup;
+
+            // Se o ID da localização for nulo, significa que é um novo local manual.
+            if (locationName && !locationId) {
+                const newLocation = await apiFetch('/api/locations', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        city: contractGroup,
+                        name: locationName,
+                        lat: currentService.gpsUsed && currentService.coords ? currentService.coords.latitude : undefined,
+                        lng: currentService.gpsUsed && currentService.coords ? currentService.coords.longitude : undefined,
+                        services: [{
+                            service_id: services.find(s => s.name === currentService.serviceType)?.id,
+                            measurement: currentService.locationArea
+                        }]
+                    })
+                });
+                locationId = String(newLocation.id);
+            }
+
             const recordPayload = {
                 operatorId: parseInt(currentUser!.id, 10),
                 serviceType: currentService.serviceType,
                 serviceUnit: currentService.serviceUnit,
-                locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
+                locationId: locationId ? parseInt(locationId, 10) : undefined,
                 locationName: currentService.locationName,
                 contractGroup: currentService.contractGroup,
                 locationArea: currentService.locationArea,
@@ -2389,11 +2482,11 @@ const App = () => {
             setCurrentService(prev => ({
                 ...prev,
                 ...recordPayload,
-                id: recordPayload.tempId 
+                id: recordPayload.tempId
             }));
-            
+
             navigate('OPERATOR_SERVICE_IN_PROGRESS');
-            
+
         } catch (err) {
             console.error(err);
             alert("Falha ao salvar registro local.");
