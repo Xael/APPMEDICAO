@@ -2427,44 +2427,6 @@ const handleBeforePhotos = async (photosBefore: string[]) => {
     }
 };
                 
-                locationId = String(newLocation.id);
-                console.log("Novo local criado com ID:", locationId);
-            }
-            
-            const recordPayload = {
-                operatorId: parseInt(currentUser!.id, 10),
-                serviceType: currentService.serviceType,
-                serviceUnit: currentService.serviceUnit,
-                locationId: locationId ? parseInt(locationId, 10) : undefined,
-                locationName: currentService.locationName,
-                contractGroup: currentService.contractGroup,
-                locationArea: currentService.locationArea,
-                gpsUsed: !!currentService.gpsUsed,
-                startTime: new Date().toISOString(),
-                tempId: crypto.randomUUID(),
-               
-            };
-
-            const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
-            await queueRecord(recordPayload, beforeFiles);
-
-            setCurrentService(prev => ({
-                ...prev,
-                ...recordPayload,
-                id: recordPayload.tempId,
-                locationId: locationId,
-            }));
-            
-            navigate('OPERATOR_SERVICE_IN_PROGRESS');
-            
-        } catch (err) {
-            console.error(err);
-            alert("Falha ao criar novo local ou salvar registro. Tente novamente.");
-        } finally {
-            setIsLoading(null);
-        }
-    };
-
     const handleAfterPhotos = async (photosAfter: string[]) => {
         setIsLoading("Salvando fotos 'Depois'...");
         try {
