@@ -1418,28 +1418,25 @@ const ManageUsersView: React.FC<{ 
     );
 }
 
-const PerformanceView: React.FC<{
-    goals: Goal[];
-    setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
+const GoalsAndChartsView: React.FC<{
     records: ServiceRecord[];
     locations: LocationRecord[];
-}> = ({ goals, setGoals, records, locations }) => {
+}> = ({ records, locations }) => {
     // Lógica do Gráfico
     const [chartData, setChartData] = useState<any>(null);
     const [isLoadingChart, setIsLoadingChart] = useState(false);
     const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
-    const allContractGroups = [...new Set(locations.map(l => l.contractGroup).concat(records.map(r => r.contractGroup)))].sort();
+    const allContractGroups = [...new Set(locations.map(l => l.contractGroup).concat(records.map(r => r.contractGroup)))].filter(Boolean).sort();
+    
     const [selectedContracts, setSelectedContracts] = useState<string[]>(allContractGroups);
     const defaultEndDate = new Date();
     const defaultStartDate = new Date();
-    defaultStartDate.setFullYear(defaultStartDate.getFullYear() - 1);
+    defaultStartDate.setMonth(defaultStartDate.getMonth() - 11); // Padrão: últimos 12 meses
     const [startDate, setStartDate] = useState(defaultStartDate.toISOString().slice(0, 10));
     const [endDate, setEndDate] = useState(defaultEndDate.toISOString().slice(0, 10));
 
     const handleContractSelection = (contract: string, isChecked: boolean) => {
-        setSelectedContracts(prev => 
-            isChecked ? [...prev, contract] : prev.filter(c => c !== contract)
-        );
+        setSelectedContracts(prev => isChecked ? [...prev, contract] : prev.filter(c => c !== contract));
     };
 
     const handleGenerateChart = async () => {
@@ -1461,6 +1458,51 @@ const PerformanceView: React.FC<{
             setIsLoadingChart(false);
         }
     };
+    
+    const chartOptions = {
+        responsive: true,
+        plugins: { legend: { position: 'top' as const }, title: { display: true, text: 'Volume de Medição Mensal' } },
+        scales: { y: { beginAtZero: true } }
+    };
+
+    return (
+        <div>
+            <div className="card">
+                <h3>Análise Gráfica de Desempenho</h3>
+                <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                    {/* ... (filtros de data) ... */}
+                    <fieldset className="form-group-full">
+                        <legend>Contratos para Visualizar</legend>
+                        <div className="button-group" style={{justifyContent: 'flex-start', marginBottom: '1rem'}}>
+                           <button className="button button-sm" onClick={() => setSelectedContracts(allContractGroups)}>Selecionar Todos</button>
+                           <button className="button button-sm button-secondary" onClick={() => setSelectedContracts([])}>Limpar Seleção</button>
+                        </div>
+                        <div className="checkbox-group">
+                            {allContractGroups.map(group => (
+                                <div key={group} className="checkbox-item">
+                                    <input type="checkbox" id={`contract-${group}`} checked={selectedContracts.includes(group)} onChange={e => handleContractSelection(group, e.target.checked)} />
+                                    <label htmlFor={`contract-${group}`}>{group}</label>
+                                </div>
+                            ))}
+                        </div>
+                    </fieldset>
+                    {/* ... (seleção de tipo de gráfico) ... */}
+                    <button className="button admin-button" onClick={handleGenerateChart} disabled={isLoadingChart}>
+                        {isLoadingChart ? 'Gerando...' : 'Gerar Gráfico'}
+                    </button>
+                </div>
+                {isLoadingChart && <Loader text="Carregando dados do gráfico..." />}
+                {chartData && (
+                    <div style={{marginTop: '2rem', height: '400px'}}>
+                        {chartType === 'bar' ? <Bar options={chartOptions} data={chartData} /> : <Line options={chartOptions} data={chartData} />}
+                    </div>
+                )}
+            </div>
+            {/* O restante do código de Metas (Goals) pode continuar aqui se você o tiver separado */}
+        </div>
+    );
+};
+
     
     // Lógica das Metas
     const [contractGroupGoal, setContractGroupGoal] = useState('');
@@ -2524,7 +2566,7 @@ const handleServiceSelect = (service: ServiceDefinition) => {
                 case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} fetchData={fetchData} />;
                 case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} services={services} fetchData={fetchData} />;
                 case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
-                case 'ADMIN_MANAGE_GOALS': return <PerformanceView goals={goals} setGoals={setGoals} records={records} locations={locations} />;
+                case 'ADMIN_MANAGE_GOALS': return <GoalsAndChartsView records={records} locations={locations} />;
                 case 'ADMIN_MANAGE_CYCLES': return <ManageCyclesView locations={locations} configs={contractConfigs} fetchData={fetchData} />;
                 case 'REPORTS': return <ReportsView records={records} services={services} />;
                 case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} selectedIds={selectedRecordIds} onToggleSelect={handleToggleRecordSelection} onDeleteSelected={handleDeleteSelectedRecords} />;
