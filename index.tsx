@@ -877,7 +877,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
 
             // Subheaders
-            const subheaders = ['DATA', 'LOCAL', `METRAGEM EM`];
+            const subheaders = ['DATA', 'LOCAL', `METRAGEM`];
             subheaders.forEach((text, i) => {
                 const cell = worksheet.getCell(8, currentColumn + i);
                 cell.value = text;
