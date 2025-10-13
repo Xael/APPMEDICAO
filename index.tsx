@@ -475,7 +475,6 @@ const OperatorServiceSelect: React.FC<{
     );
 };
 
-// =================== COMPONENTE ALTERADO ===================
 const OperatorLocationSelect: React.FC<{ 
     locations: LocationRecord[]; 
     contractGroup: string; 
@@ -488,10 +487,8 @@ const OperatorLocationSelect: React.FC<{
     const [nearbyLocation, setNearbyLocation] = useState<LocationRecord | null>(null);
     const contractLocations = locations.filter(l => l.contractGroup === contractGroup);
     
-    // NOVO ESTADO: para controlar o botão de busca de GPS
     const [isFetchingCoords, setIsFetchingCoords] = useState(false);
 
-    // Este useEffect continua útil para a função de "Local Próximo"
     useEffect(() => {
         const watchId = navigator.geolocation.watchPosition(
             (pos) => {
@@ -511,7 +508,6 @@ const OperatorLocationSelect: React.FC<{
         return () => navigator.geolocation.clearWatch(watchId);
     }, [contractLocations]);
     
-    // NOVA FUNÇÃO: para ser chamada pelo botão
     const handleGetCoordinates = () => {
         setIsFetchingCoords(true);
         navigator.geolocation.getCurrentPosition(
@@ -582,7 +578,6 @@ const OperatorLocationSelect: React.FC<{
                 <h4>Ou, crie um novo local</h4>
                 <input type="text" placeholder="Digite o nome do NOVO local" value={manualLocationName} onChange={e => setManualLocationName(e.target.value)} />
                 
-                {/* NOVO BOTÃO ADICIONADO AQUI */}
                 <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '1rem', width: '100%' }}>
                     {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
                 </button>
@@ -595,7 +590,6 @@ const OperatorLocationSelect: React.FC<{
         </div>
     );
 };
-// ==========================================================
 
 const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: string[]) => void; onCancel: () => void }> = ({ phase, onComplete, onCancel }) => {
     const [photos, setPhotos] = useState<string[]>([]);
@@ -742,8 +736,9 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
     </div>
 );
 
+// =================== COMPONENTE ReportsView ATUALIZADO ===================
 const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
-    const [reportType, setReportType] = useState<'excel' | 'photos' | null>(null);
+    const [reportType, setReportType] = useState<'excel' | 'photos' | 'billing' | null>(null);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedServices, setSelectedServices] = useState<string[]>([]);
@@ -751,6 +746,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const printableRef = useRef<HTMLDivElement>(null);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    const [isGeneratingExcel, setIsGeneratingExcel] = useState(false); // State for both Excel generations
 
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
@@ -786,6 +782,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             alert("Nenhum registro selecionado para exportar.");
             return;
         }
+        setIsGeneratingExcel(true);
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Relatório de Serviços');
         worksheet.columns = [
@@ -816,8 +813,161 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         } catch (error) {
             console.error("Erro ao gerar Excel:", error);
             alert("Ocorreu um erro ao gerar o arquivo Excel.");
+        } finally {
+            setIsGeneratingExcel(false);
         }
     };
+
+    // =================== NOVA FUNÇÃO DE EXPORTAÇÃO ===================
+    const handleExportBillingExcel = async () => {
+        if (selectedRecords.length === 0) {
+            alert("Nenhum registro selecionado para exportar.");
+            return;
+        }
+        setIsGeneratingExcel(true);
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Planilha de Faturamento');
+
+        // --- STYLES ---
+        const centerBoldStyle: Partial<ExcelJS.Style> = { font: { bold: true }, alignment: { horizontal: 'center', vertical: 'middle' } };
+        const centerStyle: Partial<ExcelJS.Style> = { alignment: { horizontal: 'center', vertical: 'middle' } };
+        const titleStyle: Partial<ExcelJS.Style> = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center', vertical: 'middle' } };
+        const yellowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+        const grayFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
+        const thinBorder: Partial<ExcelJS.Borders> = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        const numberFormat = '#,##0.00';
+
+        // --- HEADER ---
+        worksheet.mergeCells('A1:L1');
+        worksheet.getCell('A1').value = 'C.R.B COMERCIO E SERVIÇOS DE MANUTENÇÃO EM GERAL LTDA';
+        worksheet.getCell('A1').style = centerBoldStyle;
+        worksheet.mergeCells('A2:L2');
+        worksheet.getCell('A2').value = 'CNPJ: 10.397.876/0001-77';
+        worksheet.getCell('A2').style = centerStyle;
+        worksheet.mergeCells('A3:L3');
+        worksheet.getCell('A3').value = 'PLANILHA DE FATURAMENTO';
+        worksheet.getCell('A3').style = titleStyle;
+
+        worksheet.getCell('A5').value = 'CONTRATO ADMINISTRATIVO Nº:';
+        worksheet.getCell('E5').value = 'NÚMERO MEDIÇÃO:';
+        worksheet.getCell('I5').value = 'PERÍODO:';
+        const formattedStartDate = startDate ? new Date(startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
+        const formattedEndDate = endDate ? new Date(endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
+        worksheet.getCell('J5').value = `${formattedStartDate} até ${formattedEndDate}`;
+
+        // --- DATA ---
+        const groupedRecords = selectedRecords.reduce((acc, record) => {
+            (acc[record.serviceType] = acc[record.serviceType] || []).push(record);
+            return acc;
+        }, {} as Record<string, ServiceRecord[]>);
+
+        let currentColumn = 1;
+        let maxRows = 8;
+        const serviceSummaryInfo: { service: string, unit: string, metragemColumn: string, firstRow: number, lastRow: number }[] = [];
+
+        Object.keys(groupedRecords).forEach(serviceType => {
+            const records = groupedRecords[serviceType];
+            if (records.length === 0) return;
+
+            // Service Header
+            worksheet.mergeCells(7, currentColumn, 7, currentColumn + 2);
+            const headerCell = worksheet.getCell(7, currentColumn);
+            headerCell.value = serviceType.toUpperCase();
+            headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+
+            // Subheaders
+            const subheaders = ['DATA', 'LOCAL', `METRAGEM EM`];
+            subheaders.forEach((text, i) => {
+                const cell = worksheet.getCell(8, currentColumn + i);
+                cell.value = text;
+                cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+            });
+
+            const metragemColumn = worksheet.getColumn(currentColumn + 2);
+            metragemColumn.numFmt = numberFormat;
+
+            let currentRow = 9;
+            records.forEach(record => {
+                worksheet.getCell(currentRow, currentColumn).value = new Date(record.startTime).toLocaleDateString('pt-BR');
+                worksheet.getCell(currentRow, currentColumn + 1).value = record.locationName;
+                worksheet.getCell(currentRow, currentColumn + 2).value = record.locationArea;
+                // Apply borders to data cells
+                for (let i = 0; i < 3; i++) {
+                     worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
+                }
+                currentRow++;
+            });
+
+            if (currentRow > maxRows) maxRows = currentRow;
+            serviceSummaryInfo.push({
+                service: serviceType,
+                unit: records[0].serviceUnit,
+                metragemColumn: metragemColumn.letter,
+                firstRow: 9,
+                lastRow: currentRow - 1
+            });
+
+            currentColumn += 4; // 3 columns for data + 1 spacer column
+        });
+        
+        // --- QUADRO RESUMO ---
+        const summaryStartCol = currentColumn;
+        worksheet.mergeCells(7, summaryStartCol, 7, summaryStartCol + 3);
+        const summaryHeader = worksheet.getCell(7, summaryStartCol);
+        summaryHeader.value = 'QUADRO RESUMO';
+        summaryHeader.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+        
+        ['SERVIÇOS', 'METRAGEM', 'METRAGEM REALIZADA'].forEach((text, i) => {
+            const headerIndex = i === 0 ? summaryStartCol : summaryStartCol + i + 1;
+            const cell = worksheet.getCell(8, headerIndex);
+            cell.value = text;
+            cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+        });
+
+        let summaryCurrentRow = 9;
+        serviceSummaryInfo.forEach(info => {
+            worksheet.getCell(summaryCurrentRow, summaryStartCol).value = `${info.service} ${info.unit}`;
+            const totalCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 3);
+            totalCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
+            totalCell.numFmt = numberFormat;
+
+            // Apply borders to summary cells
+            [summaryStartCol, summaryStartCol + 2, summaryStartCol + 3].forEach(colIdx => {
+                worksheet.getCell(summaryCurrentRow, colIdx).border = thinBorder;
+            })
+            summaryCurrentRow++;
+        });
+
+        // Set column widths
+        worksheet.columns.forEach(column => {
+            let maxLength = 0;
+            column.eachCell!({ includeEmpty: true }, cell => {
+                let columnLength = cell.value ? cell.value.toString().length : 10;
+                if (columnLength > maxLength) {
+                    maxLength = columnLength;
+                }
+            });
+            column.width = maxLength < 10 ? 10 : maxLength + 2;
+        });
+
+        // --- DOWNLOAD ---
+        try {
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `relatorio_faturamento_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        } catch (error) {
+            console.error("Erro ao gerar Excel de Faturamento:", error);
+            alert("Ocorreu um erro ao gerar o arquivo Excel de faturamento.");
+        } finally {
+            setIsGeneratingExcel(false);
+        }
+    };
+    // =================== FIM DA NOVA FUNÇÃO ===================
 
     const handleGeneratePdfClick = () => {
         if (selectedRecords.length === 0) {
@@ -975,8 +1125,9 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             <div className="card">
                 <h2>Selecione o Tipo de Relatório</h2>
                 <div className="button-group" style={{flexDirection: 'column', gap: '1rem'}}>
-                    <button className="button" onClick={() => setReportType('excel')}>📊 Relatório Planilha de Excel</button>
-                    <button className="button button-secondary" onClick={() => setReportType('photos')}>🖼️ Relatório de Fotografias (PDF)</button>
+                    <button className="button" onClick={() => setReportType('excel')}>📊 Relatório de Dados (Excel)</button>
+                    <button className="button button-success" onClick={() => setReportType('billing')}>💰 Relatório de Faturamento (Excel)</button>
+                    <button className="button button-secondary" onClick={() => setReportType('photos')}>🖼️ Relatório Fotográfico (PDF)</button>
                 </div>
             </div>
         );
@@ -985,7 +1136,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     return (
          <div className="card">
             <button className="button button-sm button-secondary" onClick={() => setReportType(null)} style={{float: 'right'}}>Trocar Tipo</button>
-            <h2>Filtros para Relatório de {reportType === 'excel' ? 'Excel' : 'Fotos'}</h2>
+            <h2>Filtros para Relatório de {reportType === 'excel' ? 'Dados' : reportType === 'billing' ? 'Faturamento' : 'Fotos'}</h2>
             <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch', clear: 'both'}}>
                 <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
                     <div className="form-group"><label>Data de Início</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
@@ -997,9 +1148,10 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
           
             <div className="report-summary">
                 <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
-                {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
+                {(reportType === 'excel' || reportType === 'billing') && <p>Total Medição Selecionada: {totalArea.toLocaleString('pt-br')} </p>}
                 <div className="button-group">
-                    {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0}>Exportar para Excel</button>}
+                    {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0 || isGeneratingExcel}>{isGeneratingExcel ? 'Gerando...' : 'Exportar Dados para Excel'}</button>}
+                    {reportType === 'billing' && <button className="button button-success" onClick={handleExportBillingExcel} disabled={selectedIds.length === 0 || isGeneratingExcel}>{isGeneratingExcel ? 'Gerando...' : 'Exportar Faturamento para Excel'}</button>}
                     {reportType === 'photos' && <button className="button" onClick={handleGeneratePdfClick} disabled={selectedIds.length === 0}>Gerar PDF com Fotos</button>}
                 </div>
             </div>
@@ -1018,6 +1170,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         </div>
     );
 };
+// =======================================================================
 
 const ManageLocationsView: React.FC<{
     locations: LocationRecord[];
