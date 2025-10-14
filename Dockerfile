@@ -9,6 +9,10 @@ RUN npm install
 # copie o resto e construa
 COPY . .
 # se precisar passar VITE_API_BASE no build, o EasyPanel permite arg/env
+
+# Adicione esta linha para forçar o registry principal
+RUN npm config set registry https://registry.npmjs.org/
+
 RUN npm run build
 
 # --- runtime stage ---
@@ -19,3 +23,4 @@ COPY --from=build /app/dist /usr/share/nginx/html
 
 # (opcional) healthcheck; remova se o EasyPanel já checa
 # HEALTHCHECK CMD wget -qO- http://localhost/ || exit 1
+
