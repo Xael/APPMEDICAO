@@ -716,13 +716,21 @@ NOVOS ESTILOS PARA O RELATÓRIO PDF
     .contract-group-selector {
         flex-direction: row;
         align-items: center;
+        flex-wrap: wrap;
     }
     .contract-group-selector select {
         flex-grow: 1;
+        min-width: 200px;
     }
     .contract-group-selector button {
         flex-shrink: 0;
         width: auto;
+        margin-top: 0;
+    }
+    .contract-group-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-shrink: 0;
     }
 }
 

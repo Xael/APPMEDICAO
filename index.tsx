@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import ExcelJS from 'exceljs';
@@ -172,14 +174,16 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
             try {
                 if (document.fullscreenElement) return;
                 if (elem.requestFullscreen) { await elem.requestFullscreen(); }
-                if (screen.orientation && screen.orientation.lock) { await screen.orientation.lock('landscape'); }
+// FIX: Cast screen.orientation to any to access the experimental 'lock' property without TypeScript errors.
+                if (screen.orientation && (screen.orientation as any).lock) { await (screen.orientation as any).lock('landscape'); }
             } catch (err) { console.warn("Não foi possível ativar tela cheia ou travar orientação:", err); }
         };
         enterFullscreen();
         return () => {
             try {
                 if (document.fullscreenElement) { document.exitFullscreen(); }
-                if (screen.orientation && screen.orientation.unlock) { screen.orientation.unlock(); }
+// FIX: Cast screen.orientation to any to access the experimental 'unlock' property without TypeScript errors.
+                if (screen.orientation && (screen.orientation as any).unlock) { (screen.orientation as any).unlock(); }
             } catch (err) { console.warn("Não foi possível sair da tela cheia ou destravar orientação:", err); }
         };
     }, []);
@@ -475,6 +479,7 @@ const OperatorServiceSelect: React.FC<{
     );
 };
 
+// =================== COMPONENTE ALTERADO ===================
 const OperatorLocationSelect: React.FC<{ 
     locations: LocationRecord[]; 
     contractGroup: string; 
@@ -487,8 +492,10 @@ const OperatorLocationSelect: React.FC<{
     const [nearbyLocation, setNearbyLocation] = useState<LocationRecord | null>(null);
     const contractLocations = locations.filter(l => l.contractGroup === contractGroup);
     
+    // NOVO ESTADO: para controlar o botão de busca de GPS
     const [isFetchingCoords, setIsFetchingCoords] = useState(false);
 
+    // Este useEffect continua útil para a função de "Local Próximo"
     useEffect(() => {
         const watchId = navigator.geolocation.watchPosition(
             (pos) => {
@@ -508,6 +515,7 @@ const OperatorLocationSelect: React.FC<{
         return () => navigator.geolocation.clearWatch(watchId);
     }, [contractLocations]);
     
+    // NOVA FUNÇÃO: para ser chamada pelo botão
     const handleGetCoordinates = () => {
         setIsFetchingCoords(true);
         navigator.geolocation.getCurrentPosition(
@@ -578,6 +586,7 @@ const OperatorLocationSelect: React.FC<{
                 <h4>Ou, crie um novo local</h4>
                 <input type="text" placeholder="Digite o nome do NOVO local" value={manualLocationName} onChange={e => setManualLocationName(e.target.value)} />
                 
+                {/* NOVO BOTÃO ADICIONADO AQUI */}
                 <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '1rem', width: '100%' }}>
                     {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
                 </button>
@@ -590,6 +599,7 @@ const OperatorLocationSelect: React.FC<{
         </div>
     );
 };
+// ==========================================================
 
 const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: string[]) => void; onCancel: () => void }> = ({ phase, onComplete, onCancel }) => {
     const [photos, setPhotos] = useState<string[]>([]);
@@ -736,7 +746,6 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
     </div>
 );
 
-// =================== COMPONENTE ReportsView ATUALIZADO ===================
 const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
     const [reportType, setReportType] = useState<'excel' | 'photos' | 'billing' | null>(null);
     const [startDate, setStartDate] = useState('');
@@ -745,8 +754,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     const [selectedContractGroup, setSelectedContractGroup] = useState('');
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const printableRef = useRef<HTMLDivElement>(null);
-    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-    const [isGeneratingExcel, setIsGeneratingExcel] = useState(false); // State for both Excel generations
+    const [isGenerating, setIsGenerating] = useState(false);
 
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
@@ -782,7 +790,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             alert("Nenhum registro selecionado para exportar.");
             return;
         }
-        setIsGeneratingExcel(true);
+        setIsGenerating(true);
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Relatório de Serviços');
         worksheet.columns = [
@@ -814,28 +822,30 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             console.error("Erro ao gerar Excel:", error);
             alert("Ocorreu um erro ao gerar o arquivo Excel.");
         } finally {
-            setIsGeneratingExcel(false);
+            setIsGenerating(false);
         }
     };
 
-    // =================== NOVA FUNÇÃO DE EXPORTAÇÃO ===================
     const handleExportBillingExcel = async () => {
         if (selectedRecords.length === 0) {
             alert("Nenhum registro selecionado para exportar.");
             return;
         }
-        setIsGeneratingExcel(true);
+        setIsGenerating(true);
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Planilha de Faturamento');
 
         // --- STYLES ---
-        const centerBoldStyle: Partial<ExcelJS.Style> = { font: { bold: true }, alignment: { horizontal: 'center', vertical: 'middle' } };
-        const centerStyle: Partial<ExcelJS.Style> = { alignment: { horizontal: 'center', vertical: 'middle' } };
-        const titleStyle: Partial<ExcelJS.Style> = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center', vertical: 'middle' } };
-        const yellowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
-        const grayFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
-        const thinBorder: Partial<ExcelJS.Borders> = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+// FIX: Cast string literals for alignment to specific types to prevent TypeScript from widening them to 'string'.
+        const centerBoldStyle = { font: { bold: true }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+// FIX: Cast string literals for alignment to specific types to prevent TypeScript from widening them to 'string'.
+        const centerStyle = { alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+// FIX: Cast string literals for alignment to specific types to prevent TypeScript from widening them to 'string'.
+        const titleStyle = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+        const yellowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } as ExcelJS.Fill;
+        const grayFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } as ExcelJS.Fill;
+        const thinBorder = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } as ExcelJS.Borders;
         const numberFormat = '#,##0.00';
 
         // --- HEADER ---
@@ -877,7 +887,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
 
             // Subheaders
-            const subheaders = ['DATA', 'LOCAL', `METRAGEM`];
+            const subheaders = ['DATA', 'LOCAL', `METRAGEM EM`];
             subheaders.forEach((text, i) => {
                 const cell = worksheet.getCell(8, currentColumn + i);
                 cell.value = text;
@@ -929,6 +939,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         serviceSummaryInfo.forEach(info => {
             worksheet.getCell(summaryCurrentRow, summaryStartCol).value = `${info.service} ${info.unit}`;
             const totalCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 3);
+// FIX: Assign a formula object to the cell's `value` property, as `formula` is read-only.
             totalCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
             totalCell.numFmt = numberFormat;
 
@@ -964,17 +975,17 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             console.error("Erro ao gerar Excel de Faturamento:", error);
             alert("Ocorreu um erro ao gerar o arquivo Excel de faturamento.");
         } finally {
-            setIsGeneratingExcel(false);
+            setIsGenerating(false);
         }
     };
-    // =================== FIM DA NOVA FUNÇÃO ===================
+
 
     const handleGeneratePdfClick = () => {
         if (selectedRecords.length === 0) {
             alert("Por favor, selecione ao menos um registro para gerar o PDF.");
             return;
         }
-        setIsGeneratingPdf(true);
+        setIsGenerating(true);
     };
 
     const PdfLayout = () => {
@@ -1039,7 +1050,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                         console.error("Erro ao gerar PDF:", error);
                         alert("Ocorreu um erro ao gerar o PDF.");
                     } finally {
-                        setIsGeneratingPdf(false);
+                        setIsGenerating(false);
                     }
                 })();
             }
@@ -1111,11 +1122,11 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         );
     };
 
-    if (isGeneratingPdf) {
+    if (isGenerating) {
         return (
             <>
-                <Loader text="Gerando PDF, por favor aguarde..." />
-                <PdfLayout />
+                <Loader text="Gerando relatório, por favor aguarde..." />
+                {reportType === 'photos' && <PdfLayout />}
             </>
         );
     }
@@ -1125,9 +1136,9 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             <div className="card">
                 <h2>Selecione o Tipo de Relatório</h2>
                 <div className="button-group" style={{flexDirection: 'column', gap: '1rem'}}>
-                    <button className="button" onClick={() => setReportType('excel')}>📊 Relatório de Dados (Excel)</button>
-                    <button className="button button-success" onClick={() => setReportType('billing')}>💰 Relatório de Faturamento (Excel)</button>
-                    <button className="button button-secondary" onClick={() => setReportType('photos')}>🖼️ Relatório Fotográfico (PDF)</button>
+                    <button className="button" onClick={() => setReportType('excel')}>📊 Relatório Planilha (Simples)</button>
+                    <button className="button" onClick={() => setReportType('billing')}>📋 RELATÓRIO FINAL (Faturamento)</button>
+                    <button className="button button-secondary" onClick={() => setReportType('photos')}>🖼️ Relatório de Fotografias (PDF)</button>
                 </div>
             </div>
         );
@@ -1136,7 +1147,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     return (
          <div className="card">
             <button className="button button-sm button-secondary" onClick={() => setReportType(null)} style={{float: 'right'}}>Trocar Tipo</button>
-            <h2>Filtros para Relatório de {reportType === 'excel' ? 'Dados' : reportType === 'billing' ? 'Faturamento' : 'Fotos'}</h2>
+            <h2>Filtros para {reportType === 'excel' ? 'Relatório Simples' : reportType === 'billing' ? 'Relatório Final' : 'Relatório de Fotos'}</h2>
             <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch', clear: 'both'}}>
                 <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
                     <div className="form-group"><label>Data de Início</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
@@ -1148,10 +1159,10 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
           
             <div className="report-summary">
                 <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
-                {(reportType === 'excel' || reportType === 'billing') && <p>Total Medição Selecionada: {totalArea.toLocaleString('pt-br')} </p>}
+                {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
                 <div className="button-group">
-                    {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0 || isGeneratingExcel}>{isGeneratingExcel ? 'Gerando...' : 'Exportar Dados para Excel'}</button>}
-                    {reportType === 'billing' && <button className="button button-success" onClick={handleExportBillingExcel} disabled={selectedIds.length === 0 || isGeneratingExcel}>{isGeneratingExcel ? 'Gerando...' : 'Exportar Faturamento para Excel'}</button>}
+                    {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0}>Exportar para Excel</button>}
+                    {reportType === 'billing' && <button className="button" onClick={handleExportBillingExcel} disabled={selectedIds.length === 0}>Gerar Relatório Final</button>}
                     {reportType === 'photos' && <button className="button" onClick={handleGeneratePdfClick} disabled={selectedIds.length === 0}>Gerar PDF com Fotos</button>}
                 </div>
             </div>
@@ -1170,19 +1181,20 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         </div>
     );
 };
-// =======================================================================
 
 const ManageLocationsView: React.FC<{
     locations: LocationRecord[];
     services: ServiceDefinition[];
     fetchData: () => Promise<void>;
-}> = ({ locations, services, fetchData }) => {
+    addAuditLogEntry: (action: 'UPDATE' | 'DELETE', details: string) => void;
+}> = ({ locations, services, fetchData, addAuditLogEntry }) => {
     const [selectedGroup, setSelectedGroup] = useState('');
     const [name, setName] = useState('');
     const [coords, setCoords] = useState<Partial<GeolocationCoords> | null>(null);
     const [isFetchingCoords, setIsFetchingCoords] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [serviceMeasurements, setServiceMeasurements] = useState<Record<string, string>>({});
+    const [isGroupActionLoading, setIsGroupActionLoading] = useState(false);
 
     const allGroups = [...new Set(locations.map(l => l.contractGroup))].filter(Boolean).sort();
 
@@ -1195,9 +1207,78 @@ const ManageLocationsView: React.FC<{
 
     const handleAddNewGroup = () => {
         const newGroup = prompt('Digite o nome do novo Contrato/Cidade:');
-        if (newGroup) {
+        if (newGroup && newGroup.trim()) {
             setSelectedGroup(newGroup.trim());
             resetForm();
+        }
+    };
+
+    const handleEditGroup = async () => {
+        if (!selectedGroup) return;
+
+        const newGroupName = prompt(`Digite o novo nome para o contrato/cidade "${selectedGroup}":`, selectedGroup);
+
+        if (!newGroupName || newGroupName.trim() === '' || newGroupName.trim() === selectedGroup) {
+            return;
+        }
+
+        if (window.confirm(`Tem certeza que deseja renomear "${selectedGroup}" para "${newGroupName.trim()}"? Isso afetará todos os locais associados.`)) {
+            setIsGroupActionLoading(true);
+            try {
+                await apiFetch('/api/contract-groups', {
+                    method: 'PUT',
+                    body: JSON.stringify({ oldName: selectedGroup, newName: newGroupName.trim() })
+                });
+                
+                addAuditLogEntry('UPDATE', `Contrato/Cidade '${selectedGroup}' renomeado para '${newGroupName.trim()}'`);
+                alert('Contrato/Cidade renomeado com sucesso!');
+                
+                await fetchData(); 
+                setSelectedGroup(newGroupName.trim());
+
+            } catch (error) {
+                alert('Falha ao renomear o Contrato/Cidade.');
+                console.error(error);
+            } finally {
+                setIsGroupActionLoading(false);
+            }
+        }
+    };
+
+    const handleDeleteGroup = async () => {
+        if (!selectedGroup) return;
+        
+        const associatedLocationsCount = locations.filter(l => l.contractGroup === selectedGroup).length;
+
+        if (!window.confirm(`ATENÇÃO: Esta ação é irreversível.\n\nVocê está prestes a excluir o Contrato/Cidade "${selectedGroup}" e todos os seus ${associatedLocationsCount} locais associados.\n\nDeseja continuar?`)) {
+            return;
+        }
+
+        const password = prompt('Para confirmar a exclusão, por favor, digite sua senha:');
+        if (!password) {
+            alert('A senha é necessária para confirmar a exclusão.');
+            return;
+        }
+
+        setIsGroupActionLoading(true);
+        try {
+            await apiFetch(`/api/contract-groups/${encodeURIComponent(selectedGroup)}`, {
+                method: 'DELETE',
+                body: JSON.stringify({ password: password })
+            });
+            
+            addAuditLogEntry('DELETE', `Contrato/Cidade '${selectedGroup}' e todos os seus locais associados foram excluídos.`);
+            alert('Contrato/Cidade e todos os locais associados foram excluídos com sucesso!');
+
+            await fetchData();
+            resetForm();
+            setSelectedGroup('');
+
+        } catch (error) {
+            alert('Falha ao excluir o Contrato/Cidade. Verifique sua senha ou se o contrato ainda possui registros de serviço associados.');
+            console.error(error);
+        } finally {
+            setIsGroupActionLoading(false);
         }
     };
 
@@ -1313,12 +1394,16 @@ const ManageLocationsView: React.FC<{
     return (
         <div>
             <div className="card">
-                <h3>Gerenciar Locais por Contrato/Cidade</h3>
+                <h3>Gerenciar Contrato/Cidade</h3>
                 <div className="form-group contract-group-selector">
                     <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); resetForm(); }}>
                         <option value="">Selecione um Contrato/Cidade</option>
                         {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
+                     <div className="contract-group-actions">
+                        <button className="button button-sm admin-button" onClick={handleEditGroup} disabled={!selectedGroup || isGroupActionLoading}>Editar Nome</button>
+                        <button className="button button-sm button-danger" onClick={handleDeleteGroup} disabled={!selectedGroup || isGroupActionLoading}>Excluir Contrato</button>
+                    </div>
                     <button className="button button-secondary" onClick={handleAddNewGroup}>Adicionar Novo</button>
                 </div>
             </div>
@@ -2314,6 +2399,20 @@ const App = () => {
         });
     };
 
+    const addAuditLogEntry = (action: 'UPDATE' | 'DELETE', details: string, recordId?: string) => {
+        if (!currentUser || currentUser.role !== 'ADMIN') return;
+        const newEntry: AuditLogEntry = {
+            id: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            adminId: currentUser.id,
+            adminUsername: currentUser.username,
+            action,
+            recordId: recordId || 'N/A', // N/A para ações de grupo/contrato
+            details,
+        };
+        setAuditLog(prev => [newEntry, ...prev]);
+    };
+
     const handleDeleteSelectedRecords = async () => {
         if (selectedRecordIds.size === 0) return;
         if (window.confirm(`Tem certeza que deseja excluir os ${selectedRecordIds.size} registros selecionados?`)) {
@@ -2566,10 +2665,11 @@ const App = () => {
             // 1. Prepara o pacote de dados de TEXTO para o registro.
             //    Não há dados de imagem aqui dentro, evitando o erro "Payload Too Large".
             const recordPayload = {
-                operatorId: parseInt(currentUser!.id, 10),
+                operatorId: currentUser!.id,
                 serviceType: currentService.serviceType,
                 serviceUnit: currentService.serviceUnit,
-                locationId: currentService.locationId ? parseInt(currentService.locationId, 10) : undefined,
+// FIX: The `locationId` field expects a string, not a number. Removed `parseInt`.
+                locationId: currentService.locationId,
                 locationName: currentService.locationName,
                 contractGroup: currentService.contractGroup,
                 locationArea: currentService.locationArea,
@@ -2714,7 +2814,7 @@ const App = () => {
                 switch(view) {
                     case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} />;
                     case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} fetchData={fetchData} />;
-                    case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} services={services} fetchData={fetchData} />;
+                    case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} services={services} fetchData={fetchData} addAuditLogEntry={addAuditLogEntry} />;
                     case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
                     case 'ADMIN_MANAGE_GOALS': return <GoalsAndChartsView records={records} locations={locations} />;
                     case 'ADMIN_MANAGE_CYCLES': return <ManageCyclesView locations={locations} configs={contractConfigs} fetchData={fetchData} />;
