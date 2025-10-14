@@ -1225,9 +1225,10 @@ const ManageLocationsView: React.FC<{
         if (window.confirm(`Tem certeza que deseja renomear "${selectedGroup}" para "${newGroupName.trim()}"? Isso afetará todos os locais associados.`)) {
             setIsGroupActionLoading(true);
             try {
-                await apiFetch('/api/contract-groups', {
+                // AQUI ESTÁ A LINHA CORRIGIDA
+                await apiFetch(`/api/contract-groups/${encodeURIComponent(selectedGroup)}`, {
                     method: 'PUT',
-                    body: JSON.stringify({ oldName: selectedGroup, newName: newGroupName.trim() })
+                    body: JSON.stringify({ newName: newGroupName.trim() })
                 });
                 
                 addAuditLogEntry('UPDATE', `Contrato/Cidade '${selectedGroup}' renomeado para '${newGroupName.trim()}'`);
