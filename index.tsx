@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import ExcelJS from 'exceljs';
@@ -231,39 +229,119 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
 };
 
 const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const handleLogin = async () => {
-        setError('');
-        setIsLoading(true);
-        try {
-            const { access_token } = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-            setApiToken(access_token);
-            const me = await apiFetch('/api/auth/me');
-            const user: User = { id: String(me.id), username: me.name || me.email, email: me.email, role: me.role, assignments: me.assignments || [] };
-            onLogin(user);
-        } catch (err) {
-            setError('E-mail ou senha inválidos.');
-            setApiToken(null);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    return (
-        <div className="login-container card">
-            <h2>Login de Acesso</h2>
-            <p>Entre com suas credenciais.</p>
-            {error && <p className="text-danger">{error}</p>}
-            <input type="email" placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} />
-            <input type="password" placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} />
-            <button className="button" onClick={handleLogin} disabled={isLoading}>
-                {isLoading ? 'Entrando...' : 'Entrar'}
-            </button>
-        </div>
-    );
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const handleLogin = async () => {
+    setError('');
+    setMessage('');
+    setIsLoading(true);
+    try {
+      const { access_token } = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+      setApiToken(access_token);
+      const me = await apiFetch('/api/auth/me');
+      const user: User = {
+        id: String(me.id),
+        username: me.name || me.email,
+        email: me.email,
+        role: me.role,
+        assignments: me.assignments || []
+      };
+      onLogin(user);
+    } catch (err) {
+      setError('E-mail ou senha inválidos.');
+      setApiToken(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Por favor, digite seu e-mail para recuperar a senha.');
+      return;
+    }
+    setError('');
+    setIsLoading(true);
+    try {
+      const res = await apiFetch('/api/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      });
+      setMessage(res.message || 'Se o e-mail existir, a senha será enviada.');
+      setShowForgotPassword(false);
+    } catch (err) {
+      setError('Erro ao solicitar recuperação de senha.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-container card">
+      <h2>{showForgotPassword ? 'Recuperar Senha' : 'Login de Acesso'}</h2>
+
+      {error && <p className="text-danger">{error}</p>}
+      {message && <p className="text-success">{message}</p>}
+
+      <input
+        type="email"
+        placeholder="E-mail"
+        value={email}
+        onChange={e => setEmail(e.target.value)}
+      />
+
+      {!showForgotPassword && (
+        <input
+          type="password"
+          placeholder="Senha"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+        />
+      )}
+
+      {!showForgotPassword ? (
+        <>
+          <button className="button" onClick={handleLogin} disabled={isLoading}>
+            {isLoading ? 'Entrando...' : 'Entrar'}
+          </button>
+          <button
+            className="button button-secondary"
+            onClick={() => setShowForgotPassword(true)}
+            disabled={isLoading}
+          >
+            Esqueci minha senha
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            className="button button-success"
+            onClick={handleForgotPassword}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Enviando...' : 'Enviar Senha por E-mail'}
+          </button>
+          <button
+            className="button button-secondary"
+            onClick={() => setShowForgotPassword(false)}
+            disabled={isLoading}
+          >
+            Voltar ao Login
+          </button>
+        </>
+      )}
+    </div>
+  );
 };
+
 
 const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; }> = ({ onNavigate }) => (
     <div className="admin-dashboard">
