@@ -954,3 +954,16 @@ NOVOS ESTILOS PARA O RELATÓRIO PDF
     color: var(--dark-gray-color);
     font-style: italic;
 }
+
+/* Adicione ao final de index.css */
+
+.button.button-danger {
+    background-color: var(--danger-color);
+    color: var(--white-color);
+    margin-top: 1.5rem; /* Adiciona um espaço acima do botão */
+    width: 100%;
+}
+
+.button.button-danger:hover {
+    background-color: #c82333; /* Um vermelho mais escuro no hover */
+}
