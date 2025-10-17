@@ -764,8 +764,48 @@ interface HistoryViewProps {
     onToggleSelect: (recordId: string) => void;
     onDeleteSelected?: () => void;
 }
-const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, onEdit, onDelete, selectedIds, onToggleSelect, onDeleteSelected }) => (
-    <div>
+const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, onEdit, onDelete, selectedIds, onToggleSelect, onDeleteSelected }) => {
+    // --- INÍCIO DAS NOVAS ADIÇÕES ---
+    const [editingMeasurementId, setEditingMeasurementId] = useState<number | null>(null);
+    const [newMeasurement, setNewMeasurement] = useState('');
+    const [allRecords, setAllRecords] = useState(records);
+
+    useEffect(() => {
+        setAllRecords(records);
+    }, [records]);
+
+    const handleSaveMeasurement = async (recordId: number) => {
+        try {
+            const response = await apiFetch(`/api/records/${recordId}/measurement`, {
+                method: 'PUT',
+                body: JSON.stringify({ overrideMeasurement: newMeasurement }),
+            });
+            // Atualiza a lista de registros localmente para refletir a mudança instantaneamente
+            setAllRecords(prevRecords => prevRecords.map(r => r.id === recordId ? response : r));
+            setEditingMeasurementId(null);
+        } catch (error) {
+            console.error("Erro ao salvar medição:", error);
+            alert('Não foi possível salvar a medição ajustada.');
+        }
+    };
+
+    const renderMeasurement = (record: ServiceRecord) => {
+        const original = record.locationArea ? `${record.locationArea.toFixed(2)} ${record.serviceUnit}` : 'N/A';
+        
+        // Se existe uma medição ajustada, mostra ela com destaque e a original embaixo
+        if (record.overrideMeasurement !== null && record.overrideMeasurement !== undefined) {
+            return (
+                <>
+                    <strong style={{ color: 'var(--danger-color)' }}>{record.overrideMeasurement.toFixed(2)} {record.serviceUnit}</strong>
+                    <em style={{ fontSize: '0.8em', display: 'block' }}>(Original: {original})</em>
+                </>
+            );
+        }
+        return original;
+    };
+    // --- FIM DAS NOVAS ADIÇÕES ---
+
+    return (
         {isAdmin && selectedIds.size > 0 && (
             <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
                 <button className="button button-danger" onClick={onDeleteSelected}>
@@ -798,12 +838,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
                              {!isAdmin && onEdit && ( <button className="button button-sm" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Reabrir</button> )}
                              {isAdmin && onDelete && ( <button className="button button-sm button-danger" onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}>Excluir</button> )}
                          </div>
-                    </li>
-                ))}
-            </ul>
-        )}
-    </div>
-);
+           </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+};
 
 const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
      <div className="detail-view">
@@ -812,7 +853,10 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
             <p><strong>Contrato/Cidade:</strong> {record.contractGroup}</p>
             <p><strong>Local:</strong> {record.locationName} {record.gpsUsed && <span className='gps-indicator'>📍(GPS)</span>}</p>
             <p><strong>Serviço:</strong> {record.serviceType}</p>
-            {record.locationArea ? <p><strong>Metragem:</strong> {record.locationArea} {record.serviceUnit}</p> : <p><strong>Metragem:</strong> Não informada</p>}
+            {record.overrideMeasurement !== null && record.overrideMeasurement !== undefined 
+    ? <p><strong>Metragem Válida:</strong> {record.overrideMeasurement.toFixed(2)} {record.serviceUnit} <em style={{fontSize: '0.8em'}}>(Original: {record.locationArea?.toFixed(2)})</em></p> 
+    : <p><strong>Metragem:</strong> {record.locationArea ? `${record.locationArea.toFixed(2)} ${record.serviceUnit}` : 'Não informada'}</p>
+}
             <p><strong>Operador:</strong> {record.operatorName}</p>
             <p><strong>Início:</strong> {formatDateTime(record.startTime)}</p>
             <p><strong>Fim:</strong> {record.endTime ? formatDateTime(record.endTime) : 'Não finalizado'}</p>
