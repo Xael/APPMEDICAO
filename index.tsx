@@ -562,10 +562,10 @@ const OperatorServiceSelect: React.FC<{
 };
 
 // =================== COMPONENTE ALTERADO ===================
-const OperatorLocationSelect: React.FC<{ 
-    locations: LocationRecord[]; 
-    contractGroup: string; 
-    onSelectLocation: (loc: LocationRecord, gpsUsed: boolean) => void; 
+const OperatorLocationSelect: React.FC<{
+    locations: LocationRecord[];
+    contractGroup: string;
+    onSelectLocation: (loc: LocationRecord, gpsUsed: boolean) => void;
 }> = ({ locations, contractGroup, onSelectLocation }) => {
     const [manualLocationName, setManualLocationName] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
@@ -574,10 +574,8 @@ const OperatorLocationSelect: React.FC<{
     const [nearbyLocation, setNearbyLocation] = useState<LocationRecord | null>(null);
     const contractLocations = locations.filter(l => l.contractGroup === contractGroup);
     
-    // NOVO ESTADO: para controlar o botão de busca de GPS
     const [isFetchingCoords, setIsFetchingCoords] = useState(false);
 
-    // Este useEffect continua útil para a função de "Local Próximo"
     useEffect(() => {
         const watchId = navigator.geolocation.watchPosition(
             (pos) => {
@@ -597,7 +595,6 @@ const OperatorLocationSelect: React.FC<{
         return () => navigator.geolocation.clearWatch(watchId);
     }, [contractLocations]);
     
-    // NOVA FUNÇÃO: para ser chamada pelo botão
     const handleGetCoordinates = () => {
         setIsFetchingCoords(true);
         navigator.geolocation.getCurrentPosition(
@@ -660,7 +657,13 @@ const OperatorLocationSelect: React.FC<{
                 <input type="search" placeholder="Digite para buscar um local..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{marginBottom: '1rem'}} />
                 <div className="location-selection-list">
                     {filteredLocations.length > 0 ? filteredLocations.map(loc => (
-                        <button key={loc.id} className="button button-secondary" onClick={() => handleSelectFromList(loc)}>{loc.name}</button>
+                        // ===============================================
+                        // ✅ ALTERAÇÃO PRINCIPAL AQUI ✅
+                        // ===============================================
+                        <button key={loc.id} className="button button-secondary location-button-with-obs" onClick={() => handleSelectFromList(loc)}>
+                            <span className="location-name">{loc.name}</span>
+                            {loc.observations && <span className="location-observation">Obs: {loc.observations}</span>}
+                        </button>
                     )) : <p>Nenhum local encontrado com esse nome.</p>}
                 </div>
             </div>
@@ -668,7 +671,6 @@ const OperatorLocationSelect: React.FC<{
                 <h4>Ou, crie um novo local</h4>
                 <input type="text" placeholder="Digite o nome do NOVO local" value={manualLocationName} onChange={e => setManualLocationName(e.target.value)} />
                 
-                {/* NOVO BOTÃO ADICIONADO AQUI */}
                 <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '1rem', width: '100%' }}>
                     {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
                 </button>
@@ -1318,6 +1320,7 @@ const ManageLocationsView: React.FC<{
 }> = ({ locations, services, fetchData, addAuditLogEntry }) => {
     const [selectedGroup, setSelectedGroup] = useState('');
     const [name, setName] = useState('');
+    const [observations, setObservations] = useState('');
     const [coords, setCoords] = useState<Partial<GeolocationCoords> | null>(null);
     const [isFetchingCoords, setIsFetchingCoords] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -1328,6 +1331,7 @@ const ManageLocationsView: React.FC<{
 
     const resetForm = () => {
         setName('');
+        setObservations('');
         setCoords(null);
         setServiceMeasurements({});
         setEditingId(null);
@@ -1474,6 +1478,7 @@ const ManageLocationsView: React.FC<{
         const payload = {
             city: selectedGroup.trim(),
             name,
+            observations,
             lat: coords?.latitude,
             lng: coords?.longitude,
             services: servicesPayload,
@@ -1497,6 +1502,7 @@ const ManageLocationsView: React.FC<{
     const handleEdit = (loc: LocationRecord) => {
         setEditingId(loc.id);
         setName(loc.name);
+        setObservations(loc.observations || '');
         setCoords(loc.coords || null);
         setSelectedGroup(loc.contractGroup);
         const initialMeasurements = (loc.services || []).reduce((acc, srv) => {
@@ -1542,6 +1548,15 @@ const ManageLocationsView: React.FC<{
                     <div className="form-container card">
                         <h3>{editingId ? 'Editando Local' : 'Adicionar Novo Local'} em "{selectedGroup}"</h3>
                         <input type="text" placeholder="Nome do Local (Endereço)" value={name} onChange={e => setName(e.target.value)} />
+
+                        
+        <textarea 
+            placeholder="Observações (opcional)" 
+            value={observations} 
+            onChange={e => setObservations(e.target.value)}
+            rows={3}
+        ></textarea>
+        
                         
                         <fieldset className="service-assignment-fieldset">
                             <legend>Serviços e Medições do Local</legend>
