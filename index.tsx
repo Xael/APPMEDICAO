@@ -155,7 +155,6 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 {view === 'LOGIN' && <img src={logoSrc} alt="Logo CRB Serviços" className="header-logo" />}
                 <h1>{getTitle()}</h1>
             </div>
-            {showLogoutButton && <button className="button button-sm button-danger header-logout-button" onClick={onLogout}>Sair</button>}
         </header>
     );
 };
@@ -354,6 +353,8 @@ const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; }> = ({ onNav
         <button className="button admin-button" onClick={() => onNavigate('HISTORY')}>Histórico Geral</button>
         <button className="button admin-button" onClick={() => onNavigate('AUDIT_LOG')}>📜 Log de Auditoria</button>
     </div>
+    <button onClick={onLogout} className="button button-danger">LOGOUT</button>
+    </div>
 );
 
 const ManageCyclesView: React.FC<{
@@ -438,6 +439,8 @@ const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void }> = ({ onNav
         <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
         <button className="button" onClick={() => onNavigate('HISTORY')}>📖 Histórico de Serviços</button>
     </div>
+    <button onClick={onLogout} className="button button-danger">LOGOUT</button>
+    </div>
 );
 
 const OperatorGroupSelect: React.FC<{ 
@@ -453,7 +456,8 @@ const OperatorGroupSelect: React.FC<{
                     <button key={group} className="button" onClick={() => onSelectGroup(group)}>{group}</button>
                 )) : <p>Nenhum grupo de trabalho atribuído. Contate o administrador.</p>}
             </div>
-        </div>
+            <button onClick={onLogout} className="button button-danger">LOGOUT</button>
+            </div>
     );
 };
 
@@ -2902,7 +2906,7 @@ const App = () => {
                     case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
                     case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado para edição.</p>;
                     case 'AUDIT_LOG': return <AuditLogView log={auditLog} />;
-                    default: return <AdminDashboard onNavigate={navigate} />;
+                    default: return <AdminDashboard onNavigate={navigate} onLogout={handleLogout}/>;
                 }
             
             case 'FISCAL':
@@ -2915,7 +2919,7 @@ const App = () => {
                     case 'DETAIL':
                         const canView = selectedRecord && fiscalGroups.includes(selectedRecord.contractGroup);
                         return canView ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado ou acesso não permitido.</p>;
-                    default: return <FiscalDashboard onNavigate={navigate} />;
+                    default: return <FiscalDashboard onNavigate={navigate} onLogout={handleLogout} />;
                 }
 
             case 'OPERATOR':
@@ -2937,7 +2941,7 @@ const App = () => {
                         return <HistoryView records={operatorRecords} onSelect={handleSelectRecord} isAdmin={false} onEdit={handleEditRecord} selectedIds={new Set()} onToggleSelect={() => {}} />;
                     case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
                     case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado para edição.</p>;
-                    default: return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} />;
+                    default: return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} onLogout={handleLogout} />;
                 }
             
             default:
