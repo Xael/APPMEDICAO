@@ -876,6 +876,39 @@ NOVOS ESTILOS PARA O RELATÓRIO PDF
 .add-service-form > input {
     flex-grow: 1;
 }
+/* Estilos para o campo de Observação do ADM */
+textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--medium-gray-color);
+    border-radius: var(--border-radius);
+    font-family: inherit;
+    font-size: 1rem;
+    margin-top: 1rem;
+    resize: vertical; /* Permite redimensionar verticalmente */
+}
+
+/* Estilos para a lista de locais do Operador */
+.location-button-with-obs {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    padding: 1rem;
+    line-height: 1.4;
+}
+
+.location-name {
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.location-observation {
+    font-size: 0.85rem;
+    color: var(--dark-gray-color);
+    font-style: italic;
+    font-weight: 400;
+}
 
 /* User Assignment Styles */
 .assignment-section {
