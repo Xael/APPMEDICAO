@@ -909,7 +909,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     };
 
     const selectedRecords = records.filter(r => selectedIds.includes(r.id));
-    const totalArea = selectedRecords.reduce((sum, r) => sum + (r.locationArea || 0), 0);
+    const totalArea = selectedRecords.reduce((sum, r) => sum + (r.overrideMeasurement ?? r.locationArea || 0), 0);
 
     const handleExportExcel = async () => {
         if (selectedRecords.length === 0) {
@@ -931,7 +931,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 id: record.id, startTime: formatDateTime(record.startTime),
                 endTime: record.endTime ? formatDateTime(record.endTime) : 'Não finalizado',
                 contractGroup: record.contractGroup, locationName: record.locationName,
-                serviceType: record.serviceType, locationArea: record.locationArea,
+                serviceType: record.serviceType, locationArea: record.overrideMeasurement ?? record.locationArea,
                 serviceUnit: record.serviceUnit, operatorName: record.operatorName,
                 gpsUsed: record.gpsUsed ? 'Sim' : 'Não',
             });
@@ -952,158 +952,160 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         }
     };
 
-    const handleExportBillingExcel = async () => {
-        if (selectedRecords.length === 0) {
-            alert("Nenhum registro selecionado para exportar.");
-            return;
-        }
-        setIsGenerating(true);
+const handleExportBillingExcel = async () => {
+    if (selectedRecords.length === 0) {
+        alert("Nenhum registro selecionado para exportar.");
+        return;
+    }
+    setIsGenerating(true);
 
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Planilha de Faturamento');
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Planilha de Faturamento');
 
-        // --- STYLES ---
-// FIX: Cast string literals for alignment to specific types to prevent TypeScript from widening them to 'string'.
-        const centerBoldStyle = { font: { bold: true }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
-// FIX: Cast string literals for alignment to specific types to prevent TypeScript from widening them to 'string'.
-        const centerStyle = { alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
-// FIX: Cast string literals for alignment to specific types to prevent TypeScript from widening them to 'string'.
-        const titleStyle = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
-        const yellowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } as ExcelJS.Fill;
-        const grayFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } as ExcelJS.Fill;
-        const thinBorder = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } as ExcelJS.Borders;
-        const numberFormat = '#,##0.00';
+    // --- STYLES ---
+    const centerBoldStyle = { font: { bold: true }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+    const centerStyle = { alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+    const titleStyle = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+    const yellowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } as ExcelJS.Fill;
+    const grayFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } as ExcelJS.Fill;
+    const thinBorder = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } as ExcelJS.Borders;
+    const numberFormat = '#,##0.00';
 
-        // --- HEADER ---
-        worksheet.mergeCells('A1:L1');
-        worksheet.getCell('A1').value = 'C.R.B COMERCIO E SERVIÇOS DE MANUTENÇÃO EM GERAL LTDA';
-        worksheet.getCell('A1').style = centerBoldStyle;
-        worksheet.mergeCells('A2:L2');
-        worksheet.getCell('A2').value = 'CNPJ: 10.397.876/0001-77';
-        worksheet.getCell('A2').style = centerStyle;
-        worksheet.mergeCells('A3:L3');
-        worksheet.getCell('A3').value = 'PLANILHA DE FATURAMENTO';
-        worksheet.getCell('A3').style = titleStyle;
+    // --- HEADER ---
+    worksheet.mergeCells('A1:L1');
+    worksheet.getCell('A1').value = 'C.R.B COMERCIO E SERVIÇOS DE MANUTENÇÃO EM GERAL LTDA';
+    worksheet.getCell('A1').style = centerBoldStyle;
+    worksheet.mergeCells('A2:L2');
+    worksheet.getCell('A2').value = 'CNPJ: 10.397.876/0001-77';
+    worksheet.getCell('A2').style = centerStyle;
+    worksheet.mergeCells('A3:L3');
+    worksheet.getCell('A3').value = 'PLANILHA DE FATURAMENTO';
+    worksheet.getCell('A3').style = titleStyle;
 
-        worksheet.getCell('A5').value = 'CONTRATO ADMINISTRATIVO Nº:';
-        worksheet.getCell('E5').value = 'NÚMERO MEDIÇÃO:';
-        worksheet.getCell('I5').value = 'PERÍODO:';
-        const formattedStartDate = startDate ? new Date(startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
-        const formattedEndDate = endDate ? new Date(endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
-        worksheet.getCell('J5').value = `${formattedStartDate} até ${formattedEndDate}`;
+    worksheet.getCell('A5').value = 'CONTRATO ADMINISTRATIVO Nº:';
+    worksheet.getCell('E5').value = 'NÚMERO MEDIÇÃO:';
+    worksheet.getCell('I5').value = 'PERÍODO:';
+    const formattedStartDate = startDate ? new Date(startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
+    const formattedEndDate = endDate ? new Date(endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
+    worksheet.getCell('J5').value = `${formattedStartDate} até ${formattedEndDate}`;
 
-        // --- DATA ---
-        const groupedRecords = selectedRecords.reduce((acc, record) => {
-            (acc[record.serviceType] = acc[record.serviceType] || []).push(record);
-            return acc;
-        }, {} as Record<string, ServiceRecord[]>);
+    // --- DATA ---
+    const groupedRecords = selectedRecords.reduce((acc, record) => {
+        (acc[record.serviceType] = acc[record.serviceType] || []).push(record);
+        return acc;
+    }, {} as Record<string, ServiceRecord[]>);
 
-        let currentColumn = 1;
-        let maxRows = 8;
-        const serviceSummaryInfo: { service: string, unit: string, metragemColumn: string, firstRow: number, lastRow: number }[] = [];
+    let currentColumn = 1;
+    let maxRows = 8;
+    const serviceSummaryInfo: { service: string, unit: string, metragemColumn: string, firstRow: number, lastRow: number }[] = [];
 
-        Object.keys(groupedRecords).forEach(serviceType => {
-            const records = groupedRecords[serviceType];
-            if (records.length === 0) return;
+    Object.keys(groupedRecords).forEach(serviceType => {
+        const records = groupedRecords[serviceType];
+        if (records.length === 0) return;
 
-            // Service Header
-            worksheet.mergeCells(7, currentColumn, 7, currentColumn + 2);
-            const headerCell = worksheet.getCell(7, currentColumn);
-            headerCell.value = serviceType.toUpperCase();
-            headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+        // Service Header
+        worksheet.mergeCells(7, currentColumn, 7, currentColumn + 2);
+        const headerCell = worksheet.getCell(7, currentColumn);
+        headerCell.value = serviceType.toUpperCase();
+        headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
 
-            // Subheaders
-            const subheaders = ['DATA', 'LOCAL', `METRAGEM EM`];
-            subheaders.forEach((text, i) => {
-                const cell = worksheet.getCell(8, currentColumn + i);
-                cell.value = text;
-                cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
-            });
-
-            const metragemColumn = worksheet.getColumn(currentColumn + 2);
-            metragemColumn.numFmt = numberFormat;
-
-            let currentRow = 9;
-            records.forEach(record => {
-                worksheet.getCell(currentRow, currentColumn).value = new Date(record.startTime).toLocaleDateString('pt-BR');
-                worksheet.getCell(currentRow, currentColumn + 1).value = record.locationName;
-                worksheet.getCell(currentRow, currentColumn + 2).value = record.locationArea;
-                // Apply borders to data cells
-                for (let i = 0; i < 3; i++) {
-                     worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
-                }
-                currentRow++;
-            });
-
-            if (currentRow > maxRows) maxRows = currentRow;
-            serviceSummaryInfo.push({
-                service: serviceType,
-                unit: records[0].serviceUnit,
-                metragemColumn: metragemColumn.letter,
-                firstRow: 9,
-                lastRow: currentRow - 1
-            });
-
-            currentColumn += 4; // 3 columns for data + 1 spacer column
-        });
-        
-        // --- QUADRO RESUMO ---
-        const summaryStartCol = currentColumn;
-        worksheet.mergeCells(7, summaryStartCol, 7, summaryStartCol + 3);
-        const summaryHeader = worksheet.getCell(7, summaryStartCol);
-        summaryHeader.value = 'QUADRO RESUMO';
-        summaryHeader.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
-        
-        ['SERVIÇOS', 'METRAGEM', 'METRAGEM REALIZADA'].forEach((text, i) => {
-            const headerIndex = i === 0 ? summaryStartCol : summaryStartCol + i + 1;
-            const cell = worksheet.getCell(8, headerIndex);
+        // Subheaders
+        const subheaders = ['DATA', 'LOCAL', `METRAGEM EM`];
+        subheaders.forEach((text, i) => {
+            const cell = worksheet.getCell(8, currentColumn + i);
             cell.value = text;
             cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
         });
 
-        let summaryCurrentRow = 9;
-        serviceSummaryInfo.forEach(info => {
-            worksheet.getCell(summaryCurrentRow, summaryStartCol).value = `${info.service} ${info.unit}`;
-            const totalCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 3);
-// FIX: Assign a formula object to the cell's `value` property, as `formula` is read-only.
-            totalCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
-            totalCell.numFmt = numberFormat;
+        const metragemColumn = worksheet.getColumn(currentColumn + 2);
+        metragemColumn.numFmt = numberFormat;
 
-            // Apply borders to summary cells
-            [summaryStartCol, summaryStartCol + 2, summaryStartCol + 3].forEach(colIdx => {
-                worksheet.getCell(summaryCurrentRow, colIdx).border = thinBorder;
-            })
-            summaryCurrentRow++;
+        let currentRow = 9;
+        records.forEach(record => {
+            worksheet.getCell(currentRow, currentColumn).value = new Date(record.startTime).toLocaleDateString('pt-BR');
+            worksheet.getCell(currentRow, currentColumn + 1).value = record.locationName;
+            
+            // ==========================================================
+            // ✅ ESTA É A ÚNICA LINHA ALTERADA ✅
+            // Usa a medição ajustada se existir, senão usa a original.
+            worksheet.getCell(currentRow, currentColumn + 2).value = record.overrideMeasurement ?? record.locationArea;
+            // ==========================================================
+
+            // Apply borders to data cells
+            for (let i = 0; i < 3; i++) {
+                worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
+            }
+            currentRow++;
         });
 
-        // Set column widths
-        worksheet.columns.forEach(column => {
-            let maxLength = 0;
-            column.eachCell!({ includeEmpty: true }, cell => {
-                let columnLength = cell.value ? cell.value.toString().length : 10;
-                if (columnLength > maxLength) {
-                    maxLength = columnLength;
-                }
-            });
-            column.width = maxLength < 10 ? 10 : maxLength + 2;
+        if (currentRow > maxRows) maxRows = currentRow;
+        serviceSummaryInfo.push({
+            service: serviceType,
+            unit: records[0].serviceUnit,
+            metragemColumn: metragemColumn.letter,
+            firstRow: 9,
+            lastRow: currentRow - 1
         });
 
-        // --- DOWNLOAD ---
-        try {
-            const buffer = await workbook.xlsx.writeBuffer();
-            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `relatorio_faturamento_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
-            link.click();
-            URL.revokeObjectURL(link.href);
-        } catch (error) {
-            console.error("Erro ao gerar Excel de Faturamento:", error);
-            alert("Ocorreu um erro ao gerar o arquivo Excel de faturamento.");
-        } finally {
-            setIsGenerating(false);
-        }
-    };
+        currentColumn += 4; // 3 columns for data + 1 spacer column
+    });
+    
+    // --- QUADRO RESUMO ---
+    const summaryStartCol = currentColumn;
+    worksheet.mergeCells(7, summaryStartCol, 7, summaryStartCol + 3);
+    const summaryHeader = worksheet.getCell(7, summaryStartCol);
+    summaryHeader.value = 'QUADRO RESUMO';
+    summaryHeader.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+    
+    ['SERVIÇOS', 'METRAGEM', 'METRAGEM REALIZADA'].forEach((text, i) => {
+        const headerIndex = i === 0 ? summaryStartCol : summaryStartCol + i + 1;
+        const cell = worksheet.getCell(8, headerIndex);
+        cell.value = text;
+        cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+    });
+
+    let summaryCurrentRow = 9;
+    serviceSummaryInfo.forEach(info => {
+        worksheet.getCell(summaryCurrentRow, summaryStartCol).value = `${info.service} ${info.unit}`;
+        const totalCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 3);
+        totalCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
+        totalCell.numFmt = numberFormat;
+
+        // Apply borders to summary cells
+        [summaryStartCol, summaryStartCol + 2, summaryStartCol + 3].forEach(colIdx => {
+            worksheet.getCell(summaryCurrentRow, colIdx).border = thinBorder;
+        })
+        summaryCurrentRow++;
+    });
+
+    // Set column widths
+    worksheet.columns.forEach(column => {
+        let maxLength = 0;
+        column.eachCell!({ includeEmpty: true }, cell => {
+            let columnLength = cell.value ? cell.value.toString().length : 10;
+            if (columnLength > maxLength) {
+                maxLength = columnLength;
+            }
+        });
+        column.width = maxLength < 10 ? 10 : maxLength + 2;
+    });
+
+    // --- DOWNLOAD ---
+    try {
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `relatorio_faturamento_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    } catch (error) {
+        console.error("Erro ao gerar Excel de Faturamento:", error);
+        alert("Ocorreu um erro ao gerar o arquivo Excel de faturamento.");
+    } finally {
+        setIsGenerating(false);
+    }
+};
 
 
     const handleGeneratePdfClick = () => {
