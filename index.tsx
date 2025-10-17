@@ -921,7 +921,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     };
 
     const selectedRecords = records.filter(r => selectedIds.includes(r.id));
-    const totalArea = selectedRecords.reduce((sum, r) => sum + (r.overrideMeasurement ?? r.locationArea || 0), 0);
+    const totalArea = selectedRecords.reduce((sum, r) => sum + ((r.overrideMeasurement ?? r.locationArea) || 0), 0);
 
     const handleExportExcel = async () => {
         if (selectedRecords.length === 0) {
@@ -2023,7 +2023,7 @@ const GoalsAndChartsView: React.FC<{
                 r.startTime.startsWith(goal.month) && 
                 r.serviceType === service?.name
             )
-            .reduce((sum, r) => sum + (r.overrideMeasurement ?? r.locationArea || 0), 0);
+            .reduce((sum, r) => sum + ((r.overrideMeasurement ?? r.locationArea) || 0), 0);
           
           const percentage = goal.targetArea > 0 ? (realizedArea / goal.targetArea) * 100 : 0;
           const serviceName = service?.name || 'Serviço não encontrado';
