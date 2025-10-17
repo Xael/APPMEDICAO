@@ -73,10 +73,17 @@ interface LocationServiceDetail { serviceId: string; name: string; measurement: 
 interface UserAssignment { contractGroup: string; serviceNames: string[]; }
 interface User { id: string; username: string; email?: string; password?: string; role: Role; assignments?: UserAssignment[]; }
 interface GeolocationCoords { latitude: number; longitude: number; }
-interface LocationRecord { id: string; contractGroup: string; name: string; coords?: GeolocationCoords; services?: LocationServiceDetail[]; }
-interface ServiceRecord { id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: string; locationId?: string; locationName: string; contractGroup: string; locationArea?: number; gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[]; tempId?: string; coords?: GeolocationCoords; }
+interface LocationRecord { id: string; contractGroup: string; name: string; observations?: string; coords?: GeolocationCoords; services?: LocationServiceDetail[]; }
+interface ServiceRecord {
+    id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: string;
+    locationId?: string; locationName: string; contractGroup: string; locationArea?: number;
+    gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[];
+    tempId?: string; coords?: GeolocationCoords;
+    observations?: string; // <-- ADICIONADO
+    overrideMeasurement?: number; // <-- ADICIONADO
+}
 interface Goal { id: string; contractGroup: string; month: string; targetArea: number; }
-interface AuditLogEntry { id: string; timestamp: string; adminId: string; adminUsername: string; action: 'UPDATE' | 'DELETE'; recordId: string; details: string; }
+interface AuditLogEntry { id: string; timestamp: string; adminId: string; adminUsername: string; action: 'UPDATE' | 'DELETE' | 'ADJUST_MEASUREMENT'; recordId: string; details: string; }
 interface ContractConfig { id: number; contractGroup: string; cycleStartDay: number; }
 
 const formatDateTime = (isoString: string) => new Date(isoString).toLocaleString('pt-BR');
@@ -109,7 +116,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
 const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => void; onLogout: () => void; }> = ({ view, currentUser, onBack, onLogout }) => {
     const isAdmin = currentUser?.role === 'ADMIN';
     const showBackButton = onBack && view !== 'LOGIN' && view !== 'ADMIN_DASHBOARD' && view !== 'FISCAL_DASHBOARD' && view !== 'OPERATOR_GROUP_SELECT';
-    const showLogoutButton = currentUser;
+    
     const getTitle = () => {
         if (!currentUser) return 'CRB SERVIÇOS';
         if (isAdmin) {
@@ -155,6 +162,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 {view === 'LOGIN' && <img src={logoSrc} alt="Logo CRB Serviços" className="header-logo" />}
                 <h1>{getTitle()}</h1>
             </div>
+            {currentUser && <button className="button button-sm button-danger header-logout-button" onClick={onLogout}>Sair</button>}
         </header>
     );
 };
@@ -171,7 +179,6 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
             try {
                 if (document.fullscreenElement) return;
                 if (elem.requestFullscreen) { await elem.requestFullscreen(); }
-// FIX: Cast screen.orientation to any to access the experimental 'lock' property without TypeScript errors.
                 if (screen.orientation && (screen.orientation as any).lock) { await (screen.orientation as any).lock('landscape'); }
             } catch (err) { console.warn("Não foi possível ativar tela cheia ou travar orientação:", err); }
         };
@@ -179,7 +186,6 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
         return () => {
             try {
                 if (document.fullscreenElement) { document.exitFullscreen(); }
-// FIX: Cast screen.orientation to any to access the experimental 'unlock' property without TypeScript errors.
                 if (screen.orientation && (screen.orientation as any).unlock) { (screen.orientation as any).unlock(); }
             } catch (err) { console.warn("Não foi possível sair da tela cheia ou destravar orientação:", err); }
         };
@@ -341,19 +347,18 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
   );
 };
 
-
-const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; }> = ({ onNavigate }) => (
-    <div className="admin-dashboard">
-        <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_SERVICES')}>Gerenciar Tipos de Serviço</button>
-        <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_LOCATIONS')}>Gerenciar Locais</button>
-        <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_USERS')}>Gerenciar Funcionários</button>
-        <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_GOALS')}>🎯 Metas & Gráficos</button>
-        <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_CYCLES')}>🗓️ Gerenciar Ciclos de Medição</button>
-        <button className="button admin-button" onClick={() => onNavigate('REPORTS')}>Gerador de Relatórios</button>
-        <button className="button admin-button" onClick={() => onNavigate('HISTORY')}>Histórico Geral</button>
-        <button className="button admin-button" onClick={() => onNavigate('AUDIT_LOG')}>📜 Log de Auditoria</button>
-    </div>
-    <button onClick={onLogout} className="button button-danger">LOGOUT</button>
+const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () => void; }> = ({ onNavigate, onLogout }) => (
+    <div className="dashboard-container">
+        <div className="admin-dashboard">
+            <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_SERVICES')}>Gerenciar Tipos de Serviço</button>
+            <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_LOCATIONS')}>Gerenciar Locais</button>
+            <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_USERS')}>Gerenciar Funcionários</button>
+            <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_GOALS')}>🎯 Metas & Gráficos</button>
+            <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_CYCLES')}>🗓️ Gerenciar Ciclos de Medição</button>
+            <button className="button admin-button" onClick={() => onNavigate('REPORTS')}>Gerador de Relatórios</button>
+            <button className="button admin-button" onClick={() => onNavigate('HISTORY')}>Histórico Geral</button>
+            <button className="button admin-button" onClick={() => onNavigate('AUDIT_LOG')}>📜 Log de Auditoria</button>
+        </div>
     </div>
 );
 
@@ -413,7 +418,7 @@ const ManageCyclesView: React.FC<{
             
             <div className="form-container" style={{gap: '1.5rem', marginTop: '1.5rem', textAlign: 'left'}}>
                 {allContractGroups.map(group => (
-                     <div key={group} className="form-group">
+                    <div key={group} className="form-group">
                         <label htmlFor={`cycle-day-${group}`} style={{fontWeight: 'bold'}}>{group}</label>
                         <input
                             type="number"
@@ -423,7 +428,7 @@ const ManageCyclesView: React.FC<{
                             value={cycleConfigs[group] || 1}
                             onChange={(e) => handleDayChange(group, e.target.value)}
                         />
-                     </div>
+                    </div>
                 ))}
             </div>
 
@@ -434,19 +439,20 @@ const ManageCyclesView: React.FC<{
     );
 };
 
-const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void }> = ({ onNavigate }) => (
-    <div className="admin-dashboard">
-        <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
-        <button className="button" onClick={() => onNavigate('HISTORY')}>📖 Histórico de Serviços</button>
-    </div>
-    <button onClick={onLogout} className="button button-danger">LOGOUT</button>
+const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () => void; }> = ({ onNavigate, onLogout }) => (
+    <div className="dashboard-container">
+        <div className="admin-dashboard">
+            <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
+            <button className="button" onClick={() => onNavigate('HISTORY')}>📖 Histórico de Serviços</button>
+        </div>
     </div>
 );
 
-const OperatorGroupSelect: React.FC<{ 
+const OperatorGroupSelect: React.FC<{
     user: User;
-    onSelectGroup: (group: string) => void 
-}> = ({ user, onSelectGroup }) => {
+    onSelectGroup: (group: string) => void;
+    onLogout: () => void;
+}> = ({ user, onSelectGroup, onLogout }) => {
     const assignedGroups = [...new Set(user.assignments?.map(a => a.contractGroup) || [])].sort();
     return (
         <div className="card">
@@ -456,8 +462,7 @@ const OperatorGroupSelect: React.FC<{
                     <button key={group} className="button" onClick={() => onSelectGroup(group)}>{group}</button>
                 )) : <p>Nenhum grupo de trabalho atribuído. Contate o administrador.</p>}
             </div>
-            <button onClick={onLogout} className="button button-danger">LOGOUT</button>
-            </div>
+        </div>
     );
 };
 
@@ -561,7 +566,6 @@ const OperatorServiceSelect: React.FC<{
     );
 };
 
-// =================== COMPONENTE ALTERADO ===================
 const OperatorLocationSelect: React.FC<{
     locations: LocationRecord[];
     contractGroup: string;
@@ -657,9 +661,6 @@ const OperatorLocationSelect: React.FC<{
                 <input type="search" placeholder="Digite para buscar um local..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{marginBottom: '1rem'}} />
                 <div className="location-selection-list">
                     {filteredLocations.length > 0 ? filteredLocations.map(loc => (
-                        // ===============================================
-                        // ✅ ALTERAÇÃO PRINCIPAL AQUI ✅
-                        // ===============================================
                         <button key={loc.id} className="button button-secondary location-button-with-obs" onClick={() => handleSelectFromList(loc)}>
                             <span className="location-name">{loc.name}</span>
                             {loc.observations && <span className="location-observation">Obs: {loc.observations}</span>}
@@ -683,7 +684,6 @@ const OperatorLocationSelect: React.FC<{
         </div>
     );
 };
-// ==========================================================
 
 const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: string[]) => void; onCancel: () => void }> = ({ phase, onComplete, onCancel }) => {
     const [photos, setPhotos] = useState<string[]>([]);
@@ -765,36 +765,20 @@ interface HistoryViewProps {
     selectedIds: Set<string>;
     onToggleSelect: (recordId: string) => void;
     onDeleteSelected?: () => void;
+    onMeasurementUpdate: (recordId: number, newMeasurement: string) => Promise<void>;
 }
-const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, onEdit, onDelete, selectedIds, onToggleSelect, onDeleteSelected }) => {
-    // --- INÍCIO DAS NOVAS ADIÇÕES ---
-    const [editingMeasurementId, setEditingMeasurementId] = useState<number | null>(null);
+const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, onEdit, onDelete, selectedIds, onToggleSelect, onDeleteSelected, onMeasurementUpdate }) => {
+    const [editingMeasurementId, setEditingMeasurementId] = useState<string | null>(null);
     const [newMeasurement, setNewMeasurement] = useState('');
-    const [allRecords, setAllRecords] = useState(records);
 
-    useEffect(() => {
-        setAllRecords(records);
-    }, [records]);
-
-    const handleSaveMeasurement = async (recordId: number) => {
-        try {
-            const response = await apiFetch(`/api/records/${recordId}/measurement`, {
-                method: 'PUT',
-                body: JSON.stringify({ overrideMeasurement: newMeasurement }),
-            });
-            // Atualiza a lista de registros localmente para refletir a mudança instantaneamente
-            setAllRecords(prevRecords => prevRecords.map(r => r.id === recordId ? response : r));
-            setEditingMeasurementId(null);
-        } catch (error) {
-            console.error("Erro ao salvar medição:", error);
-            alert('Não foi possível salvar a medição ajustada.');
-        }
+    const handleSaveMeasurement = async (recordId: string) => {
+        await onMeasurementUpdate(parseInt(recordId), newMeasurement);
+        setEditingMeasurementId(null);
     };
 
     const renderMeasurement = (record: ServiceRecord) => {
         const original = record.locationArea ? `${record.locationArea.toFixed(2)} ${record.serviceUnit}` : 'N/A';
         
-        // Se existe uma medição ajustada, mostra ela com destaque e a original embaixo
         if (record.overrideMeasurement !== null && record.overrideMeasurement !== undefined) {
             return (
                 <>
@@ -805,42 +789,61 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
         }
         return original;
     };
-    // --- FIM DAS NOVAS ADIÇÕES ---
 
     return (
-        {isAdmin && selectedIds.size > 0 && (
-            <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
-                <button className="button button-danger" onClick={onDeleteSelected}>
-                    Excluir {selectedIds.size} Iten(s) Selecionado(s)
-                </button>
-            </div>
-        )}
-        {records.length === 0 ? <p style={{textAlign: 'center'}}>Nenhum serviço registrado ainda.</p>
-        : (
-            <ul className="history-list">
-                {records.map(record => (
-                    <li key={record.id} className="list-item" style={{alignItems: 'center'}}>
-                        {isAdmin && (
-                            <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0, marginRight: '1rem' }}>
-                                <input type="checkbox" checked={selectedIds.has(record.id)} onChange={() => onToggleSelect(record.id)} style={{ width: '24px', height: '24px' }} />
+        <div>
+            {isAdmin && selectedIds.size > 0 && (
+                <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                    <button className="button button-danger" onClick={onDeleteSelected}>
+                        Excluir {selectedIds.size} Iten(s) Selecionado(s)
+                    </button>
+                </div>
+            )}
+            {records.length === 0 ? <p style={{textAlign: 'center'}}>Nenhum serviço registrado ainda.</p>
+            : (
+                <ul className="history-list">
+                    {records.map(record => (
+                        <li key={record.id} className="list-item" style={{alignItems: 'center'}}>
+                            {isAdmin && (
+                                <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0, marginRight: '1rem' }}>
+                                    <input type="checkbox" checked={selectedIds.has(record.id)} onChange={() => onToggleSelect(record.id)} style={{ width: '24px', height: '24px' }} />
+                                </div>
+                            )}
+                            <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer'}}>
+                                <p><strong>Local:</strong> {record.locationName}, {record.contractGroup} {record.gpsUsed && <span className="gps-indicator">📍</span>}</p>
+                                <p><strong>Serviço:</strong> {record.serviceType}</p>
+                                <p><strong>Data:</strong> {formatDateTime(record.startTime)}</p>
+                                {isAdmin && <p><strong>Operador:</strong> {record.operatorName}</p>}
+                                <p><strong>Medição: </strong> 
+                                    {editingMeasurementId === record.id ? (
+                                        <span onClick={e => e.stopPropagation()}>
+                                            <input 
+                                                type="number" 
+                                                value={newMeasurement}
+                                                onChange={e => setNewMeasurement(e.target.value)}
+                                                autoFocus
+                                                onBlur={() => handleSaveMeasurement(record.id)}
+                                                style={{width: '80px', padding: '2px'}}
+                                            />
+                                            <button className="button button-sm" onClick={() => handleSaveMeasurement(record.id)}>Ok</button>
+                                        </span>
+                                    ) : (
+                                        <span onDoubleClick={isAdmin ? () => { setEditingMeasurementId(record.id); setNewMeasurement(String(record.overrideMeasurement ?? record.locationArea ?? '')) } : undefined}>
+                                            {renderMeasurement(record)}
+                                        </span>
+                                    )}
+                                </p>
+                                <div className="history-item-photos">
+                                    {(record.beforePhotos || []).slice(0,2).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt="antes" />)}
+                                    {(record.afterPhotos || []).slice(0,2).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt="depois" />)}
+                                </div>
                             </div>
-                        )}
-                        <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer'}}>
-                            <p><strong>Local:</strong> {record.locationName}, {record.contractGroup} {record.gpsUsed && <span className="gps-indicator">📍</span>}</p>
-                            <p><strong>Serviço:</strong> {record.serviceType}</p>
-                            <p><strong>Data:</strong> {formatDateTime(record.startTime)}</p>
-                            {isAdmin && <p><strong>Operador:</strong> {record.operatorName}</p>}
-                            <div className="history-item-photos">
-                               {(record.beforePhotos || []).slice(0,2).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt="antes" />)}
-                               {(record.afterPhotos || []).slice(0,2).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt="depois" />)}
+                            <div className="list-item-actions">
+                                {isAdmin && onEdit && ( <button className="button button-sm admin-button" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Editar</button> )}
+                                {!isAdmin && onEdit && !record.endTime && ( <button className="button button-sm" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Reabrir</button> )}
+                                {isAdmin && onDelete && ( <button className="button button-sm button-danger" onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}>Excluir</button> )}
                             </div>
-                        </div>
-                         <div className="list-item-actions">
-                             {isAdmin && onEdit && ( <button className="button button-sm admin-button" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Editar</button> )}
-                             {!isAdmin && onEdit && ( <button className="button button-sm" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Reabrir</button> )}
-                             {isAdmin && onDelete && ( <button className="button button-sm button-danger" onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}>Excluir</button> )}
-                         </div>
-           </li>
+                        </li>
                     ))}
                 </ul>
             )}
@@ -849,16 +852,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
 };
 
 const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
-     <div className="detail-view">
+    <div className="detail-view">
         <div className="detail-section card">
             <h3>Resumo</h3>
             <p><strong>Contrato/Cidade:</strong> {record.contractGroup}</p>
             <p><strong>Local:</strong> {record.locationName} {record.gpsUsed && <span className='gps-indicator'>📍(GPS)</span>}</p>
+            <p><strong>Observações:</strong> {record.observations || 'Nenhuma'}</p>
             <p><strong>Serviço:</strong> {record.serviceType}</p>
             {record.overrideMeasurement !== null && record.overrideMeasurement !== undefined 
-    ? <p><strong>Metragem Válida:</strong> {record.overrideMeasurement.toFixed(2)} {record.serviceUnit} <em style={{fontSize: '0.8em'}}>(Original: {record.locationArea?.toFixed(2)})</em></p> 
-    : <p><strong>Metragem:</strong> {record.locationArea ? `${record.locationArea.toFixed(2)} ${record.serviceUnit}` : 'Não informada'}</p>
-}
+                ? <p><strong>Metragem Válida:</strong> {record.overrideMeasurement.toFixed(2)} {record.serviceUnit} <em style={{fontSize: '0.8em'}}>(Original: {record.locationArea?.toFixed(2)})</em></p> 
+                : <p><strong>Metragem:</strong> {record.locationArea ? `${record.locationArea.toFixed(2)} ${record.serviceUnit}` : 'Não informada'}</p>
+            }
             <p><strong>Operador:</strong> {record.operatorName}</p>
             <p><strong>Início:</strong> {formatDateTime(record.startTime)}</p>
             <p><strong>Fim:</strong> {record.endTime ? formatDateTime(record.endTime) : 'Não finalizado'}</p>
@@ -924,7 +928,9 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         worksheet.columns = [
             { header: 'ID', key: 'id', width: 10 }, { header: 'Data Início', key: 'startTime', width: 20 },
             { header: 'Data Fim', key: 'endTime', width: 20 }, { header: 'Contrato/Cidade', key: 'contractGroup', width: 25 },
-            { header: 'Local', key: 'locationName', width: 40 }, { header: 'Serviço', key: 'serviceType', width: 30 },
+            { header: 'Local', key: 'locationName', width: 40 }, 
+            { header: 'Observações', key: 'observations', width: 40 },
+            { header: 'Serviço', key: 'serviceType', width: 30 },
             { header: 'Medição', key: 'locationArea', width: 15 }, { header: 'Unidade', key: 'serviceUnit', width: 15 },
             { header: 'Operador', key: 'operatorName', width: 25 }, { header: 'Usou GPS', key: 'gpsUsed', width: 10 },
         ];
@@ -933,6 +939,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 id: record.id, startTime: formatDateTime(record.startTime),
                 endTime: record.endTime ? formatDateTime(record.endTime) : 'Não finalizado',
                 contractGroup: record.contractGroup, locationName: record.locationName,
+                observations: record.observations || '',
                 serviceType: record.serviceType, locationArea: record.overrideMeasurement ?? record.locationArea,
                 serviceUnit: record.serviceUnit, operatorName: record.operatorName,
                 gpsUsed: record.gpsUsed ? 'Sim' : 'Não',
@@ -954,161 +961,142 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         }
     };
 
-const handleExportBillingExcel = async () => {
-    if (selectedRecords.length === 0) {
-        alert("Nenhum registro selecionado para exportar.");
-        return;
-    }
-    setIsGenerating(true);
+    const handleExportBillingExcel = async () => {
+        if (selectedRecords.length === 0) {
+            alert("Nenhum registro selecionado para exportar.");
+            return;
+        }
+        setIsGenerating(true);
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Planilha de Faturamento');
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Planilha de Faturamento');
 
-    // --- STYLES ---
-    const centerBoldStyle = { font: { bold: true }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
-    const centerStyle = { alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
-    const titleStyle = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
-    const yellowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } as ExcelJS.Fill;
-    const grayFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } as ExcelJS.Fill;
-    const thinBorder = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } as ExcelJS.Borders;
-    const numberFormat = '#,##0.00';
+        const centerBoldStyle = { font: { bold: true }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+        const centerStyle = { alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+        const titleStyle = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+        const yellowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } as ExcelJS.Fill;
+        const thinBorder = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } as ExcelJS.Borders;
+        const numberFormat = '#,##0.00';
 
-    // --- HEADER ---
-    worksheet.mergeCells('A1:L1');
-    worksheet.getCell('A1').value = 'C.R.B COMERCIO E SERVIÇOS DE MANUTENÇÃO EM GERAL LTDA';
-    worksheet.getCell('A1').style = centerBoldStyle;
-    worksheet.mergeCells('A2:L2');
-    worksheet.getCell('A2').value = 'CNPJ: 10.397.876/0001-77';
-    worksheet.getCell('A2').style = centerStyle;
-    worksheet.mergeCells('A3:L3');
-    worksheet.getCell('A3').value = 'PLANILHA DE FATURAMENTO';
-    worksheet.getCell('A3').style = titleStyle;
+        worksheet.mergeCells('A1:L1');
+        worksheet.getCell('A1').value = 'C.R.B COMERCIO E SERVIÇOS DE MANUTENÇÃO EM GERAL LTDA';
+        worksheet.getCell('A1').style = centerBoldStyle;
+        worksheet.mergeCells('A2:L2');
+        worksheet.getCell('A2').value = 'CNPJ: 10.397.876/0001-77';
+        worksheet.getCell('A2').style = centerStyle;
+        worksheet.mergeCells('A3:L3');
+        worksheet.getCell('A3').value = 'PLANILHA DE FATURAMENTO';
+        worksheet.getCell('A3').style = titleStyle;
 
-    worksheet.getCell('A5').value = 'CONTRATO ADMINISTRATIVO Nº:';
-    worksheet.getCell('E5').value = 'NÚMERO MEDIÇÃO:';
-    worksheet.getCell('I5').value = 'PERÍODO:';
-    const formattedStartDate = startDate ? new Date(startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
-    const formattedEndDate = endDate ? new Date(endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
-    worksheet.getCell('J5').value = `${formattedStartDate} até ${formattedEndDate}`;
+        worksheet.getCell('A5').value = 'CONTRATO ADMINISTRATIVO Nº:';
+        worksheet.getCell('E5').value = 'NÚMERO MEDIÇÃO:';
+        worksheet.getCell('I5').value = 'PERÍODO:';
+        const formattedStartDate = startDate ? new Date(startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
+        const formattedEndDate = endDate ? new Date(endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
+        worksheet.getCell('J5').value = `${formattedStartDate} até ${formattedEndDate}`;
 
-    // --- DATA ---
-    const groupedRecords = selectedRecords.reduce((acc, record) => {
-        (acc[record.serviceType] = acc[record.serviceType] || []).push(record);
-        return acc;
-    }, {} as Record<string, ServiceRecord[]>);
+        const groupedRecords = selectedRecords.reduce((acc, record) => {
+            (acc[record.serviceType] = acc[record.serviceType] || []).push(record);
+            return acc;
+        }, {} as Record<string, ServiceRecord[]>);
 
-    let currentColumn = 1;
-    let maxRows = 8;
-    const serviceSummaryInfo: { service: string, unit: string, metragemColumn: string, firstRow: number, lastRow: number }[] = [];
+        let currentColumn = 1;
+        const serviceSummaryInfo: { service: string, unit: string, metragemColumn: string, firstRow: number, lastRow: number }[] = [];
 
-    Object.keys(groupedRecords).forEach(serviceType => {
-        const records = groupedRecords[serviceType];
-        if (records.length === 0) return;
+        Object.keys(groupedRecords).forEach(serviceType => {
+            const records = groupedRecords[serviceType];
+            if (records.length === 0) return;
 
-        // Service Header
-        worksheet.mergeCells(7, currentColumn, 7, currentColumn + 2);
-        const headerCell = worksheet.getCell(7, currentColumn);
-        headerCell.value = serviceType.toUpperCase();
-        headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+            worksheet.mergeCells(7, currentColumn, 7, currentColumn + 3);
+            const headerCell = worksheet.getCell(7, currentColumn);
+            headerCell.value = serviceType.toUpperCase();
+            headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
 
-        // Subheaders
-        const subheaders = ['DATA', 'LOCAL', `METRAGEM EM`];
-        subheaders.forEach((text, i) => {
-            const cell = worksheet.getCell(8, currentColumn + i);
+            const subheaders = ['DATA', 'LOCAL', 'OBSERVAÇÕES', `METRAGEM EM`];
+            subheaders.forEach((text, i) => {
+                const cell = worksheet.getCell(8, currentColumn + i);
+                cell.value = text;
+                cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+            });
+
+            const metragemColumn = worksheet.getColumn(currentColumn + 3);
+            metragemColumn.numFmt = numberFormat;
+
+            let currentRow = 9;
+            records.forEach(record => {
+                worksheet.getCell(currentRow, currentColumn).value = new Date(record.startTime).toLocaleDateString('pt-BR');
+                worksheet.getCell(currentRow, currentColumn + 1).value = record.locationName;
+                worksheet.getCell(currentRow, currentColumn + 2).value = record.observations || '';
+                worksheet.getCell(currentRow, currentColumn + 3).value = record.overrideMeasurement ?? record.locationArea;
+
+                for (let i = 0; i < 4; i++) {
+                    worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
+                }
+                currentRow++;
+            });
+
+            serviceSummaryInfo.push({
+                service: serviceType,
+                unit: records[0].serviceUnit,
+                metragemColumn: metragemColumn.letter,
+                firstRow: 9,
+                lastRow: currentRow - 1
+            });
+
+            currentColumn += 5;
+        });
+        
+        const summaryStartCol = currentColumn;
+        worksheet.mergeCells(7, summaryStartCol, 7, summaryStartCol + 3);
+        const summaryHeader = worksheet.getCell(7, summaryStartCol);
+        summaryHeader.value = 'QUADRO RESUMO';
+        summaryHeader.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+        
+        ['SERVIÇOS', 'METRAGEM', 'METRAGEM REALIZADA'].forEach((text, i) => {
+            const headerIndex = i === 0 ? summaryStartCol : summaryStartCol + i + 1;
+            const cell = worksheet.getCell(8, headerIndex);
             cell.value = text;
             cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
         });
 
-        const metragemColumn = worksheet.getColumn(currentColumn + 2);
-        metragemColumn.numFmt = numberFormat;
-
-        let currentRow = 9;
-        records.forEach(record => {
-            worksheet.getCell(currentRow, currentColumn).value = new Date(record.startTime).toLocaleDateString('pt-BR');
-            worksheet.getCell(currentRow, currentColumn + 1).value = record.locationName;
-            
-            // ==========================================================
-            // ✅ ESTA É A ÚNICA LINHA ALTERADA ✅
-            // Usa a medição ajustada se existir, senão usa a original.
-            worksheet.getCell(currentRow, currentColumn + 2).value = record.overrideMeasurement ?? record.locationArea;
-            // ==========================================================
-
-            // Apply borders to data cells
-            for (let i = 0; i < 3; i++) {
-                worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
-            }
-            currentRow++;
+        let summaryCurrentRow = 9;
+        serviceSummaryInfo.forEach(info => {
+            worksheet.getCell(summaryCurrentRow, summaryStartCol).value = `${info.service} ${info.unit}`;
+            const totalCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 3);
+            totalCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
+            totalCell.numFmt = numberFormat;
+            [summaryStartCol, summaryStartCol + 2, summaryStartCol + 3].forEach(colIdx => {
+                worksheet.getCell(summaryCurrentRow, colIdx).border = thinBorder;
+            })
+            summaryCurrentRow++;
         });
 
-        if (currentRow > maxRows) maxRows = currentRow;
-        serviceSummaryInfo.push({
-            service: serviceType,
-            unit: records[0].serviceUnit,
-            metragemColumn: metragemColumn.letter,
-            firstRow: 9,
-            lastRow: currentRow - 1
-        });
-
-        currentColumn += 4; // 3 columns for data + 1 spacer column
-    });
-    
-    // --- QUADRO RESUMO ---
-    const summaryStartCol = currentColumn;
-    worksheet.mergeCells(7, summaryStartCol, 7, summaryStartCol + 3);
-    const summaryHeader = worksheet.getCell(7, summaryStartCol);
-    summaryHeader.value = 'QUADRO RESUMO';
-    summaryHeader.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
-    
-    ['SERVIÇOS', 'METRAGEM', 'METRAGEM REALIZADA'].forEach((text, i) => {
-        const headerIndex = i === 0 ? summaryStartCol : summaryStartCol + i + 1;
-        const cell = worksheet.getCell(8, headerIndex);
-        cell.value = text;
-        cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
-    });
-
-    let summaryCurrentRow = 9;
-    serviceSummaryInfo.forEach(info => {
-        worksheet.getCell(summaryCurrentRow, summaryStartCol).value = `${info.service} ${info.unit}`;
-        const totalCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 3);
-        totalCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
-        totalCell.numFmt = numberFormat;
-
-        // Apply borders to summary cells
-        [summaryStartCol, summaryStartCol + 2, summaryStartCol + 3].forEach(colIdx => {
-            worksheet.getCell(summaryCurrentRow, colIdx).border = thinBorder;
-        })
-        summaryCurrentRow++;
-    });
-
-    // Set column widths
-    worksheet.columns.forEach(column => {
-        let maxLength = 0;
-        column.eachCell!({ includeEmpty: true }, cell => {
-            let columnLength = cell.value ? cell.value.toString().length : 10;
-            if (columnLength > maxLength) {
-                maxLength = columnLength;
+        worksheet.columns.forEach(column => {
+            if (!column.width) {
+                let maxLength = 0;
+                column.eachCell!({ includeEmpty: true }, cell => {
+                    let columnLength = cell.value ? cell.value.toString().length : 10;
+                    if (columnLength > maxLength) { maxLength = columnLength; }
+                });
+                column.width = maxLength < 10 ? 10 : maxLength + 2;
             }
         });
-        column.width = maxLength < 10 ? 10 : maxLength + 2;
-    });
 
-    // --- DOWNLOAD ---
-    try {
-        const buffer = await workbook.xlsx.writeBuffer();
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `relatorio_faturamento_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-    } catch (error) {
-        console.error("Erro ao gerar Excel de Faturamento:", error);
-        alert("Ocorreu um erro ao gerar o arquivo Excel de faturamento.");
-    } finally {
-        setIsGenerating(false);
-    }
-};
-
+        try {
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `relatorio_faturamento_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        } catch (error) {
+            console.error("Erro ao gerar Excel de Faturamento:", error);
+            alert("Ocorreu um erro ao gerar o arquivo Excel de faturamento.");
+        } finally {
+            setIsGenerating(false);
+        }
+    };
 
     const handleGeneratePdfClick = () => {
         if (selectedRecords.length === 0) {
@@ -1286,7 +1274,7 @@ const handleExportBillingExcel = async () => {
                 </div>
                 <fieldset className="form-group-full"><legend>Filtrar por Serviços</legend><div className="checkbox-group">{allServiceNames.map(name => (<div key={name} className="checkbox-item"><input type="checkbox" id={`service-${name}`} checked={selectedServices.includes(name)} onChange={e => handleServiceFilterChange(name, e.target.checked)} /><label htmlFor={`service-${name}`}>{name}</label></div>))}</div></fieldset>
             </div>
-          
+            
             <div className="report-summary">
                 <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
                 {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
@@ -1316,7 +1304,7 @@ const ManageLocationsView: React.FC<{
     locations: LocationRecord[];
     services: ServiceDefinition[];
     fetchData: () => Promise<void>;
-    addAuditLogEntry: (action: 'UPDATE' | 'DELETE', details: string) => void;
+    addAuditLogEntry: (action: 'UPDATE' | 'DELETE', details: string, recordId?: string) => void;
 }> = ({ locations, services, fetchData, addAuditLogEntry }) => {
     const [selectedGroup, setSelectedGroup] = useState('');
     const [name, setName] = useState('');
@@ -1357,7 +1345,6 @@ const ManageLocationsView: React.FC<{
         if (window.confirm(`Tem certeza que deseja renomear "${selectedGroup}" para "${newGroupName.trim()}"? Isso afetará todos os locais associados.`)) {
             setIsGroupActionLoading(true);
             try {
-                // AQUI ESTÁ A LINHA CORRIGIDA
                 await apiFetch(`/api/contract-groups/${encodeURIComponent(selectedGroup)}`, {
                     method: 'PUT',
                     body: JSON.stringify({ newName: newGroupName.trim() })
@@ -1510,6 +1497,7 @@ const ManageLocationsView: React.FC<{
             return acc;
         }, {} as Record<string, string>);
         setServiceMeasurements(initialMeasurements);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleDelete = async (id: string) => {
@@ -1548,15 +1536,13 @@ const ManageLocationsView: React.FC<{
                     <div className="form-container card">
                         <h3>{editingId ? 'Editando Local' : 'Adicionar Novo Local'} em "{selectedGroup}"</h3>
                         <input type="text" placeholder="Nome do Local (Endereço)" value={name} onChange={e => setName(e.target.value)} />
-
                         
-        <textarea 
-            placeholder="Observações (opcional)" 
-            value={observations} 
-            onChange={e => setObservations(e.target.value)}
-            rows={3}
-        ></textarea>
-        
+                        <textarea 
+                            placeholder="Observações (opcional)" 
+                            value={observations} 
+                            onChange={e => setObservations(e.target.value)}
+                            rows={3}
+                        ></textarea>
                         
                         <fieldset className="service-assignment-fieldset">
                             <legend>Serviços e Medições do Local</legend>
@@ -1604,6 +1590,7 @@ const ManageLocationsView: React.FC<{
                                             <button className="button button-sm button-danger" onClick={() => handleDelete(loc.id)}>Excluir</button>
                                         </div>
                                     </div>
+                                    <p><em>{loc.observations}</em></p>
                                     <div className="location-services-list">
                                         <strong>Serviços:</strong>
                                         {(loc.services && loc.services.length > 0) ? (
@@ -1830,7 +1817,6 @@ const GoalsAndChartsView: React.FC<{
     records: ServiceRecord[];
     locations: LocationRecord[];
 }> = ({ records, locations }) => {
-    // Lógica do Gráfico
     const [chartData, setChartData] = useState<any>(null);
     const [isLoadingChart, setIsLoadingChart] = useState(false);
     const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
@@ -1839,7 +1825,7 @@ const GoalsAndChartsView: React.FC<{
     const [selectedContracts, setSelectedContracts] = useState<string[]>(allContractGroups);
     const defaultEndDate = new Date();
     const defaultStartDate = new Date();
-    defaultStartDate.setMonth(defaultStartDate.getMonth() - 11); // Padrão: últimos 12 meses
+    defaultStartDate.setMonth(defaultStartDate.getMonth() - 11);
     const [startDate, setStartDate] = useState(defaultStartDate.toISOString().slice(0, 10));
     const [endDate, setEndDate] = useState(defaultEndDate.toISOString().slice(0, 10));
 
@@ -1981,7 +1967,7 @@ const GoalsAndChartsView: React.FC<{
 
             <ul className="goal-list">
                 {[...goals].sort((a, b) => b.month.localeCompare(a.month) || a.contractGroup.localeCompare(b.contractGroup)).map(goal => {
-                    const realizedArea = records.filter(r => r.contractGroup === goal.contractGroup && r.startTime.startsWith(goal.month)).reduce((sum, r) => sum + (r.locationArea || 0), 0);
+                    const realizedArea = records.filter(r => r.contractGroup === goal.contractGroup && r.startTime.startsWith(goal.month)).reduce((sum, r) => sum + (r.overrideMeasurement ?? r.locationArea || 0), 0);
                     const percentage = goal.targetArea > 0 ? (realizedArea / goal.targetArea) * 100 : 0;
                     return (
                         <li key={goal.id} className="card list-item progress-card">
@@ -2276,7 +2262,7 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
             
             const details = [
                 `Usuário: ${entry.adminUsername}`,
-                `Ação: ${entry.action === 'UPDATE' ? 'Atualização' : 'Exclusão'}`,
+                `Ação: ${entry.action === 'UPDATE' ? 'Atualização' : entry.action === 'DELETE' ? 'Exclusão' : 'Ajuste de Medição'}`,
                 `ID do Registro: ${entry.recordId}`,
                 `Detalhes: ${entry.details}`
             ];
@@ -2299,7 +2285,7 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
     return (
         <div>
             <div className="audit-log-header">
-                <h2>Registros de Alterações (Local)</h2>
+                <h2>Registros de Alterações</h2>
                 <button className="button admin-button" onClick={handleExportPdf} disabled={log.length === 0}>
                     Exportar para PDF
                 </button>
@@ -2312,7 +2298,7 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
                         <li key={entry.id} className="audit-log-item">
                             <p><strong>Data:</strong> {formatDateTime(entry.timestamp)}</p>
                             <p><strong>Usuário:</strong> {entry.adminUsername}</p>
-                            <p><strong>Ação:</strong> {entry.action === 'UPDATE' ? 'Atualização de Registro' : 'Exclusão de Registro'}</p>
+                            <p><strong>Ação:</strong> {entry.action === 'UPDATE' ? 'Atualização de Registro' : entry.action === 'DELETE' ? 'Exclusão de Registro' : 'Ajuste de Medição'}</p>
                             <p><strong>ID do Registro:</strong> {entry.recordId}</p>
                             <p><strong>Detalhes:</strong> {entry.details}</p>
                         </li>
@@ -2520,7 +2506,7 @@ const App = () => {
     const [records, setRecords] = useState<ServiceRecord[]>([]);
     const [services, setServices] = useState<ServiceDefinition[]>([]);
     const [contractConfigs, setContractConfigs] = useState<ContractConfig[]>([]);
-    const [auditLog, setAuditLog] = useLocalStorage<AuditLogEntry[]>('crbAuditLog', []);
+    const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
     
     const [currentService, setCurrentService] = useLocalStorage<Partial<ServiceRecord>>('crbCurrentService', {});
     const [selectedRecord, setSelectedRecord] = useState<ServiceRecord | null>(null);
@@ -2542,19 +2528,32 @@ const App = () => {
             return newSet;
         });
     };
-
-    const addAuditLogEntry = (action: 'UPDATE' | 'DELETE', details: string, recordId?: string) => {
+    
+    const addAuditLogEntry = async (action: 'UPDATE' | 'DELETE' | 'ADJUST_MEASUREMENT', details: string, recordId?: string) => {
         if (!currentUser || currentUser.role !== 'ADMIN') return;
-        const newEntry: AuditLogEntry = {
-            id: crypto.randomUUID(),
-            timestamp: new Date().toISOString(),
-            adminId: currentUser.id,
-            adminUsername: currentUser.username,
-            action,
-            recordId: recordId || 'N/A', // N/A para ações de grupo/contrato
-            details,
-        };
-        setAuditLog(prev => [newEntry, ...prev]);
+        try {
+            await apiFetch('/api/auditlog', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action,
+                    recordId: recordId ? parseInt(recordId) : 0,
+                    details
+                })
+            });
+            await fetchAuditLog();
+        } catch (error) {
+            console.error("Failed to add audit log entry", error);
+        }
+    };
+    
+    const fetchAuditLog = async () => {
+        if (currentUser?.role !== 'ADMIN') return;
+        try {
+            const logs = await apiFetch('/api/auditlog');
+            setAuditLog(logs);
+        } catch (error) {
+            console.error("Failed to fetch audit log", error);
+        }
     };
 
     const handleDeleteSelectedRecords = async () => {
@@ -2646,9 +2645,10 @@ const App = () => {
             ];
             if (currentUser.role === 'ADMIN') {
                 apiEndpoints.push(apiFetch('/api/users'));
+                apiEndpoints.push(apiFetch('/api/auditlog'));
             }
             const results = await Promise.all(apiEndpoints);
-            const [locs, recs, srvs, configs, usrs] = results;
+            const [locs, recs, srvs, configs, usrs, logs] = results;
             
             setLocations(locs.map((l: any) => ({
                 ...l,
@@ -2673,6 +2673,7 @@ const App = () => {
             if (currentUser.role === 'ADMIN') {
                 setRecords(recs.map(mapRecord));
                 if (usrs) setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
+                if(logs) setAuditLog(logs);
             } else if (currentUser.role === 'OPERATOR') {
                 setRecords(recs.filter((r: any) => String(r.operatorId) === String(currentUser.id)).map(mapRecord));
             } else { // FISCAL
@@ -2802,27 +2803,22 @@ const App = () => {
             startNewServiceRecord(service, measurement);
         }
     };
-
+    
     const handleBeforePhotos = async (photosBefore: string[]) => {
         setIsLoading("Preparando registro...");
         try {
-            // 1. Prepara o pacote de dados de TEXTO para o registro.
-            //    Não há dados de imagem aqui dentro, evitando o erro "Payload Too Large".
             const recordPayload = {
                 operatorId: currentUser!.id,
                 serviceType: currentService.serviceType,
                 serviceUnit: currentService.serviceUnit,
-// FIX: The `locationId` field expects a string, not a number. Removed `parseInt`.
                 locationId: currentService.locationId,
                 locationName: currentService.locationName,
                 contractGroup: currentService.contractGroup,
                 locationArea: currentService.locationArea,
                 gpsUsed: !!currentService.gpsUsed,
                 startTime: new Date().toISOString(),
-                tempId: crypto.randomUUID(), // ID temporário para o syncManager
+                tempId: crypto.randomUUID(),
                 
-                // Informações do novo local, caso o operador tenha criado um.
-                // O backend (junto com o syncManager) usará isso para criar o local.
                 newLocationInfo: !currentService.locationId 
                     ? { 
                         name: currentService.locationName, 
@@ -2837,18 +2833,15 @@ const App = () => {
                     : undefined
             };
     
-            // 2. Converte as fotos para o formato de ARQUIVO.
             const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
     
-            // 3. Entrega os dados de texto e os arquivos para o syncManager cuidar de tudo.
             await queueRecord(recordPayload, beforeFiles);
     
-            // 4. Atualiza a interface e avança para a próxima tela.
             setCurrentService(prev => ({
                 ...prev,
                 ...recordPayload,
-                id: recordPayload.tempId, // Usa o tempId para o estado do app
-                beforePhotos: photosBefore.map(p => p) // Guarda as fotos localmente para visualização
+                id: recordPayload.tempId,
+                beforePhotos: photosBefore.map(p => p)
             }));
             
             navigate('OPERATOR_SERVICE_IN_PROGRESS');
@@ -2945,6 +2938,22 @@ const App = () => {
         }
     };
 
+    const handleMeasurementUpdate = async (recordId: number, newMeasurementValue: string) => {
+        setIsLoading("Ajustando medição...");
+        try {
+            const response = await apiFetch(`/api/records/${recordId}/measurement`, {
+                method: 'PUT',
+                body: JSON.stringify({ overrideMeasurement: newMeasurementValue }),
+            });
+            setRecords(prevRecords => prevRecords.map(r => r.id === String(recordId) ? { ...r, ...response } : r));
+        } catch (error) {
+            console.error("Erro ao salvar medição:", error);
+            alert('Não foi possível salvar a medição ajustada.');
+        } finally {
+            setIsLoading(null);
+        }
+    };
+
     const renderView = () => {
         if (!currentUser && view !== 'LOGIN') {
             return <Loader text="Verificando sessão..." />;
@@ -2956,14 +2965,14 @@ const App = () => {
         switch(currentUser.role) {
             case 'ADMIN':
                 switch(view) {
-                    case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} />;
+                    case 'ADMIN_DASHBOARD': return <AdminDashboard onNavigate={navigate} onLogout={handleLogout} />;
                     case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} fetchData={fetchData} />;
                     case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} services={services} fetchData={fetchData} addAuditLogEntry={addAuditLogEntry} />;
                     case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
                     case 'ADMIN_MANAGE_GOALS': return <GoalsAndChartsView records={records} locations={locations} />;
                     case 'ADMIN_MANAGE_CYCLES': return <ManageCyclesView locations={locations} configs={contractConfigs} fetchData={fetchData} />;
                     case 'REPORTS': return <ReportsView records={records} services={services} />;
-                    case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} selectedIds={selectedRecordIds} onToggleSelect={handleToggleRecordSelection} onDeleteSelected={handleDeleteSelectedRecords} />;
+                    case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} selectedIds={selectedRecordIds} onToggleSelect={handleToggleRecordSelection} onDeleteSelected={handleDeleteSelectedRecords} onMeasurementUpdate={handleMeasurementUpdate} />;
                     case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
                     case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado para edição.</p>;
                     case 'AUDIT_LOG': return <AuditLogView log={auditLog} />;
@@ -2974,9 +2983,9 @@ const App = () => {
                 const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
                 const fiscalRecords = records.filter(r => fiscalGroups.includes(r.contractGroup));
                 switch(view) {
-                    case 'FISCAL_DASHBOARD': return <FiscalDashboard onNavigate={navigate} />;
+                    case 'FISCAL_DASHBOARD': return <FiscalDashboard onNavigate={navigate} onLogout={handleLogout} />;
                     case 'REPORTS': return <ReportsView records={fiscalRecords} services={services} />;
-                    case 'HISTORY': return <HistoryView records={fiscalRecords} onSelect={handleSelectRecord} isAdmin={false} selectedIds={new Set()} onToggleSelect={() => {}} />;
+                    case 'HISTORY': return <HistoryView records={fiscalRecords} onSelect={handleSelectRecord} isAdmin={false} selectedIds={new Set()} onToggleSelect={() => {}} onMeasurementUpdate={async () => {}} />;
                     case 'DETAIL':
                         const canView = selectedRecord && fiscalGroups.includes(selectedRecord.contractGroup);
                         return canView ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado ou acesso não permitido.</p>;
@@ -2985,7 +2994,7 @@ const App = () => {
 
             case 'OPERATOR':
                 switch(view) {
-                    case 'OPERATOR_GROUP_SELECT': return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} />;
+                    case 'OPERATOR_GROUP_SELECT': return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} onLogout={handleLogout} />;
                     case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : null;
                     case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} records={records} contractConfigs={contractConfigs} /> : null;
                     case 'OPERATOR_SERVICE_IN_PROGRESS': return <ServiceInProgressView service={currentService} onFinish={() => navigate('PHOTO_STEP')} />;
@@ -2999,7 +3008,7 @@ const App = () => {
                     case 'CONFIRM_STEP': return <ConfirmStep recordData={currentService} onSave={handleSave} onCancel={resetService} />;
                     case 'HISTORY': 
                         const operatorRecords = records.filter(r => String(r.operatorId) === String(currentUser.id));
-                        return <HistoryView records={operatorRecords} onSelect={handleSelectRecord} isAdmin={false} onEdit={handleEditRecord} selectedIds={new Set()} onToggleSelect={() => {}} />;
+                        return <HistoryView records={operatorRecords} onSelect={handleSelectRecord} isAdmin={false} onEdit={handleEditRecord} selectedIds={new Set()} onToggleSelect={() => {}} onMeasurementUpdate={async () => {}} />;
                     case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
                     case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado para edição.</p>;
                     default: return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} onLogout={handleLogout} />;
