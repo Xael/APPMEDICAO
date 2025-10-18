@@ -2522,22 +2522,14 @@ const ManageServicesView: React.FC<{
 // --- Função auxiliar para determinar a view inicial ---
 const getInitialView = (): View => {
     const path = window.location.pathname;
-    // Usamos endsWith para ser robusto contra barras duplas ou simples no início
-    if (path.endsWith('/reset-password')) {
-        return 'RESET_PASSWORD';
-    }
-    if (path.endsWith('/forgot-password')) {
-        return 'FORGOT_PASSWORD';
-    }
-    return 'LOGIN'; // O padrão é sempre a tela de login
+    if (path.endsWith('/reset-password')) return 'RESET_PASSWORD';
+    if (path.endsWith('/forgot-password')) return 'FORGOT_PASSWORD';
+    return 'LOGIN';
 };
-
 
 // --- Componente Principal ---
 const App = () => {
-    // A view inicial agora é definida pela função que criamos
     const [view, setView] = useState<View>(getInitialView());
-    
     const [currentUser, setCurrentUser] = useLocalStorage<User | null>('crbCurrentUser', null);
     const [users, setUsers] = useState<User[]>([]);
     const [locations, setLocations] = useState<LocationRecord[]>([]);
@@ -2556,11 +2548,8 @@ const App = () => {
     const handleToggleRecordSelection = (recordId: string) => {
         setSelectedRecordIds(prev => {
             const newSet = new Set(prev);
-            if (newSet.has(recordId)) {
-                newSet.delete(recordId);
-            } else {
-                newSet.add(recordId);
-            }
+            if (newSet.has(recordId)) newSet.delete(recordId);
+            else newSet.add(recordId);
             return newSet;
         });
     };
@@ -2578,9 +2567,8 @@ const App = () => {
     
     const fetchAuditLog = async () => {
         if (currentUser?.role !== 'ADMIN') return;
-        try {
-            setAuditLog(await apiFetch('/api/auditlog'));
-        } catch (error) { console.error("Failed to fetch audit log", error); }
+        try { setAuditLog(await apiFetch('/api/auditlog')); }
+        catch (error) { console.error("Failed to fetch audit log", error); }
     };
 
     const handleDeleteSelectedRecords = async () => {
@@ -2594,9 +2582,7 @@ const App = () => {
         } catch (e) {
             alert("Falha ao excluir um ou mais registros.");
             console.error(e);
-        } finally {
-            setIsLoading(null);
-        }
+        } finally { setIsLoading(null); }
     };
 
     useEffect(() => {
@@ -2609,7 +2595,6 @@ const App = () => {
     }, [setCurrentService]);
 
     const navigate = (newView: View, replace = false) => {
-        // Limpa o histórico de navegação ao ir para uma tela principal
         if (['ADMIN_DASHBOARD', 'FISCAL_DASHBOARD', 'OPERATOR_GROUP_SELECT', 'LOGIN'].includes(newView)) {
             window.history.pushState({}, '', '/');
             setHistory([]);
@@ -2673,7 +2658,7 @@ const App = () => {
                 if(logs) setAuditLog(logs);
             } else if (currentUser.role === 'OPERATOR') {
                 setRecords(recs.filter((r: any) => String(r.operatorId) === String(currentUser.id)).map(mapRecord));
-            } else { // FISCAL
+            } else {
                 const fiscalGroups = new Set(currentUser.assignments?.map(a => a.contractGroup) || []);
                 setRecords(recs.filter((r: any) => fiscalGroups.has(r.contractGroup)).map(mapRecord));
             }
@@ -2681,15 +2666,11 @@ const App = () => {
             console.error("Failed to fetch data", error);
             alert("Não foi possível carregar os dados do servidor.");
             handleLogout();
-        } finally {
-            setIsLoading(null);
-        }
+        } finally { setIsLoading(null); }
     };
 
     useEffect(() => {
-        // Se a view inicial é pública, não fazemos nada.
         if (view === 'RESET_PASSWORD' || view === 'FORGOT_PASSWORD') return;
-        
         const restoreSession = async () => {
             if (API_TOKEN) {
                 setIsLoading("Verificando sessão...");
@@ -2701,19 +2682,13 @@ const App = () => {
                 } catch (error) {
                     console.error("Session restore failed", error);
                     handleLogout();
-                } finally {
-                    setIsLoading(null);
-                }
+                } finally { setIsLoading(null); }
             }
         };
         restoreSession();
     }, []);
 
-    useEffect(() => {
-        if (currentUser) {
-            fetchData();
-        }
-    }, [currentUser]);
+    useEffect(() => { if (currentUser) { fetchData(); } }, [currentUser]);
 
     const resetService = () => {
         setCurrentService({});
@@ -2744,11 +2719,12 @@ const App = () => {
         const locationArea = isManual ? measurement : serviceDetail?.measurement;
 
         if (locationArea === undefined) {
-            alert("Erro: Medição não encontrada para este serviço. Por favor, contate o administrador.");
+            alert("Erro: Medição não encontrada. Contate o administrador.");
             return;
         }
 
         setCurrentService({
+            serviceId: parseInt(service.id), // <-- ALTERAÇÃO AQUI
             serviceType: service.name,
             serviceUnit: service.unit.symbol,
             contractGroup: selectedLocation.contractGroup,
@@ -2794,6 +2770,7 @@ const App = () => {
         try {
             const recordPayload = {
                 operatorId: currentUser!.id,
+                serviceId: currentService.serviceId, // <-- ALTERAÇÃO AQUI
                 serviceType: currentService.serviceType,
                 serviceUnit: currentService.serviceUnit,
                 locationId: currentService.locationId,
@@ -2812,9 +2789,7 @@ const App = () => {
         } catch (err) {
             console.error("Falha ao colocar o registro na fila:", err);
             alert("Falha ao salvar o registro localmente. Tente novamente.");
-        } finally {
-            setIsLoading(null);
-        }
+        } finally { setIsLoading(null); }
     };
 
     const handleAfterPhotos = async (photosAfter: string[]) => {
@@ -2826,9 +2801,7 @@ const App = () => {
         } catch (err) {
             console.error(err);
             alert("Falha ao salvar fotos localmente.");
-        } finally {
-            setIsLoading(null);
-        }
+        } finally { setIsLoading(null); }
     };
 
     const handleSave = () => {
@@ -2845,9 +2818,7 @@ const App = () => {
             navigate('DETAIL');
         } catch (e) {
             alert('Não foi possível carregar os detalhes do registro.');
-        } finally {
-            setIsLoading(null);
-        }
+        } finally { setIsLoading(null); }
     }
 
     const handleEditRecord = async (record: ServiceRecord) => {
@@ -2858,9 +2829,7 @@ const App = () => {
             navigate('ADMIN_EDIT_RECORD');
         } catch(e) {
              alert('Não foi possível carregar o registro para edição.');
-        } finally {
-             setIsLoading(null);
-        }
+        } finally { setIsLoading(null); }
     };
 
     const handleUpdateRecord = (updatedRecord: ServiceRecord) => {
@@ -2879,9 +2848,7 @@ const App = () => {
                 alert("Registro excluído com sucesso.");
             } catch(e) {
                 alert("Falha ao excluir o registro.");
-            } finally {
-                setIsLoading(null);
-            }
+            } finally { setIsLoading(null); }
         }
     };
 
@@ -2896,9 +2863,7 @@ const App = () => {
         } catch (error) {
             console.error("Erro ao salvar medição:", error);
             alert('Não foi possível salvar a medição ajustada.');
-        } finally {
-            setIsLoading(null);
-        }
+        } finally { setIsLoading(null); }
     };
 
     const renderView = () => {
