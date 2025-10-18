@@ -2517,12 +2517,27 @@ const ManageServicesView: React.FC<{
     );
 };
 
-// --- Componente Principal ---
-// Substitua a função App inteira por esta:
+// Substitua o componente App inteiro, do começo ao fim, por este código:
 
+// --- Função auxiliar para determinar a view inicial ---
+const getInitialView = (): View => {
+    const path = window.location.pathname;
+    // Usamos endsWith para ser robusto contra barras duplas ou simples no início
+    if (path.endsWith('/reset-password')) {
+        return 'RESET_PASSWORD';
+    }
+    if (path.endsWith('/forgot-password')) {
+        return 'FORGOT_PASSWORD';
+    }
+    return 'LOGIN'; // O padrão é sempre a tela de login
+};
+
+
+// --- Componente Principal ---
 const App = () => {
-    // Todos os seus 'useState' e 'useLocalStorage' continuam aqui...
-    const [view, setView] = useState<View>('LOGIN');
+    // A view inicial agora é definida pela função que criamos
+    const [view, setView] = useState<View>(getInitialView());
+    
     const [currentUser, setCurrentUser] = useLocalStorage<User | null>('crbCurrentUser', null);
     const [users, setUsers] = useState<User[]>([]);
     const [locations, setLocations] = useState<LocationRecord[]>([]);
@@ -2538,64 +2553,6 @@ const App = () => {
     const [isLoading, setIsLoading] = useState<string | null>(null);
     const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
 
-    // --- LÓGICA DE NAVEGAÇÃO E ROTEAMENTO AJUSTADA ---
-    useEffect(() => {
-        const handlePathChange = () => {
-            const path = window.location.pathname;
-            console.log("Verificando o caminho:", path); // Log para depuração
-            if (path === '/reset-password') {
-                setView('RESET_PASSWORD');
-            } else if (path === '/forgot-password') {
-                setView('FORGOT_PASSWORD');
-            }
-        };
-
-        // Verifica o caminho na carga inicial
-        handlePathChange();
-
-        // Adiciona um listener para o evento 'popstate' (navegação do navegador)
-        window.addEventListener('popstate', handlePathChange);
-
-        // Função de limpeza para remover o listener
-        return () => {
-            window.removeEventListener('popstate', handlePathChange);
-        };
-    }, []); // Este useEffect roda apenas uma vez para configurar o listener.
-
-    // --- LÓGICA DE RESTAURAÇÃO DE SESSÃO AJUSTADA ---
-    useEffect(() => {
-        const path = window.location.pathname;
-        // Não tenta restaurar a sessão se estivermos em uma página pública
-        if (path === '/reset-password' || path === '/forgot-password') {
-            return;
-        }
-
-        const restoreSession = async () => {
-            if (API_TOKEN) {
-                setIsLoading("Verificando sessão...");
-                try {
-                    const me = await apiFetch('/api/auth/me');
-                    const user: User = { id: String(me.id), username: me.name, email: me.email, role: me.role, assignments: me.assignments || [] };
-                    setCurrentUser(user);
-                    // Apenas redireciona se a view atual for LOGIN,
-                    // para não interferir com a navegação normal.
-                    if (view === 'LOGIN') {
-                        redirectUser(user);
-                    }
-                } catch (error) {
-                    console.error("Session restore failed", error);
-                    handleLogout();
-                } finally {
-                    setIsLoading(null);
-                }
-            }
-        };
-
-        restoreSession();
-    }, []); // Este também roda apenas uma vez na carga inicial.
-
-
-    // Todas as suas outras funções (fetchData, handleLogin, etc.) continuam aqui, sem alterações...
     const handleToggleRecordSelection = (recordId: string) => {
         setSelectedRecordIds(prev => {
             const newSet = new Set(prev);
@@ -2613,69 +2570,52 @@ const App = () => {
         try {
             await apiFetch('/api/auditlog', {
                 method: 'POST',
-                body: JSON.stringify({
-                    action,
-                    recordId: recordId ? parseInt(recordId) : 0,
-                    details
-                })
+                body: JSON.stringify({ action, recordId: recordId ? parseInt(recordId) : 0, details })
             });
             await fetchAuditLog();
-        } catch (error) {
-            console.error("Failed to add audit log entry", error);
-        }
+        } catch (error) { console.error("Failed to add audit log entry", error); }
     };
     
     const fetchAuditLog = async () => {
         if (currentUser?.role !== 'ADMIN') return;
         try {
-            const logs = await apiFetch('/api/auditlog');
-            setAuditLog(logs);
-        } catch (error) {
-            console.error("Failed to fetch audit log", error);
-        }
+            setAuditLog(await apiFetch('/api/auditlog'));
+        } catch (error) { console.error("Failed to fetch audit log", error); }
     };
 
     const handleDeleteSelectedRecords = async () => {
-        if (selectedRecordIds.size === 0) return;
-        if (window.confirm(`Tem certeza que deseja excluir os ${selectedRecordIds.size} registros selecionados?`)) {
-            setIsLoading("Excluindo registros...");
-            try {
-                const deletePromises = Array.from(selectedRecordIds).map(id => 
-                    apiFetch(`/api/records/${id}`, { method: 'DELETE' })
-                );
-                await Promise.all(deletePromises);
-                
-                setRecords(prev => prev.filter(r => !selectedRecordIds.has(r.id)));
-                setSelectedRecordIds(new Set());
-                alert("Registros excluídos com sucesso.");
-            } catch (e) {
-                alert("Falha ao excluir um ou mais registros.");
-                console.error(e);
-            } finally {
-                setIsLoading(null);
-            }
+        if (selectedRecordIds.size === 0 || !window.confirm(`Tem certeza que deseja excluir os ${selectedRecordIds.size} registros selecionados?`)) return;
+        setIsLoading("Excluindo registros...");
+        try {
+            await Promise.all(Array.from(selectedRecordIds).map(id => apiFetch(`/api/records/${id}`, { method: 'DELETE' })));
+            setRecords(prev => prev.filter(r => !selectedRecordIds.has(r.id)));
+            setSelectedRecordIds(new Set());
+            alert("Registros excluídos com sucesso.");
+        } catch (e) {
+            alert("Falha ao excluir um ou mais registros.");
+            console.error(e);
+        } finally {
+            setIsLoading(null);
         }
     };
 
     useEffect(() => {
         const handleSyncSuccess = (event: Event) => {
             const { tempId, newId } = (event as CustomEvent).detail;
-            setCurrentService(prev => {
-                if (prev.id === tempId || prev.tempId === tempId) {
-                    console.log(`ID do serviço atualizado de ${tempId} para ${newId}`);
-                    return { ...prev, id: String(newId) };
-                }
-                return prev;
-            });
+            setCurrentService(prev => (prev.id === tempId || prev.tempId === tempId) ? { ...prev, id: String(newId) } : prev);
         };
         window.addEventListener('syncSuccess', handleSyncSuccess);
-        return () => {
-            window.removeEventListener('syncSuccess', handleSyncSuccess);
-        };
+        return () => window.removeEventListener('syncSuccess', handleSyncSuccess);
     }, [setCurrentService]);
 
     const navigate = (newView: View, replace = false) => {
-        if (!replace) setHistory(h => [...h, view]);
+        // Limpa o histórico de navegação ao ir para uma tela principal
+        if (['ADMIN_DASHBOARD', 'FISCAL_DASHBOARD', 'OPERATOR_GROUP_SELECT', 'LOGIN'].includes(newView)) {
+            window.history.pushState({}, '', '/');
+            setHistory([]);
+        } else {
+            if (!replace) setHistory(h => [...h, view]);
+        }
         setView(newView);
     }
 
@@ -2690,13 +2630,9 @@ const App = () => {
     }
     
     const redirectUser = (user: User) => {
-        if (user.role === 'ADMIN') {
-            navigate('ADMIN_DASHBOARD', true);
-        } else if (user.role === 'OPERATOR') {
-            navigate('OPERATOR_GROUP_SELECT', true);
-        } else if (user.role === 'FISCAL') {
-            navigate('FISCAL_DASHBOARD', true);
-        }
+        if (user.role === 'ADMIN') navigate('ADMIN_DASHBOARD', true);
+        else if (user.role === 'OPERATOR') navigate('OPERATOR_GROUP_SELECT', true);
+        else if (user.role === 'FISCAL') navigate('FISCAL_DASHBOARD', true);
     };
 
     const handleLogout = () => {
@@ -2716,38 +2652,20 @@ const App = () => {
         if (!currentUser) return;
         setIsLoading('Carregando dados...');
         try {
-            const apiEndpoints: Promise<any>[] = [
-                apiFetch(`/api/locations?timestamp=${new Date().getTime()}`),
-                apiFetch(`/api/records?timestamp=${new Date().getTime()}`),
-                apiFetch(`/api/services?timestamp=${new Date().getTime()}`),
+            const [locs, recs, srvs, configs, usrs, logs] = await Promise.all([
+                apiFetch(`/api/locations?t=${Date.now()}`),
+                apiFetch(`/api/records?t=${Date.now()}`),
+                apiFetch(`/api/services?t=${Date.now()}`),
                 apiFetch('/api/contract-configs'),
-            ];
-            if (currentUser.role === 'ADMIN') {
-                apiEndpoints.push(apiFetch('/api/users'));
-                apiEndpoints.push(apiFetch('/api/auditlog'));
-            }
-            const results = await Promise.all(apiEndpoints);
-            const [locs, recs, srvs, configs, usrs, logs] = results;
+                currentUser.role === 'ADMIN' ? apiFetch('/api/users') : Promise.resolve(null),
+                currentUser.role === 'ADMIN' ? apiFetch('/api/auditlog') : Promise.resolve(null),
+            ]);
             
-            setLocations(locs.map((l: any) => ({
-                ...l,
-                id: String(l.id),
-                services: (l.services || []).map((s: any) => ({
-                    ...s,
-                    serviceId: String(s.serviceId)
-                }))
-            })));
-            
+            setLocations(locs.map((l: any) => ({ ...l, id: String(l.id), services: (l.services || []).map((s: any) => ({ ...s, serviceId: String(s.serviceId) })) })));
             setServices(srvs.map((s: any) => ({...s, id: String(s.id), unitId: String(s.unitId) })));
-            
             setContractConfigs(configs || []);
             
-            const mapRecord = (r: any) => ({
-                ...r,
-                id: String(r.id),
-                operatorId: String(r.operatorId),
-                locationId: r.locationId ? String(r.locationId) : undefined
-            });
+            const mapRecord = (r: any) => ({ ...r, id: String(r.id), operatorId: String(r.operatorId), locationId: r.locationId ? String(r.locationId) : undefined });
 
             if (currentUser.role === 'ADMIN') {
                 setRecords(recs.map(mapRecord));
@@ -2756,10 +2674,9 @@ const App = () => {
             } else if (currentUser.role === 'OPERATOR') {
                 setRecords(recs.filter((r: any) => String(r.operatorId) === String(currentUser.id)).map(mapRecord));
             } else { // FISCAL
-                const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
-                setRecords(recs.filter((r: any) => fiscalGroups.includes(r.contractGroup)).map(mapRecord));
+                const fiscalGroups = new Set(currentUser.assignments?.map(a => a.contractGroup) || []);
+                setRecords(recs.filter((r: any) => fiscalGroups.has(r.contractGroup)).map(mapRecord));
             }
-
         } catch (error) {
             console.error("Failed to fetch data", error);
             alert("Não foi possível carregar os dados do servidor.");
@@ -2768,6 +2685,29 @@ const App = () => {
             setIsLoading(null);
         }
     };
+
+    useEffect(() => {
+        // Se a view inicial é pública, não fazemos nada.
+        if (view === 'RESET_PASSWORD' || view === 'FORGOT_PASSWORD') return;
+        
+        const restoreSession = async () => {
+            if (API_TOKEN) {
+                setIsLoading("Verificando sessão...");
+                try {
+                    const me = await apiFetch('/api/auth/me');
+                    const user: User = { id: String(me.id), username: me.name, email: me.email, role: me.role, assignments: me.assignments || [] };
+                    setCurrentUser(user);
+                    if (view === 'LOGIN') redirectUser(user);
+                } catch (error) {
+                    console.error("Session restore failed", error);
+                    handleLogout();
+                } finally {
+                    setIsLoading(null);
+                }
+            }
+        };
+        restoreSession();
+    }, []);
 
     useEffect(() => {
         if (currentUser) {
@@ -2779,7 +2719,7 @@ const App = () => {
         setCurrentService({});
         setSelectedContractGroup(null);
         setSelectedLocation(null);
-        redirectUser(currentUser!);
+        if(currentUser) redirectUser(currentUser);
     }
 
     const handleLogin = (user: User) => {
@@ -2823,9 +2763,7 @@ const App = () => {
 
     const handleServiceSelect = (service: ServiceDefinition, measurement?: number) => {
         if (!selectedLocation) return;
-        
-        const isManual = selectedLocation.id.startsWith('manual-');
-        if(isManual) {
+        if (selectedLocation.id.startsWith('manual-')) {
             startNewServiceRecord(service, measurement);
             return;
         }
@@ -2834,30 +2772,20 @@ const App = () => {
         const cycleStartDay = config ? config.cycleStartDay : 1;
         const today = new Date();
         let cycleStartDate = new Date(today.getFullYear(), today.getMonth(), cycleStartDay);
-        if (today.getDate() < cycleStartDay) {
-            cycleStartDate.setMonth(cycleStartDate.getMonth() - 1);
-        }
+        if (today.getDate() < cycleStartDay) cycleStartDate.setMonth(cycleStartDate.getMonth() - 1);
         cycleStartDate.setHours(0, 0, 0, 0);
 
-        const existingRecord = records.find(record =>
-            record.locationId === selectedLocation.id &&
-            record.serviceType === service.name &&
-            new Date(record.startTime) >= cycleStartDate
-        );
+        const existingRecord = records.find(r => r.locationId === selectedLocation.id && r.serviceType === service.name && new Date(r.startTime) >= cycleStartDate);
 
         if (existingRecord) {
-            const userChoice = window.confirm(
-                "Este serviço já foi realizado neste ciclo.\n\nClique em 'OK' para iniciar um NOVO registro (novas fotos de antes e depois).\n\nClique em 'Cancelar' para adicionar fotos 'Depois' ao registro existente."
-            );
-            if (userChoice) { // OK - Iniciar Novo
-                startNewServiceRecord(service, measurement);
-            } else { // Cancelar - Adicionar Fotos Depois
-                console.log("Reabrindo registro para adicionar fotos 'Depois':", existingRecord.id);
+            if (window.confirm("Este serviço já foi feito neste ciclo.\n\nOK = Iniciar NOVO registro.\nCancelar = Adicionar fotos 'Depois' ao existente.")) {
+                startNewServiceRecord(service);
+            } else {
                 setCurrentService(existingRecord);
                 navigate('PHOTO_STEP');
             }
         } else {
-            startNewServiceRecord(service, measurement);
+            startNewServiceRecord(service);
         }
     };
     
@@ -2875,34 +2803,12 @@ const App = () => {
                 gpsUsed: !!currentService.gpsUsed,
                 startTime: new Date().toISOString(),
                 tempId: crypto.randomUUID(),
-                
-                newLocationInfo: !currentService.locationId 
-                    ? { 
-                        name: currentService.locationName, 
-                        city: currentService.contractGroup, 
-                        lat: currentService.coords?.latitude, 
-                        lng: currentService.coords?.longitude,
-                        services: [{ 
-                            service_id: services.find(s => s.name === currentService.serviceType)?.id, 
-                            measurement: currentService.locationArea 
-                        }]
-                      } 
-                    : undefined
+                newLocationInfo: !currentService.locationId ? { name: currentService.locationName, city: currentService.contractGroup, lat: currentService.coords?.latitude, lng: currentService.coords?.longitude, services: [{ service_id: services.find(s => s.name === currentService.serviceType)?.id, measurement: currentService.locationArea }] } : undefined
             };
-    
             const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
-    
             await queueRecord(recordPayload, beforeFiles);
-    
-            setCurrentService(prev => ({
-                ...prev,
-                ...recordPayload,
-                id: recordPayload.tempId,
-                beforePhotos: photosBefore.map(p => p)
-            }));
-            
+            setCurrentService(prev => ({ ...prev, ...recordPayload, id: recordPayload.tempId, beforePhotos: photosBefore }));
             navigate('OPERATOR_SERVICE_IN_PROGRESS');
-    
         } catch (err) {
             console.error("Falha ao colocar o registro na fila:", err);
             alert("Falha ao salvar o registro localmente. Tente novamente.");
@@ -2914,9 +2820,7 @@ const App = () => {
     const handleAfterPhotos = async (photosAfter: string[]) => {
         setIsLoading("Salvando fotos 'Depois'...");
         try {
-            const afterFiles = photosAfter.map((p, i) =>
-                dataURLtoFile(p, `after_${i}.jpg`)
-            );
+            const afterFiles = photosAfter.map((p, i) => dataURLtoFile(p, `after_${i}.jpg`));
             await addAfterPhotosToPending(currentService.id || currentService.tempId!, afterFiles);
             navigate('CONFIRM_STEP');
         } catch (err) {
@@ -2937,12 +2841,7 @@ const App = () => {
         setIsLoading("Carregando detalhes...");
         try {
             const detailedRecord = await apiFetch(`/api/records/${record.id}`);
-            const fullRecord = {
-                ...detailedRecord,
-                id: String(detailedRecord.id),
-                operatorId: String(detailedRecord.operatorId),
-            };
-            setSelectedRecord(fullRecord);
+            setSelectedRecord({ ...detailedRecord, id: String(detailedRecord.id), operatorId: String(detailedRecord.operatorId) });
             navigate('DETAIL');
         } catch (e) {
             alert('Não foi possível carregar os detalhes do registro.');
@@ -2955,12 +2854,7 @@ const App = () => {
         setIsLoading("Carregando registro para edição...");
         try {
             const detailedRecord = await apiFetch(`/api/records/${record.id}`);
-            const fullRecord = {
-                ...detailedRecord,
-                id: String(detailedRecord.id),
-                operatorId: String(detailedRecord.operatorId),
-            };
-            setSelectedRecord(fullRecord);
+            setSelectedRecord({ ...detailedRecord, id: String(detailedRecord.id), operatorId: String(detailedRecord.operatorId) });
             navigate('ADMIN_EDIT_RECORD');
         } catch(e) {
              alert('Não foi possível carregar o registro para edição.');
@@ -2976,11 +2870,8 @@ const App = () => {
 
     const handleDeleteRecord = async (recordId: string) => {
         if (!currentUser || currentUser.role !== 'ADMIN') return;
-        
         const recordToDelete = records.find(r => r.id === recordId);
-        if (!recordToDelete) return;
-
-        if (window.confirm(`Tem certeza que deseja excluir o registro do local "${recordToDelete.locationName}"?`)) {
+        if (recordToDelete && window.confirm(`Tem certeza que deseja excluir o registro do local "${recordToDelete.locationName}"?`)) {
             try {
                 setIsLoading("Excluindo registro...");
                 await apiFetch(`/api/records/${recordId}`, { method: 'DELETE' });
@@ -2988,7 +2879,6 @@ const App = () => {
                 alert("Registro excluído com sucesso.");
             } catch(e) {
                 alert("Falha ao excluir o registro.");
-                console.error(e);
             } finally {
                 setIsLoading(null);
             }
@@ -3012,12 +2902,10 @@ const App = () => {
     };
 
     const renderView = () => {
-        // A lógica de renderização agora é mais simples
         if (view === 'RESET_PASSWORD') return <ResetPasswordView />;
         if (view === 'FORGOT_PASSWORD') return <ForgotPasswordView />;
         if (!currentUser) return <Login onLogin={handleLogin} onNavigate={navigate} />;
         
-        // O resto da lógica 'switch' continua aqui
         switch(currentUser.role) {
             case 'ADMIN':
                 switch(view) {
@@ -3030,20 +2918,20 @@ const App = () => {
                     case 'REPORTS': return <ReportsView records={records} services={services} />;
                     case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} selectedIds={selectedRecordIds} onToggleSelect={handleToggleRecordSelection} onDeleteSelected={handleDeleteSelectedRecords} onMeasurementUpdate={handleMeasurementUpdate} />;
                     case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
-                    case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado para edição.</p>;
+                    case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado.</p>;
                     case 'AUDIT_LOG': return <AuditLogView log={auditLog} />;
                     default: return <AdminDashboard onNavigate={navigate} onLogout={handleLogout}/>;
                 }
             
             case 'FISCAL':
-                const fiscalGroups = currentUser.assignments?.map(a => a.contractGroup) || [];
-                const fiscalRecords = records.filter(r => fiscalGroups.includes(r.contractGroup));
+                const fiscalGroups = new Set(currentUser.assignments?.map(a => a.contractGroup) || []);
+                const fiscalRecords = records.filter(r => fiscalGroups.has(r.contractGroup));
                 switch(view) {
                     case 'FISCAL_DASHBOARD': return <FiscalDashboard onNavigate={navigate} onLogout={handleLogout} />;
                     case 'REPORTS': return <ReportsView records={fiscalRecords} services={services} />;
                     case 'HISTORY': return <HistoryView records={fiscalRecords} onSelect={handleSelectRecord} isAdmin={false} selectedIds={new Set()} onToggleSelect={() => {}} onMeasurementUpdate={async () => {}} />;
                     case 'DETAIL':
-                        const canView = selectedRecord && fiscalGroups.includes(selectedRecord.contractGroup);
+                        const canView = selectedRecord && fiscalGroups.has(selectedRecord.contractGroup);
                         return canView ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado ou acesso não permitido.</p>;
                     default: return <FiscalDashboard onNavigate={navigate} onLogout={handleLogout} />;
                 }
@@ -3051,22 +2939,18 @@ const App = () => {
             case 'OPERATOR':
                 switch(view) {
                     case 'OPERATOR_GROUP_SELECT': return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} onLogout={handleLogout} />;
-                    case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : null;
-                    case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} records={records} contractConfigs={contractConfigs} /> : null;
+                    case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : <p>Nenhum contrato selecionado.</p>;
+                    case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} records={records} contractConfigs={contractConfigs} /> : <p>Nenhum local selecionado.</p>;
                     case 'OPERATOR_SERVICE_IN_PROGRESS': return <ServiceInProgressView service={currentService} onFinish={() => navigate('PHOTO_STEP')} />;
-                    case 'PHOTO_STEP': {
+                    case 'PHOTO_STEP':
                         const isAfterPhase = currentService.beforePhotos && currentService.beforePhotos.length > 0;
-                        if (isAfterPhase) {
-                            return <PhotoStep phase="AFTER" onComplete={handleAfterPhotos} onCancel={resetService} />;
-                        }
-                        return <PhotoStep phase="BEFORE" onComplete={handleBeforePhotos} onCancel={resetService} />;
-                    }
+                        return <PhotoStep phase={isAfterPhase ? "AFTER" : "BEFORE"} onComplete={isAfterPhase ? handleAfterPhotos : handleBeforePhotos} onCancel={resetService} />;
                     case 'CONFIRM_STEP': return <ConfirmStep recordData={currentService} onSave={handleSave} onCancel={resetService} />;
                     case 'HISTORY': 
                         const operatorRecords = records.filter(r => String(r.operatorId) === String(currentUser.id));
                         return <HistoryView records={operatorRecords} onSelect={handleSelectRecord} isAdmin={false} onEdit={handleEditRecord} selectedIds={new Set()} onToggleSelect={() => {}} onMeasurementUpdate={async () => {}} />;
                     case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
-                    case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado para edição.</p>;
+                    case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado.</p>;
                     default: return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} onLogout={handleLogout} />;
                 }
             
@@ -3077,13 +2961,8 @@ const App = () => {
     };
 
     return (
-        <div className={`app-container ${view === 'LOGIN' ? 'login-view' : ''}`}>
-            {isLoading && (
-                <div className="loader-overlay">
-                    <div className="spinner"></div>
-                    <p>{isLoading}</p>
-                </div>
-            )}
+        <div className={`app-container ${view === 'LOGIN' || view === 'RESET_PASSWORD' || view === 'FORGOT_PASSWORD' ? 'login-view' : ''}`}>
+            {isLoading && <div className="loader-overlay"><div className="spinner"></div><p>{isLoading}</p></div>}
             <Header view={view} currentUser={currentUser} onBack={handleBack} onLogout={handleLogout} />
             <main>{renderView()}</main>
         </div>
