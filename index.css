@@ -85,19 +85,13 @@ header.admin-header h1 {
 /* =========================================================
    #1 - ATUALIZAÇÃO DOS BOTÕES VOLTAR/SAIR
    ========================================================= */
-.header-back-button, .header-logout-button {
+.header-back-button {
     position: absolute;
     top: 1rem; /* Fixado no topo */
     transform: none; /* Remove o centramento vertical */
-}
-
-.header-back-button {
     left: 1rem;
 }
-
-.header-logout-button {
-    right: 1rem;
-}
+/* .header-logout-button FOI REMOVIDO DAQUI */
 
 main {
   background-color: var(--white-color);
