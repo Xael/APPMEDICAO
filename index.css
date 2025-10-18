@@ -1007,3 +1007,26 @@ textarea {
 .button.button-danger:hover {
     background-color: #c82333; /* Um vermelho mais escuro no hover */
 }
+
+/* Corrige botões que aparecem lado a lado em listas, cards ou painéis administrativos */
+.list-item-actions .button,
+.contract-group-actions .button,
+.button-group .button,
+.admin-dashboard .button {
+  width: auto;
+  flex: 1;
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+/* Deixa os botões dessas áreas bem alinhados e com espaçamento fixo */
+.list-item-actions,
+.contract-group-actions,
+.button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
