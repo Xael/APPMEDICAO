@@ -1008,25 +1008,87 @@ textarea {
     background-color: #c82333; /* Um vermelho mais escuro no hover */
 }
 
-/* Corrige botões que aparecem lado a lado em listas, cards ou painéis administrativos */
-.list-item-actions .button,
-.contract-group-actions .button,
-.button-group .button,
-.admin-dashboard .button {
-  width: auto;
-  flex: 1;
-  white-space: nowrap;
-  min-width: 100px;
+/* =========================================================
+   CORREÇÃO GLOBAL DE BOTÕES E ALINHAMENTO
+   ========================================================= */
+
+/* 1️⃣ - Reajusta botões padrão */
+.button {
+  width: 100%;
+  max-width: 100%;
+  display: inline-block;
 }
 
-/* Deixa os botões dessas áreas bem alinhados e com espaçamento fixo */
-.list-item-actions,
+/* 2️⃣ - Quando estiverem em grupos, voltam a ser automáticos */
+.button-group,
 .contract-group-actions,
-.button-group {
+.list-item-actions,
+.service-definition-item,
+.add-service-form,
+.assignment-item,
+.report-item {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  justify-content: flex-end;
   align-items: center;
+  justify-content: flex-end;
+}
+
+/* 3️⃣ - Dentro desses grupos, os botões não ocupam 100% */
+.button-group .button,
+.contract-group-actions .button,
+.list-item-actions .button,
+.service-definition-item .button,
+.add-service-form .button,
+.assignment-item .button,
+.report-item .button {
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 90px;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+/* 4️⃣ - Garante que botões principais (tipo únicos) fiquem 100% da largura */
+.card > .button,
+.dashboard-container > .button,
+.login-container > .button,
+.form-container > .button {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+/* 5️⃣ - Corrige margens e aparência visual */
+.button-sm {
+  width: auto !important;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  border-radius: 6px;
+}
+
+.button-danger,
+.button-secondary,
+.button-success,
+.button.admin-button {
+  width: auto;
+}
+
+/* 6️⃣ - Garante consistência entre pares de botões em listas */
+.list-item-actions {
+  flex-direction: row;
+  justify-content: flex-end;
+}
+
+.list-item-actions .button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+/* 7️⃣ - Botão de sair continua com largura total e espaçamento */
+.header-logout-button,
+.button.button-danger.logout {
+  display: block;
+  width: 100%;
+  margin-top: 1.5rem;
 }
 
