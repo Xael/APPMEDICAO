@@ -7,6 +7,8 @@ import { queueRecord, addAfterPhotosToPending } from "./syncManager";
 import logoSrc from './assets/Logo.png';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
+import ResetPasswordView from './ResetPasswordView';
+import ForgotPasswordView from './ForgotPasswordView';
 
 ChartJS.register( CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend );
 
@@ -48,6 +50,8 @@ const dataURLtoFile = (dataurl: string, filename: string): File => {
 type Role = 'ADMIN' | 'OPERATOR' | 'FISCAL';
 type View =
     | 'LOGIN'
+    | 'RESET_PASSWORD'
+    | 'FORGOT_PASSWORD'
     | 'ADMIN_DASHBOARD'
     | 'ADMIN_MANAGE_SERVICES'
     | 'ADMIN_MANAGE_LOCATIONS'
@@ -79,8 +83,8 @@ interface ServiceRecord {
     locationId?: string; locationName: string; contractGroup: string; locationArea?: number;
     gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[];
     tempId?: string; coords?: GeolocationCoords;
-    observations?: string; // <-- ADICIONADO
-    overrideMeasurement?: number; // <-- ADICIONADO
+    observations?: string;
+    overrideMeasurement?: number;
 }
 interface Goal {
   id: string;
@@ -168,7 +172,6 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 {view === 'LOGIN' && <img src={logoSrc} alt="Logo CRB Serviços" className="header-logo" />}
                 <h1>{getTitle()}</h1>
             </div>
-           
         </header>
     );
 };
@@ -239,12 +242,14 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
     );
 };
 
-const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
+const Login: React.FC<{
+  onLogin: (user: User) => void;
+  onNavigate: (view: View) => void;
+}> = ({ onLogin, onNavigate }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [message, setMessage] = useState('');
 
   const handleLogin = async () => {
@@ -274,81 +279,33 @@ const Login: React.FC<{ onLogin: (user: User) => void; }> = ({ onLogin }) => {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!email) {
-      setError('Por favor, digite seu e-mail para recuperar a senha.');
-      return;
-    }
-    setError('');
-    setIsLoading(true);
-    try {
-      const res = await apiFetch('/api/auth/forgot-password', {
-        method: 'POST',
-        body: JSON.stringify({ email })
-      });
-      setMessage(res.message || 'Se o e-mail existir, a senha será enviada.');
-      setShowForgotPassword(false);
-    } catch (err) {
-      setError('Erro ao solicitar recuperação de senha.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div className="login-container card">
-      <h2>{showForgotPassword ? 'Recuperar Senha' : 'Login de Acesso'}</h2>
-
+      <h2>Login de Acesso</h2>
       {error && <p className="text-danger">{error}</p>}
       {message && <p className="text-success">{message}</p>}
-
       <input
         type="email"
         placeholder="E-mail"
         value={email}
         onChange={e => setEmail(e.target.value)}
       />
-
-      {!showForgotPassword && (
-        <input
-          type="password"
-          placeholder="Senha"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-        />
-      )}
-
-      {!showForgotPassword ? (
-        <>
-          <button className="button" onClick={handleLogin} disabled={isLoading}>
-            {isLoading ? 'Entrando...' : 'Entrar'}
-          </button>
-          <button
-            className="button button-secondary"
-            onClick={() => setShowForgotPassword(true)}
-            disabled={isLoading}
-          >
-            Esqueci minha senha
-          </button>
-        </>
-      ) : (
-        <>
-          <button
-            className="button button-success"
-            onClick={handleForgotPassword}
-            disabled={isLoading}
-          >
-            {isLoading ? 'Enviando...' : 'Enviar Senha por E-mail'}
-          </button>
-          <button
-            className="button button-secondary"
-            onClick={() => setShowForgotPassword(false)}
-            disabled={isLoading}
-          >
-            Voltar ao Login
-          </button>
-        </>
-      )}
+      <input
+        type="password"
+        placeholder="Senha"
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+      />
+      <button className="button" onClick={handleLogin} disabled={isLoading}>
+        {isLoading ? 'Entrando...' : 'Entrar'}
+      </button>
+      <button
+        className="button button-secondary"
+        onClick={() => onNavigate('FORGOT_PASSWORD')}
+        disabled={isLoading}
+      >
+        Esqueci minha senha
+      </button>
     </div>
   );
 };
@@ -365,7 +322,7 @@ const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () 
             <button className="button admin-button" onClick={() => onNavigate('HISTORY')}>Histórico Geral</button>
             <button className="button admin-button" onClick={() => onNavigate('AUDIT_LOG')}>📜 Log de Auditoria</button>
         </div>
-	     <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
+        <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
     </div>
 );
 
@@ -452,7 +409,7 @@ const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: ()
             <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
             <button className="button" onClick={() => onNavigate('HISTORY')}>📖 Histórico de Serviços</button>
         </div>
-	    <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
+        <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
     </div>
 );
 
@@ -470,8 +427,8 @@ const OperatorGroupSelect: React.FC<{
                     <button key={group} className="button" onClick={() => onSelectGroup(group)}>{group}</button>
                 )) : <p>Nenhum grupo de trabalho atribuído. Contate o administrador.</p>}
             </div>
-		     <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
-            </div>
+            <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
+        </div>
     );
 };
 
@@ -1823,236 +1780,236 @@ const ManageUsersView: React.FC<{
 }
 
 const GoalsAndChartsView: React.FC<{
-  records: ServiceRecord[];
-  locations: LocationRecord[];
-  services: ServiceDefinition[];
+    records: ServiceRecord[];
+    locations: LocationRecord[];
+    services: ServiceDefinition[];
 }> = ({ records, locations, services }) => {
-  const [chartData, setChartData] = useState<any>(null);
-  const [isLoadingChart, setIsLoadingChart] = useState(false);
-  const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
-  const allContractGroups = [...new Set(locations.map(l => l.contractGroup).concat(records.map(r => r.contractGroup)))].filter(Boolean).sort();
-  
-  const [selectedContracts, setSelectedContracts] = useState<string[]>(allContractGroups);
-  const defaultEndDate = new Date();
-  const defaultStartDate = new Date();
-  defaultStartDate.setMonth(defaultStartDate.getMonth() - 11);
-  const [startDate, setStartDate] = useState(defaultStartDate.toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(defaultEndDate.toISOString().slice(0, 10));
+    const [chartData, setChartData] = useState<any>(null);
+    const [isLoadingChart, setIsLoadingChart] = useState(false);
+    const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
+    const allContractGroups = [...new Set(locations.map(l => l.contractGroup).concat(records.map(r => r.contractGroup)))].filter(Boolean).sort();
+    
+    const [selectedContracts, setSelectedContracts] = useState<string[]>(allContractGroups);
+    const defaultEndDate = new Date();
+    const defaultStartDate = new Date();
+    defaultStartDate.setMonth(defaultStartDate.getMonth() - 11);
+    const [startDate, setStartDate] = useState(defaultStartDate.toISOString().slice(0, 10));
+    const [endDate, setEndDate] = useState(defaultEndDate.toISOString().slice(0, 10));
 
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [contractGroupGoal, setContractGroupGoal] = useState('');
-  const [monthGoal, setMonthGoal] = useState(new Date().toISOString().substring(0, 7));
-  const [targetAreaGoal, setTargetAreaGoal] = useState('');
-  const [serviceIdGoal, setServiceIdGoal] = useState('');
-  const [editingIdGoal, setEditingIdGoal] = useState<string | null>(null);
+    const [goals, setGoals] = useState<Goal[]>([]);
+    const [contractGroupGoal, setContractGroupGoal] = useState('');
+    const [monthGoal, setMonthGoal] = useState(new Date().toISOString().substring(0, 7));
+    const [targetAreaGoal, setTargetAreaGoal] = useState('');
+    const [serviceIdGoal, setServiceIdGoal] = useState('');
+    const [editingIdGoal, setEditingIdGoal] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchGoals = async () => {
-      try {
-        const fetchedGoals = await apiFetch('/api/goals');
-        setGoals(fetchedGoals.map((g: any) => ({ ...g, id: String(g.id) })));
-      } catch (error) {
-        console.error("Failed to fetch goals", error);
-        alert("Não foi possível carregar as metas.");
-      }
-    };
-    fetchGoals();
-  }, []);
+    useEffect(() => {
+        const fetchGoals = async () => {
+            try {
+                const fetchedGoals = await apiFetch('/api/goals');
+                setGoals(fetchedGoals.map((g: any) => ({ ...g, id: String(g.id) })));
+            } catch (error) {
+                console.error("Failed to fetch goals", error);
+                alert("Não foi possível carregar as metas.");
+            }
+        };
+        fetchGoals();
+    }, []);
 
-  const handleContractSelection = (contract: string, isChecked: boolean) => {
-    setSelectedContracts(prev => isChecked ? [...prev, contract] : prev.filter(c => c !== contract));
-  };
-
-  const handleGenerateChart = async () => {
-    if (selectedContracts.length === 0) {
-      alert('Por favor, selecione pelo menos um contrato.');
-      return;
-    }
-    setIsLoadingChart(true);
-    setChartData(null);
-    try {
-      const params = new URLSearchParams({ startDate, endDate });
-      selectedContracts.forEach(c => params.append('contractGroups', c));
-      const data = await apiFetch(`/api/reports/performance-graph?${params.toString()}`);
-      setChartData(data);
-    } catch (error) {
-      alert('Erro ao gerar dados para o gráfico.');
-      console.error(error);
-    } finally {
-      setIsLoadingChart(false);
-    }
-  };
-  
-  const chartOptions = {
-    responsive: true,
-    plugins: { legend: { position: 'top' as const }, title: { display: true, text: 'Volume de Medição Mensal' } },
-    scales: { y: { beginAtZero: true } }
-  };
-
-  const resetFormGoal = () => {
-    setContractGroupGoal('');
-    setMonthGoal(new Date().toISOString().substring(0, 7));
-    setTargetAreaGoal('');
-    setServiceIdGoal('');
-    setEditingIdGoal(null);
-  };
-
-  const handleSaveGoal = async () => {
-    if (!contractGroupGoal || !monthGoal || !targetAreaGoal || isNaN(parseFloat(targetAreaGoal)) || !serviceIdGoal) {
-      alert('Preencha todos os campos da meta corretamente, incluindo o serviço.');
-      return;
-    }
-    const payload = {
-      contractGroup: contractGroupGoal,
-      month: monthGoal,
-      targetArea: parseFloat(targetAreaGoal),
-      serviceId: parseInt(serviceIdGoal, 10),
+    const handleContractSelection = (contract: string, isChecked: boolean) => {
+        setSelectedContracts(prev => isChecked ? [...prev, contract] : prev.filter(c => c !== contract));
     };
 
-    try {
-      if (editingIdGoal) {
-        const updatedGoal = await apiFetch(`/api/goals/${editingIdGoal}`, {
-          method: 'PUT',
-          body: JSON.stringify(payload)
-        });
-        setGoals(prevGoals => prevGoals.map(g => g.id === editingIdGoal ? { ...updatedGoal, id: String(updatedGoal.id) } : g));
-      } else {
-        const newGoal = await apiFetch('/api/goals', {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-        setGoals(prevGoals => [{ ...newGoal, id: String(newGoal.id) }, ...prevGoals]);
-      }
-      resetFormGoal();
-    } catch (error) {
-      console.error("Error saving goal:", error);
-      alert("Erro ao salvar a meta.");
-    }
-  };
+    const handleGenerateChart = async () => {
+        if (selectedContracts.length === 0) {
+            alert('Por favor, selecione pelo menos um contrato.');
+            return;
+        }
+        setIsLoadingChart(true);
+        setChartData(null);
+        try {
+            const params = new URLSearchParams({ startDate, endDate });
+            selectedContracts.forEach(c => params.append('contractGroups', c));
+            const data = await apiFetch(`/api/reports/performance-graph?${params.toString()}`);
+            setChartData(data);
+        } catch (error) {
+            alert('Erro ao gerar dados para o gráfico.');
+            console.error(error);
+        } finally {
+            setIsLoadingChart(false);
+        }
+    };
+    
+    const chartOptions = {
+        responsive: true,
+        plugins: { legend: { position: 'top' as const }, title: { display: true, text: 'Volume de Medição Mensal' } },
+        scales: { y: { beginAtZero: true } }
+    };
 
-  const handleEditGoal = (goal: Goal) => {
-    setEditingIdGoal(goal.id);
-    setContractGroupGoal(goal.contractGroup);
-    setMonthGoal(goal.month);
-    setTargetAreaGoal(String(goal.targetArea));
-    setServiceIdGoal(String(goal.serviceId));
-  };
+    const resetFormGoal = () => {
+        setContractGroupGoal('');
+        setMonthGoal(new Date().toISOString().substring(0, 7));
+        setTargetAreaGoal('');
+        setServiceIdGoal('');
+        setEditingIdGoal(null);
+    };
 
-  const handleDeleteGoal = async (id: string) => {
-    if (window.confirm('Excluir esta meta?')) {
-      try {
-        await apiFetch(`/api/goals/${id}`, { method: 'DELETE' });
-        setGoals(prevGoals => prevGoals.filter(g => g.id !== id));
-      } catch (error) {
-        console.error("Error deleting goal:", error);
-        alert("Erro ao excluir a meta.");
-      }
-    }
-  };
+    const handleSaveGoal = async () => {
+        if (!contractGroupGoal || !monthGoal || !targetAreaGoal || isNaN(parseFloat(targetAreaGoal)) || !serviceIdGoal) {
+            alert('Preencha todos os campos da meta corretamente, incluindo o serviço.');
+            return;
+        }
+        const payload = {
+            contractGroup: contractGroupGoal,
+            month: monthGoal,
+            targetArea: parseFloat(targetAreaGoal),
+            serviceId: parseInt(serviceIdGoal, 10),
+        };
 
-  return (
-    <div>
-      <div className="card">
-        <h3>Análise Gráfica de Desempenho</h3>
-        <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch'}}>
-          <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
-            <div className="form-group">
-              <label htmlFor="start-date-chart">Data de Início</label>
-              <input id="start-date-chart" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label htmlFor="end-date-chart">Data Final</label>
-              <input id="end-date-chart" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-            </div>
-          </div>
-          <fieldset className="form-group-full">
-            <legend>Comparar Contratos</legend>
-            <div className="button-group" style={{justifyContent: 'flex-start', marginBottom: '1rem'}}>
-               <button className="button button-sm" onClick={() => setSelectedContracts(allContractGroups)}>Selecionar Todos</button>
-               <button className="button button-sm button-secondary" onClick={() => setSelectedContracts([])}>Limpar Seleção</button>
-            </div>
-            <div className="checkbox-group">
-              {allContractGroups.map(group => (
-                <div key={group} className="checkbox-item">
-                  <input type="checkbox" id={`contract-${group}`} checked={selectedContracts.includes(group)} onChange={e => handleContractSelection(group, e.target.checked)} />
-                  <label htmlFor={`contract-${group}`}>{group}</label>
+        try {
+            if (editingIdGoal) {
+                const updatedGoal = await apiFetch(`/api/goals/${editingIdGoal}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(payload)
+                });
+                setGoals(prevGoals => prevGoals.map(g => g.id === editingIdGoal ? { ...updatedGoal, id: String(updatedGoal.id) } : g));
+            } else {
+                const newGoal = await apiFetch('/api/goals', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                setGoals(prevGoals => [{ ...newGoal, id: String(newGoal.id) }, ...prevGoals]);
+            }
+            resetFormGoal();
+        } catch (error) {
+            console.error("Error saving goal:", error);
+            alert("Erro ao salvar a meta.");
+        }
+    };
+
+    const handleEditGoal = (goal: Goal) => {
+        setEditingIdGoal(goal.id);
+        setContractGroupGoal(goal.contractGroup);
+        setMonthGoal(goal.month);
+        setTargetAreaGoal(String(goal.targetArea));
+        setServiceIdGoal(String(goal.serviceId));
+    };
+
+    const handleDeleteGoal = async (id: string) => {
+        if (window.confirm('Excluir esta meta?')) {
+            try {
+                await apiFetch(`/api/goals/${id}`, { method: 'DELETE' });
+                setGoals(prevGoals => prevGoals.filter(g => g.id !== id));
+            } catch (error) {
+                console.error("Error deleting goal:", error);
+                alert("Erro ao excluir a meta.");
+            }
+        }
+    };
+
+    return (
+        <div>
+            <div className="card">
+                <h3>Análise Gráfica de Desempenho</h3>
+                <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                    <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
+                        <div className="form-group">
+                            <label htmlFor="start-date-chart">Data de Início</label>
+                            <input id="start-date-chart" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="end-date-chart">Data Final</label>
+                            <input id="end-date-chart" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                        </div>
+                    </div>
+                    <fieldset className="form-group-full">
+                        <legend>Comparar Contratos</legend>
+                        <div className="button-group" style={{justifyContent: 'flex-start', marginBottom: '1rem'}}>
+                           <button className="button button-sm" onClick={() => setSelectedContracts(allContractGroups)}>Selecionar Todos</button>
+                           <button className="button button-sm button-secondary" onClick={() => setSelectedContracts([])}>Limpar Seleção</button>
+                        </div>
+                        <div className="checkbox-group">
+                            {allContractGroups.map(group => (
+                                <div key={group} className="checkbox-item">
+                                    <input type="checkbox" id={`contract-${group}`} checked={selectedContracts.includes(group)} onChange={e => handleContractSelection(group, e.target.checked)} />
+                                    <label htmlFor={`contract-${group}`}>{group}</label>
+                                </div>
+                            ))}
+                        </div>
+                    </fieldset>
+                    <fieldset className="form-group-full">
+                        <legend>Tipo de Gráfico</legend>
+                        <div style={{display: 'flex', gap: '1rem', justifyContent: 'center'}}>
+                            <div className="checkbox-item"><input type="radio" id="chart-bar" name="chartType" value="bar" checked={chartType === 'bar'} onChange={() => setChartType('bar')} /><label htmlFor="chart-bar">Barras</label></div>
+                            <div className="checkbox-item"><input type="radio" id="chart-line" name="chartType" value="line" checked={chartType === 'line'} onChange={() => setChartType('line')} /><label htmlFor="chart-line">Linhas</label></div>
+                        </div>
+                    </fieldset>
+                    <button className="button admin-button" onClick={handleGenerateChart} disabled={isLoadingChart}>
+                        {isLoadingChart ? 'Gerando...' : 'Gerar Gráfico'}
+                    </button>
                 </div>
-              ))}
+                {isLoadingChart && <Loader text="Carregando dados do gráfico..." />}
+                {chartData && (
+                    <div style={{marginTop: '2rem'}}>
+                        {chartType === 'bar' ? <Bar options={chartOptions} data={chartData} /> : <Line options={chartOptions} data={chartData} />}
+                    </div>
+                )}
             </div>
-          </fieldset>
-          <fieldset className="form-group-full">
-            <legend>Tipo de Gráfico</legend>
-            <div style={{display: 'flex', gap: '1rem', justifyContent: 'center'}}>
-              <div className="checkbox-item"><input type="radio" id="chart-bar" name="chartType" value="bar" checked={chartType === 'bar'} onChange={() => setChartType('bar')} /><label htmlFor="chart-bar">Barras</label></div>
-              <div className="checkbox-item"><input type="radio" id="chart-line" name="chartType" value="line" checked={chartType === 'line'} onChange={() => setChartType('line')} /><label htmlFor="chart-line">Linhas</label></div>
+            
+            <div className="form-container card">
+                <h3>{editingIdGoal ? 'Editando Meta' : 'Adicionar Nova Meta'}</h3>
+                <select value={serviceIdGoal} onChange={e => setServiceIdGoal(e.target.value)}>
+                    <option value="">Selecione um Serviço</option>
+                    {services.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                </select>
+                <input list="goal-contract-groups" placeholder="Digite ou selecione um Contrato/Cidade" value={contractGroupGoal} onChange={e => setContractGroupGoal(e.target.value)} />
+                <datalist id="goal-contract-groups">
+                    {allContractGroups.map(g => <option key={g} value={g} />)}
+                </datalist>
+                <input type="month" value={monthGoal} onChange={e => setMonthGoal(e.target.value)} />
+                <input type="number" placeholder="Meta de Medição" value={targetAreaGoal} onChange={e => setTargetAreaGoal(e.target.value)} />
+                <button className="button admin-button" onClick={handleSaveGoal}>{editingIdGoal ? 'Salvar Alterações' : 'Adicionar Meta'}</button>
+                {editingIdGoal && <button className="button button-secondary" onClick={resetFormGoal}>Cancelar Edição</button>}
             </div>
-          </fieldset>
-          <button className="button admin-button" onClick={handleGenerateChart} disabled={isLoadingChart}>
-            {isLoadingChart ? 'Gerando...' : 'Gerar Gráfico'}
-          </button>
+
+            <ul className="goal-list">
+                {[...goals].sort((a, b) => b.month.localeCompare(a.month) || a.contractGroup.localeCompare(b.contractGroup)).map(goal => {
+                    const service = services.find(s => s.id === String(goal.serviceId));
+                    const realizedArea = records
+                        .filter(r => 
+                            r.contractGroup === goal.contractGroup && 
+                            r.startTime.startsWith(goal.month) && 
+                            r.serviceType === service?.name
+                        )
+                        .reduce((sum, r) => sum + ((r.overrideMeasurement ?? r.locationArea) || 0), 0);
+                        
+                    const percentage = goal.targetArea > 0 ? (realizedArea / goal.targetArea) * 100 : 0;
+                    const serviceName = service?.name || 'Serviço não encontrado';
+                    const serviceUnit = service?.unit.symbol || '';
+
+                    return (
+                        <li key={goal.id} className="card list-item progress-card">
+                            <div className="list-item-header">
+                                <h3>{goal.contractGroup} - {serviceName}</h3>
+                                <div>
+                                    <button className="button button-sm admin-button" onClick={() => handleEditGoal(goal)}>Editar</button>
+                                    <button className="button button-sm button-danger" onClick={() => handleDeleteGoal(goal.id)}>Excluir</button>
+                                </div>
+                            </div>
+                            <p style={{color: 'var(--dark-gray-color)', marginTop: '-0.75rem', marginBottom: '1rem'}}>{goal.month}</p>
+                            <div className="progress-info">
+                                <span>Realizado: {realizedArea.toLocaleString('pt-BR')} / {goal.targetArea.toLocaleString('pt-BR')} {serviceUnit}</span>
+                                <span>{percentage.toFixed(1)}%</span>
+                            </div>
+                            <div className="progress-bar-container"><div className="progress-bar" style={{ width: `${Math.min(percentage, 100)}%` }}></div></div>
+                        </li>
+                    );
+                })}
+            </ul>
         </div>
-        {isLoadingChart && <Loader text="Carregando dados do gráfico..." />}
-        {chartData && (
-          <div style={{marginTop: '2rem'}}>
-            {chartType === 'bar' ? <Bar options={chartOptions} data={chartData} /> : <Line options={chartOptions} data={chartData} />}
-          </div>
-        )}
-      </div>
-      
-      <div className="form-container card">
-        <h3>{editingIdGoal ? 'Editando Meta' : 'Adicionar Nova Meta'}</h3>
-        <select value={serviceIdGoal} onChange={e => setServiceIdGoal(e.target.value)}>
-            <option value="">Selecione um Serviço</option>
-            {services.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-        </select>
-        <input list="goal-contract-groups" placeholder="Digite ou selecione um Contrato/Cidade" value={contractGroupGoal} onChange={e => setContractGroupGoal(e.target.value)} />
-        <datalist id="goal-contract-groups">
-          {allContractGroups.map(g => <option key={g} value={g} />)}
-        </datalist>
-        <input type="month" value={monthGoal} onChange={e => setMonthGoal(e.target.value)} />
-        <input type="number" placeholder="Meta de Medição" value={targetAreaGoal} onChange={e => setTargetAreaGoal(e.target.value)} />
-        <button className="button admin-button" onClick={handleSaveGoal}>{editingIdGoal ? 'Salvar Alterações' : 'Adicionar Meta'}</button>
-        {editingIdGoal && <button className="button button-secondary" onClick={resetFormGoal}>Cancelar Edição</button>}
-      </div>
-
-      <ul className="goal-list">
-        {[...goals].sort((a, b) => b.month.localeCompare(a.month) || a.contractGroup.localeCompare(b.contractGroup)).map(goal => {
-          const service = services.find(s => s.id === String(goal.serviceId));
-          const realizedArea = records
-            .filter(r => 
-                r.contractGroup === goal.contractGroup && 
-                r.startTime.startsWith(goal.month) && 
-                r.serviceType === service?.name
-            )
-            .reduce((sum, r) => sum + ((r.overrideMeasurement ?? r.locationArea) || 0), 0);
-          
-          const percentage = goal.targetArea > 0 ? (realizedArea / goal.targetArea) * 100 : 0;
-          const serviceName = service?.name || 'Serviço não encontrado';
-          const serviceUnit = service?.unit.symbol || '';
-
-          return (
-            <li key={goal.id} className="card list-item progress-card">
-              <div className="list-item-header">
-                <h3>{goal.contractGroup} - {serviceName}</h3>
-                <div>
-                  <button className="button button-sm admin-button" onClick={() => handleEditGoal(goal)}>Editar</button>
-                  <button className="button button-sm button-danger" onClick={() => handleDeleteGoal(goal.id)}>Excluir</button>
-                </div>
-              </div>
-              <p style={{color: 'var(--dark-gray-color)', marginTop: '-0.75rem', marginBottom: '1rem'}}>{goal.month}</p>
-              <div className="progress-info">
-                <span>Realizado: {realizedArea.toLocaleString('pt-BR')} / {goal.targetArea.toLocaleString('pt-BR')} {serviceUnit}</span>
-                <span>{percentage.toFixed(1)}%</span>
-              </div>
-              <div className="progress-bar-container"><div className="progress-bar" style={{ width: `${Math.min(percentage, 100)}%` }}></div></div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
+    );
 };
 
 const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinish: () => void; }> = ({ service, onFinish }) => {
@@ -2755,6 +2712,16 @@ const App = () => {
     };
 
     useEffect(() => {
+        const path = window.location.pathname;
+        if (path === '/reset-password') {
+            setView('RESET_PASSWORD');
+            return;
+        }
+        if (path === '/forgot-password') {
+            setView('FORGOT_PASSWORD');
+            return;
+        }
+
         const restoreSession = async () => {
             if (API_TOKEN) {
                 setIsLoading("Verificando sessão...");
@@ -3019,11 +2986,13 @@ const App = () => {
     };
 
     const renderView = () => {
-        if (!currentUser && view !== 'LOGIN') {
+        if (!currentUser && view !== 'LOGIN' && view !== 'RESET_PASSWORD' && view !== 'FORGOT_PASSWORD') {
             return <Loader text="Verificando sessão..." />;
         }
         if (!currentUser) {
-            return <Login onLogin={handleLogin} />;
+            if (view === 'RESET_PASSWORD') return <ResetPasswordView />;
+            if (view === 'FORGOT_PASSWORD') return <ForgotPasswordView />;
+            return <Login onLogin={handleLogin} onNavigate={navigate} />;
         }
         
         switch(currentUser.role) {
