@@ -168,8 +168,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 {view === 'LOGIN' && <img src={logoSrc} alt="Logo CRB Serviços" className="header-logo" />}
                 <h1>{getTitle()}</h1>
             </div>
-            {/* O botão de logout FLUTUANTE foi REMOVIDO do header, conforme solicitado. */}
-            {/* {currentUser && <button className="button button-sm button-danger header-logout-button" onClick={onLogout}>Sair</button>} */}
+           
         </header>
     );
 };
@@ -366,8 +365,7 @@ const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () 
             <button className="button admin-button" onClick={() => onNavigate('HISTORY')}>Histórico Geral</button>
             <button className="button admin-button" onClick={() => onNavigate('AUDIT_LOG')}>📜 Log de Auditoria</button>
         </div>
-        {/* ADICIONADO: Botão de Sair fixo no final */}
-        <button className="button button-danger" style={{marginTop: '2rem'}} onClick={onLogout}>Sair do Sistema</button>
+	     <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
     </div>
 );
 
@@ -454,8 +452,7 @@ const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: ()
             <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
             <button className="button" onClick={() => onNavigate('HISTORY')}>📖 Histórico de Serviços</button>
         </div>
-        {/* ADICIONADO: Botão de Sair fixo no final */}
-        <button className="button button-danger" style={{marginTop: '2rem'}} onClick={onLogout}>Sair do Sistema</button>
+	    <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
     </div>
 );
 
@@ -473,8 +470,8 @@ const OperatorGroupSelect: React.FC<{
                     <button key={group} className="button" onClick={() => onSelectGroup(group)}>{group}</button>
                 )) : <p>Nenhum grupo de trabalho atribuído. Contate o administrador.</p>}
             </div>
-            {/* ADICIONADO: Botão de Sair fixo no final */}
-            <button className="button button-danger" style={{marginTop: '2rem'}} onClick={onLogout}>Sair do Sistema</button>
+		     <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
+    </div>
         </div>
     );
 };
@@ -1812,7 +1809,7 @@ const ManageUsersView: React.FC<{
                      <li key={user.id} className="card list-item">
                          <div className="list-item-header">
                              <h3>{user.username}</h3>
-                             <div className="list-item-actions"> {/* Mantém a classe que agora está corrigida para ser 'row' */}
+                             <div>
                                  <button className="button button-sm admin-button" onClick={() => handleEdit(user)}>Editar</button>
                                  <button className="button button-sm button-danger" onClick={() => handleDelete(user.id)}>Excluir</button>
                              </div>

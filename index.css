@@ -85,14 +85,26 @@ header.admin-header h1 {
 /* =========================================================
    #1 - ATUALIZAÇÃO DOS BOTÕES VOLTAR/SAIR
    ========================================================= */
+
+/* Voltar permanece no topo esquerdo; Logout não é absoluto mais */
 .header-back-button {
-    /* O botão 'voltar' continua flutuante para funcionar em todas as telas */
     position: absolute;
     top: 1rem;
-    transform: none;
     left: 1rem;
+    transform: none;
 }
-/* O botão 'Sair' (.header-logout-button) foi removido do header */
+
+/* Removemos posicionamento absoluto do logout — quando usado em telas,
+   deve aparecer no fluxo (ex.: botão no final do dashboard). */
+.header-logout-button {
+    position: static;
+    margin: 0;
+    padding: 0;
+    /* Caso queira um espaçamento quando usado dentro de cards/dashboards: */
+    margin-top: 1rem;
+}
+
+
 
 main {
   background-color: var(--white-color);
@@ -374,10 +386,9 @@ main {
     background-color: var(--light-gray-color);
 }
 
-/* CORREÇÃO APLICADA: De volta a flex-direction: row para alinhar Editar/Excluir lado a lado */
 .list-item-actions {
     display: flex;
-    flex-direction: row; /* CORRIGIDO: Era 'column', causava o empilhamento */
+    flex-direction: column;
     gap: 0.5rem;
     flex-shrink: 0;
     margin-left: 1rem;
@@ -864,11 +875,6 @@ NOVOS ESTILOS PARA O RELATÓRIO PDF
     flex-grow: 1;
     text-align: left;
 }
-/* CORREÇÃO APLICADA: Para alinhar botões Editar/Excluir lado a lado (Gerenciar Tipos de Serviço/Unidades) */
-.service-definition-item > div {
-    display: flex; 
-    gap: 0.5rem; 
-}
 .add-service-form {
     display: flex;
     gap: 1rem;
@@ -989,7 +995,8 @@ textarea {
     font-style: italic;
 }
 
-/* Botão Sair - Fixo no final dos Dashboards/Seleção de Grupo */
+/* Adicione ao final de index.css */
+
 .button.button-danger {
     background-color: var(--danger-color);
     color: var(--white-color);
