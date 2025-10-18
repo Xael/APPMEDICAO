@@ -471,8 +471,7 @@ const OperatorGroupSelect: React.FC<{
                 )) : <p>Nenhum grupo de trabalho atribuído. Contate o administrador.</p>}
             </div>
 		     <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
-    </div>
-        </div>
+            </div>
     );
 };
 
