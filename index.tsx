@@ -2518,26 +2518,84 @@ const ManageServicesView: React.FC<{
 };
 
 // --- Componente Principal ---
+// Substitua a função App inteira por esta:
+
 const App = () => {
+    // Todos os seus 'useState' e 'useLocalStorage' continuam aqui...
     const [view, setView] = useState<View>('LOGIN');
     const [currentUser, setCurrentUser] = useLocalStorage<User | null>('crbCurrentUser', null);
-    
     const [users, setUsers] = useState<User[]>([]);
     const [locations, setLocations] = useState<LocationRecord[]>([]);
     const [records, setRecords] = useState<ServiceRecord[]>([]);
     const [services, setServices] = useState<ServiceDefinition[]>([]);
     const [contractConfigs, setContractConfigs] = useState<ContractConfig[]>([]);
     const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
-    
     const [currentService, setCurrentService] = useLocalStorage<Partial<ServiceRecord>>('crbCurrentService', {});
     const [selectedRecord, setSelectedRecord] = useState<ServiceRecord | null>(null);
     const [selectedContractGroup, setSelectedContractGroup] = useState<string | null>(null);
     const [selectedLocation, setSelectedLocation] = useState<(LocationRecord & { _gpsUsed?: boolean }) | null>(null);
     const [history, setHistory] = useState<View[]>([]);
     const [isLoading, setIsLoading] = useState<string | null>(null);
-
     const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
 
+    // --- LÓGICA DE NAVEGAÇÃO E ROTEAMENTO AJUSTADA ---
+    useEffect(() => {
+        const handlePathChange = () => {
+            const path = window.location.pathname;
+            console.log("Verificando o caminho:", path); // Log para depuração
+            if (path === '/reset-password') {
+                setView('RESET_PASSWORD');
+            } else if (path === '/forgot-password') {
+                setView('FORGOT_PASSWORD');
+            }
+        };
+
+        // Verifica o caminho na carga inicial
+        handlePathChange();
+
+        // Adiciona um listener para o evento 'popstate' (navegação do navegador)
+        window.addEventListener('popstate', handlePathChange);
+
+        // Função de limpeza para remover o listener
+        return () => {
+            window.removeEventListener('popstate', handlePathChange);
+        };
+    }, []); // Este useEffect roda apenas uma vez para configurar o listener.
+
+    // --- LÓGICA DE RESTAURAÇÃO DE SESSÃO AJUSTADA ---
+    useEffect(() => {
+        const path = window.location.pathname;
+        // Não tenta restaurar a sessão se estivermos em uma página pública
+        if (path === '/reset-password' || path === '/forgot-password') {
+            return;
+        }
+
+        const restoreSession = async () => {
+            if (API_TOKEN) {
+                setIsLoading("Verificando sessão...");
+                try {
+                    const me = await apiFetch('/api/auth/me');
+                    const user: User = { id: String(me.id), username: me.name, email: me.email, role: me.role, assignments: me.assignments || [] };
+                    setCurrentUser(user);
+                    // Apenas redireciona se a view atual for LOGIN,
+                    // para não interferir com a navegação normal.
+                    if (view === 'LOGIN') {
+                        redirectUser(user);
+                    }
+                } catch (error) {
+                    console.error("Session restore failed", error);
+                    handleLogout();
+                } finally {
+                    setIsLoading(null);
+                }
+            }
+        };
+
+        restoreSession();
+    }, []); // Este também roda apenas uma vez na carga inicial.
+
+
+    // Todas as suas outras funções (fetchData, handleLogin, etc.) continuam aqui, sem alterações...
     const handleToggleRecordSelection = (recordId: string) => {
         setSelectedRecordIds(prev => {
             const newSet = new Set(prev);
@@ -2710,38 +2768,6 @@ const App = () => {
             setIsLoading(null);
         }
     };
-
-    useEffect(() => {
-        const path = window.location.pathname;
-        if (path === '/reset-password') {
-            setView('RESET_PASSWORD');
-            return;
-        }
-        if (path === '/forgot-password') {
-            setView('FORGOT_PASSWORD');
-            return;
-        }
-
-        const restoreSession = async () => {
-            if (API_TOKEN) {
-                setIsLoading("Verificando sessão...");
-                try {
-                    const me = await apiFetch('/api/auth/me');
-                    const user: User = { id: String(me.id), username: me.name, email: me.email, role: me.role, assignments: me.assignments || [] };
-                    setCurrentUser(user);
-                    if (view === 'LOGIN') {
-                        redirectUser(user);
-                    }
-                } catch (error) {
-                    console.error("Session restore failed", error);
-                    handleLogout();
-                } finally {
-                    setIsLoading(null);
-                }
-            }
-        };
-        restoreSession();
-    }, []);
 
     useEffect(() => {
         if (currentUser) {
@@ -2986,15 +3012,12 @@ const App = () => {
     };
 
     const renderView = () => {
-        if (!currentUser && view !== 'LOGIN' && view !== 'RESET_PASSWORD' && view !== 'FORGOT_PASSWORD') {
-            return <Loader text="Verificando sessão..." />;
-        }
-        if (!currentUser) {
-            if (view === 'RESET_PASSWORD') return <ResetPasswordView />;
-            if (view === 'FORGOT_PASSWORD') return <ForgotPasswordView />;
-            return <Login onLogin={handleLogin} onNavigate={navigate} />;
-        }
+        // A lógica de renderização agora é mais simples
+        if (view === 'RESET_PASSWORD') return <ResetPasswordView />;
+        if (view === 'FORGOT_PASSWORD') return <ForgotPasswordView />;
+        if (!currentUser) return <Login onLogin={handleLogin} onNavigate={navigate} />;
         
+        // O resto da lógica 'switch' continua aqui
         switch(currentUser.role) {
             case 'ADMIN':
                 switch(view) {
