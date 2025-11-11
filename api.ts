@@ -3,7 +3,8 @@
 // Wrapper para chamadas de API
 export async function apiFetch(url: string, options: any = {}) {
   // 🔧 Se não definir VITE_API_BASE no .env, usa "" (proxy do Nginx cuida do /api)
-  const baseUrl = import.meta.env.VITE_API_BASE || "";
+  // FIX: Cast import.meta to any to access Vite environment variables.
+  const baseUrl = (import.meta as any).env.VITE_API_BASE || "";
   const fullUrl = baseUrl + url;
 
   // 🔑 Recupera sempre o token JWT do localStorage
