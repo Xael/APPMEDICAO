@@ -2728,7 +2728,7 @@ const App = () => {
                 currentUser.role === 'ADMIN' ? apiFetch('/api/auditlog') : Promise.resolve(null),
             ]);
             
-            setLocations(locs.map((l: any) => ({ ...l, id: String(l.id), parentId: l.parentId ? String(l.parentId) : null, services: (l.services || []).map((s: any) => ({ ...s, serviceId: String(s.serviceId) })) })));
+            setLocations(locs.map((l: any) => ({ ...l, id: String(l.id), isGroup: !!l.isGroup, parentId: l.parentId ? String(l.parentId) : null, services: (l.services || []).map((s: any) => ({ ...s, serviceId: String(s.serviceId) })) })));
             setServices(srvs.map((s: any) => ({...s, id: String(s.id), unitId: String(s.unitId) })));
             setContractConfigs(configs || []);
             
