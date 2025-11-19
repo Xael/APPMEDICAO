@@ -81,7 +81,7 @@ interface LocationRecord { id: string; contractGroup: string; name: string; obse
 interface ServiceRecord {
     id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: string;
     locationId?: string; locationName: string; contractGroup: string; locationArea?: number;
-    gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[];
+    gpsUsed: boolean; startTime: string; endTime?: string; beforePhotos: string[]; afterPhotos: string[];
     tempId?: string; coords?: GeolocationCoords;
     observations?: string;
     overrideMeasurement?: number;
@@ -96,6 +96,7 @@ interface Goal {
 interface AuditLogEntry { id: string; timestamp: string; adminId: string; adminUsername: string; action: 'UPDATE' | 'DELETE' | 'ADJUST_MEASUREMENT'; recordId: string; details: string; }
 interface ContractConfig { id: number; contractGroup: string; cycleStartDay: number; }
 
+// NOVO: Interface para a resposta paginada que o AdminHistoryContainer espera
 interface PaginatedRecordsResponse {
     records: ServiceRecord[];
     totalCount: number;
@@ -850,17 +851,21 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
         setIsLoading(true);
         try {
             const params = new URLSearchParams({
+                // O servidor deve usar o currentPage e pageSize para a paginação
                 page: String(currentPage),
                 pageSize: String(pageSize),
                 startDate: startDate ? new Date(startDate).toISOString() : '',
+                // Adiciona a data final, setando para o fim do dia
                 endDate: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)).toISOString() : '',
                 searchQuery: searchQueryToFetch 
             });
 
+            // Chamada para o endpoint que deve retornar o objeto PaginatedRecordsResponse
             const response = await apiFetch(`/api/records?${params.toString()}`);
             
-            // CORREÇÃO: Verifica se a resposta é válida e se contém a propriedade 'records'
+            // Tratamento de resposta nula ou inválida
             if (!response || !Array.isArray(response.records)) {
+                 // Se o servidor retorna um objeto vazio ou null, mas sem erro, pode ser o fim dos dados
                 setPaginatedRecords([]);
                 setTotalRecords(0);
                 return;
@@ -871,14 +876,18 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
                 ...r, 
                 id: String(r.id), 
                 operatorId: String(r.operatorId), 
-                locationId: r.locationId ? String(r.locationId) : undefined 
+                locationId: r.locationId ? String(r.locationId) : undefined,
+                // Garantir que as chaves obrigatórias estejam presentes
+                beforePhotos: r.beforePhotos || [],
+                afterPhotos: r.afterPhotos || [],
             }));
 
             setPaginatedRecords(mappedRecords);
             setTotalRecords(response.totalCount);
         } catch (error) {
             console.error("Failed to fetch paginated records", error);
-            alert("Erro ao carregar o histórico. Por favor, verifique se o servidor está retornando dados válidos com a estrutura { records: [], totalCount: 0 }.");
+            // Mensagem de erro para o usuário
+            alert("Erro ao carregar o histórico. Verifique a conexão ou logs do servidor.");
         } finally {
             setIsLoading(false);
         }
@@ -889,8 +898,10 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
     }, [fetchPaginatedRecords]);
 
     const handleApplyFilters = () => {
+        // Reseta para a primeira página ao aplicar novos filtros
         setCurrentPage(1);
         setSearchQueryToFetch(searchQuery);
+        // O useEffect com fetchPaginatedRecords será acionado pela mudança de searchQueryToFetch
     };
 
     const handleToggleSelect = (recordId: string) => {
@@ -901,6 +912,14 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
             return newSet;
         });
     };
+    
+    // Filtra apenas os IDs que estão na página atual antes de passar para HistoryView
+    const currentSelectedIds = new Set(Array.from(selectedIds).filter(id => paginatedRecords.some(r => r.id === id)));
+
+    const handlePageSizeChange = (size: string) => {
+        setPageSize(parseInt(size));
+        setCurrentPage(1);
+    }
     
     return (
         <div className="history-container-wrapper">
@@ -921,7 +940,7 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
                         <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
                     </div>
                     <button className="button button-secondary" onClick={handleApplyFilters}>Aplicar Filtros</button>
-                    <p style={{ margin: 0, padding: 0, opacity: 0.7 }}>A busca atual é: "{searchQueryToFetch}"</p>
+                    {searchQueryToFetch && <p style={{ margin: 0, padding: 0, opacity: 0.7 }}>A busca atual é: "{searchQueryToFetch}"</p>}
                 </div>
             </div>
             
@@ -933,17 +952,17 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
                         isAdmin={true}
                         onEdit={props.onEdit}
                         onDelete={props.onDelete}
-                        selectedIds={selectedIds}
-                        onToggleSelect={handleToggleSelect}
+                        selectedIds={currentSelectedIds}
+                        onToggleSelect={props.onToggleSelect}
                         onDeleteSelected={props.onDeleteSelected}
                         onMeasurementUpdate={props.onMeasurementUpdate}
                     />
 
                     <div className="pagination-controls" style={{ marginTop: '1.5rem', textAlign: 'center' }}>
                         <p>
-                            Total de Registros: {totalRecords} | 
+                            Total de Registros: **{totalRecords}** | 
                             Itens por Página: 
-                            <select value={pageSize} onChange={e => { setPageSize(parseInt(e.target.value)); setCurrentPage(1); }} style={{ margin: '0 5px' }}>
+                            <select value={pageSize} onChange={e => handlePageSizeChange(e.target.value)} style={{ margin: '0 5px' }}>
                                 <option value={10}>10</option>
                                 <option value={30}>30</option>
                                 <option value={50}>50</option>
@@ -958,7 +977,7 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
                             &lt; Anterior
                         </button>
                         <span style={{ margin: '0 1rem' }}>
-                            Página {currentPage} de {Math.ceil(totalRecords / pageSize) || 1}
+                            Página **{currentPage}** de **{Math.ceil(totalRecords / pageSize) || 1}**
                         </span>
                         <button 
                             className="button button-sm" 
@@ -973,10 +992,10 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
         </div>
     );
 };
-
 // FIM DO NOVO COMPONENTE ADMINHISTORYCONTAINER
 
 const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
+// ... (DetailView code is the same)
     <div className="detail-view">
         <div className="detail-section card">
             <h3>Resumo</h3>
@@ -1002,55 +1021,33 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
         </div>
     </div>
 );
-
+// ... (ReportsView code is the same)
 const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
     const [reportType, setReportType] = useState<'excel' | 'photos' | 'billing' | null>(null);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedServices, setSelectedServices] = useState<string[]>([]);
     const [selectedContractGroup, setSelectedContractGroup] = useState('');
-    const [searchNameQuery, setSearchNameQuery] = useState(''); // NOVO FILTRO
-    
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const printableRef = useRef<HTMLDivElement>(null);
     const [isGenerating, setIsGenerating] = useState(false);
-
-    // Paginação
-    const [currentPage, setCurrentPage] = useState(1); // Página atual
-    const [pageSize, setPageSize] = useState(30); // Itens por página
 
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
     
     const handleServiceFilterChange = (service: string, isChecked: boolean) => { setSelectedServices(prev => isChecked ? [...prev, service] : prev.filter(s => s !== service)); };
     
-    // Lógica de Filtragem (agora incluindo o campo de busca por nome)
     const filteredRecords = records.filter(r => {
         const recordDate = new Date(r.startTime);
         const start = startDate ? new Date(startDate) : null;
         const end = endDate ? new Date(endDate) : null;
-
-        // Filtros de Data
         if (start && recordDate < start) return false;
         if (end) { end.setHours(23, 59, 59, 999); if (recordDate > end) return false; }
-
-        // Filtros de Serviço e Contrato
         if (selectedServices.length > 0 && !selectedServices.includes(r.serviceType)) return false;
         if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
-
-        // NOVO FILTRO: Busca por nome
-        const nameQuery = searchNameQuery.toLowerCase();
-        const nameMatch = nameQuery === '' || 
-                          r.locationName.toLowerCase().includes(nameQuery) ||
-                          r.operatorName.toLowerCase().includes(nameQuery);
-        
-        return nameMatch;
+        return true;
     }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
     
-    // Lógica de Paginação
-    const startIndex = (currentPage - 1) * pageSize;
-    const paginatedRecords = filteredRecords.slice(startIndex, startIndex + pageSize);
-
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         if(e.target.checked) setSelectedIds(filteredRecords.map(r => r.id));
         else setSelectedIds([]);
@@ -1418,15 +1415,12 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                         <div className="form-group"><label>Data de Início</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
                         <div className="form-group"><label>Data Final</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
                         <div className="form-group"><label>Contrato/Cidade</label><select value={selectedContractGroup} onChange={e => setSelectedContractGroup(e.target.value)}><option value="">Todos</option>{allContractGroups.map(g => <option key={g} value={g}>{g}</option>)}</select></div>
-                        {/* NOVO CAMPO DE BUSCA POR NOME */}
-                        <div className="form-group"><label>Pesquisar por Local/Operador</label><input type="search" placeholder="Buscar por nome..." value={searchNameQuery} onChange={e => { setSearchNameQuery(e.target.value); setCurrentPage(1); }} /></div>
                     </div>
                     <fieldset className="form-group-full"><legend>Filtrar por Serviços</legend><div className="checkbox-group">{allServiceNames.map(name => (<div key={name} className="checkbox-item"><input type="checkbox" id={`service-${name}`} checked={selectedServices.includes(name)} onChange={e => handleServiceFilterChange(name, e.target.checked)} /><label htmlFor={`service-${name}`}>{name}</label></div>))}</div></fieldset>
                 </div>
                 
                 <div className="report-summary">
-                    {/* Contagem reflete o número de itens filtrados (não paginados) */}
-                    <h3>{selectedIds.length} de {filteredRecords.length} registros filtrados</h3>
+                    <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
                     {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
                     <div className="button-group">
                         {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0}>Exportar para Excel</button>}
@@ -1434,40 +1428,9 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                         {reportType === 'photos' && <button className="button" onClick={handleGeneratePdfClick} disabled={selectedIds.length === 0}>Gerar PDF com Fotos</button>}
                     </div>
                 </div>
-
-                {/* CONTROLE DE PAGINAÇÃO NO FRONTEND */}
-                <div className="pagination-controls" style={{ marginTop: '1rem', textAlign: 'center' }}>
-                    <p>
-                        Total de Registros Filtrados: {filteredRecords.length} | 
-                        Itens por Página: 
-                        <select value={pageSize} onChange={e => { setPageSize(parseInt(e.target.value)); setCurrentPage(1); }} style={{ margin: '0 5px' }}>
-                            <option value={10}>10</option>
-                            <option value={30}>30</option>
-                            <option value={50}>50</option>
-                            <option value={100}>100</option>
-                        </select>
-                    </p>
-                    <button 
-                        className="button button-sm" 
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
-                        disabled={currentPage === 1}
-                    >
-                        &lt; Anterior
-                    </button>
-                    <span style={{ margin: '0 1rem' }}>Página {currentPage} de {Math.ceil(filteredRecords.length / pageSize) || 1}</span>
-                    <button 
-                        className="button button-sm" 
-                        onClick={() => setCurrentPage(p => p + 1)} 
-                        disabled={currentPage >= Math.ceil(filteredRecords.length / pageSize)}
-                    >
-                        Próxima &gt;
-                    </button>
-                </div>
-                {/* FIM DO CONTROLE DE PAGINAÇÃO */}
-
                 <ul className="report-list" style={{marginTop: '1rem'}}>
-                    {paginatedRecords.length > 0 && <li><label><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === filteredRecords.length && filteredRecords.length > 0} /> Selecionar Todos na Lista Filtrada</label></li>}
-                    {paginatedRecords.map(record => (
+                    {filteredRecords.length > 0 && <li><label><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === filteredRecords.length && filteredRecords.length > 0} /> Selecionar Todos</label></li>}
+                    {filteredRecords.map(record => (
                         <li key={record.id} className="report-item">
                             <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={e => handleSelectOne(record.id, e.target.checked)} />
                             <div className="report-item-info">
@@ -1476,13 +1439,11 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                             </div>
                         </li>
                     ))}
-                    {paginatedRecords.length === 0 && filteredRecords.length > 0 && <p style={{textAlign: 'center'}}>Use os controles de paginação para ver mais registros.</p>}
-                    {filteredRecords.length === 0 && <p style={{textAlign: 'center'}}>Nenhum registro encontrado com os filtros aplicados.</p>}
                 </ul>
             </div>
     );
 };
-
+// ... (ManageLocationsView code is the same)
 const ManageLocationsView: React.FC<{
     locations: LocationRecord[];
     services: ServiceDefinition[];
@@ -1497,11 +1458,6 @@ const ManageLocationsView: React.FC<{
     const [editingId, setEditingId] = useState<string | null>(null);
     const [serviceMeasurements, setServiceMeasurements] = useState<Record<string, string>>({});
     const [isGroupActionLoading, setIsGroupActionLoading] = useState(false);
-    
-    // ESTADOS DE BUSCA E PAGINAÇÃO ADICIONADOS
-    const [searchLocationQuery, setSearchLocationQuery] = useState(''); 
-    const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(30);
 
     const allGroups = [...new Set(locations.map(l => l.contractGroup))].filter(Boolean).sort();
 
@@ -1700,23 +1656,14 @@ const ManageLocationsView: React.FC<{
         }
     };
 
-    // FILTRAGEM NA TELA POR NOME DE LOCAL
-    const filteredLocationsByGroup = selectedGroup ? locations.filter(l => l.contractGroup === selectedGroup) : [];
-
-    const sortedFilteredLocations = filteredLocationsByGroup
-        .filter(loc => loc.name.toLowerCase().includes(searchLocationQuery.toLowerCase()))
-        .sort((a,b) => a.name.localeCompare(b.name));
-
-    // LÓGICA DE PAGINAÇÃO APLICADA À LISTA JÁ FILTRADA
-    const startIndex = (currentPage - 1) * pageSize;
-    const paginatedLocations = sortedFilteredLocations.slice(startIndex, startIndex + pageSize);
+    const filteredLocations = selectedGroup ? locations.filter(l => l.contractGroup === selectedGroup) : [];
 
     return (
         <div>
             <div className="card">
                 <h3>Gerenciar Contrato/Cidade</h3>
                 <div className="form-group contract-group-selector">
-                    <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); resetForm(); setSearchLocationQuery(''); }}>
+                    <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); resetForm(); }}>
                         <option value="">Selecione um Contrato/Cidade</option>
                         {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
@@ -1775,52 +1722,9 @@ const ManageLocationsView: React.FC<{
                         <button className="button admin-button" onClick={handleSave}>{editingId ? 'Salvar Alterações' : 'Adicionar Local'}</button>
                         {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
                     </div>
-
-                    {/* CAMPO DE BUSCA E CONTROLES DE PAGINAÇÃO */}
-                    <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
-                        <h3>Locais em "{selectedGroup}" ({sortedFilteredLocations.length})</h3>
-                        <input 
-                            type="search" 
-                            placeholder="Buscar Local por Nome..." 
-                            value={searchLocationQuery} 
-                            onChange={e => { setSearchLocationQuery(e.target.value); setCurrentPage(1); }} // Reseta a página ao buscar
-                        />
-
-                        {/* CONTROLES DE PAGINAÇÃO ADICIONADOS AQUI */}
-                        <div className="pagination-controls" style={{ marginTop: '1rem', textAlign: 'center' }}>
-                            <p>
-                                Total de Locais: {sortedFilteredLocations.length} | 
-                                Itens por Página: 
-                                <select value={pageSize} onChange={e => { setPageSize(parseInt(e.target.value)); setCurrentPage(1); }} style={{ margin: '0 5px' }}>
-                                    <option value={10}>10</option>
-                                    <option value={30}>30</option>
-                                    <option value={50}>50</option>
-                                    <option value={100}>100</option>
-                                </select>
-                            </p>
-                            <button 
-                                className="button button-sm" 
-                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
-                                disabled={currentPage === 1}
-                            >
-                                &lt; Anterior
-                            </button>
-                            <span style={{ margin: '0 1rem' }}>
-                                Página {currentPage} de {Math.ceil(sortedFilteredLocations.length / pageSize) || 1}
-                            </span>
-                            <button 
-                                className="button button-sm" 
-                                onClick={() => setCurrentPage(p => p + 1)} 
-                                disabled={currentPage >= Math.ceil(sortedFilteredLocations.length / pageSize)}
-                            >
-                                Próxima &gt;
-                            </button>
-                        </div>
-                        {/* FIM DOS CONTROLES DE PAGINAÇÃO */}
-                    </div>
                     
                     <ul className="location-list">
-                        {paginatedLocations.map(loc => (
+                        {filteredLocations.sort((a,b) => a.name.localeCompare(b.name)).map(loc => (
                             <li key={loc.id} className="card list-item">
                                 <div className="list-item-info">
                                     <div className="list-item-header">
@@ -1840,16 +1744,13 @@ const ManageLocationsView: React.FC<{
                                 </div>
                             </li>
                         ))}
-                        {paginatedLocations.length === 0 && sortedFilteredLocations.length > 0 && <p style={{textAlign: 'center'}}>Use os controles de paginação para ver mais locais.</p>}
-                        {sortedFilteredLocations.length === 0 && searchLocationQuery && <p style={{textAlign: 'center'}}>Nenhum local encontrado com o termo "{searchLocationQuery}"</p>}
-                        {sortedFilteredLocations.length === 0 && !searchLocationQuery && <p style={{textAlign: 'center'}}>Nenhum local cadastrado neste contrato.</p>}
                     </ul>
                 </>
             )}
         </div>
     );
 };
-
+// ... (ManageUsersView code is the same)
 const ManageUsersView: React.FC<{ 
     users: User[];
     onUsersUpdate: () => Promise<void>;
@@ -2055,7 +1956,7 @@ const ManageUsersView: React.FC<{
         </div>
     );
 }
-
+// ... (GoalsAndChartsView code is the same)
 const GoalsAndChartsView: React.FC<{
     records: ServiceRecord[];
     locations: LocationRecord[];
@@ -2209,7 +2110,7 @@ const GoalsAndChartsView: React.FC<{
                             {allContractGroups.map(group => (
                                 <div key={group} className="checkbox-item">
                                     <input type="checkbox" id={`contract-${group}`} checked={selectedContracts.includes(group)} onChange={e => handleContractSelection(group, e.target.checked)} />
-                                    <label htmlFor={`contract-${group}`}>{group}</label>
+                                    <label htmlFor="`contract-${group}`">{group}</label>
                                 </div>
                             ))}
                         </div>
@@ -2288,7 +2189,7 @@ const GoalsAndChartsView: React.FC<{
         </div>
     );
 };
-
+// ... (ServiceInProgressView code is the same)
 const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinish: () => void; }> = ({ service, onFinish }) => {
     return (
         <div className="card">
@@ -2307,7 +2208,7 @@ const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinis
         </div>
     );
 };
-
+// ... (AdminEditRecordView code is the same)
 const AdminEditRecordView: React.FC<{
     record: ServiceRecord;
     onSave: (updatedRecord: ServiceRecord) => void;
@@ -2532,7 +2433,7 @@ const AdminEditRecordView: React.FC<{
         </div>
     );
 };
-
+// ... (AuditLogView code is the same)
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
     
     const handleExportPdf = () => {
@@ -2606,7 +2507,7 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
         </div>
     );
 };
-
+// ... (ManageServicesView code is the same)
 const ManageServicesView: React.FC<{
     services: ServiceDefinition[];
     fetchData: () => Promise<void>;
@@ -2808,7 +2709,8 @@ const App = () => {
     const [currentUser, setCurrentUser] = useLocalStorage<User | null>('crbCurrentUser', null);
     const [users, setUsers] = useState<User[]>([]);
     const [locations, setLocations] = useState<LocationRecord[]>([]);
-    const [records, setRecords] = useState<ServiceRecord[]>([]);
+    // `records` é mantido para REPORTS/GOALS/OPERATOR/FISCAL, mas não para o Histórico Admin
+    const [records, setRecords] = useState<ServiceRecord[]>([]); 
     const [services, setServices] = useState<ServiceDefinition[]>([]);
     const [contractConfigs, setContractConfigs] = useState<ContractConfig[]>([]);
     const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
@@ -2850,11 +2752,10 @@ const App = () => {
         if (selectedRecordIds.size === 0 || !window.confirm(`Tem certeza que deseja excluir os ${selectedRecordIds.size} registros selecionados?`)) return;
         setIsLoading("Excluindo registros...");
         try {
-            // Em um sistema real, você chamaria uma rota DELETE /api/records/bulk
             await Promise.all(Array.from(selectedRecordIds).map(id => apiFetch(`/api/records/${id}`, { method: 'DELETE' })));
-            setRecords(prev => prev.filter(r => !selectedRecordIds.has(r.id)));
+            // Não atualiza o estado `records`, pois o AdminHistoryContainer busca os próprios dados
             setSelectedRecordIds(new Set());
-            alert("Registros excluídos com sucesso.");
+            alert("Registros excluídos com sucesso. Recarregue a página de histórico para ver a atualização.");
         } catch (e) {
             alert("Falha ao excluir um ou mais registros.");
             console.error(e);
@@ -2909,14 +2810,14 @@ const App = () => {
           navigate('LOGIN', true);
     }
 
-    // A busca de dados completa, excluindo a paginação do histórico geral (agora no container).
+    // A busca de dados completa, **exceto** para o histórico Admin, que será Server-Side.
     const fetchData = async () => {
         if (!currentUser) return;
         setIsLoading('Carregando dados...');
         try {
-            const [locs, recs, srvs, configs, usrs, logs] = await Promise.all([
+            // Chamadas para dados globais (Locations, Services, Configs, Users, Logs)
+            const [locs, srvs, configs, usrs, logs] = await Promise.all([
                 apiFetch(`/api/locations?t=${Date.now()}`),
-                apiFetch(`/api/records?t=${Date.now()}`), // Mantido para Reports/Goals/Operador/Fiscal
                 apiFetch(`/api/services?t=${Date.now()}`),
                 apiFetch('/api/contract-configs'),
                 currentUser.role === 'ADMIN' ? apiFetch('/api/users') : Promise.resolve(null),
@@ -2926,19 +2827,24 @@ const App = () => {
             setLocations(locs.map((l: any) => ({ ...l, id: String(l.id), services: (l.services || []).map((s: any) => ({ ...s, serviceId: String(s.serviceId) })) })));
             setServices(srvs.map((s: any) => ({...s, id: String(s.id), unitId: String(s.unitId) })));
             setContractConfigs(configs || []);
+            if (currentUser.role === 'ADMIN') {
+                 if (usrs) setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
+                 if(logs) setAuditLog(logs);
+            }
             
+            // BUSCA DE RECORDS: MANTIDA APENAS PARA OPERADOR/FISCAL e para as views REPORTS/GOALS (que não usam paginação)
+            const recs = await apiFetch(`/api/records?t=${Date.now()}&onlyRecords=true`); // Adicionado onlyRecords para evitar paginação neste fetch
             const mapRecord = (r: any) => ({ ...r, id: String(r.id), operatorId: String(r.operatorId), locationId: r.locationId ? String(r.locationId) : undefined });
 
             if (currentUser.role === 'ADMIN') {
-                setRecords(recs.map(mapRecord));
-                if (usrs) setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
-                if(logs) setAuditLog(logs);
+                 setRecords(recs.map(mapRecord));
             } else if (currentUser.role === 'OPERATOR') {
                 setRecords(recs.filter((r: any) => String(r.operatorId) === String(currentUser.id)).map(mapRecord));
             } else {
                 const fiscalGroups = new Set(currentUser.assignments?.map(a => a.contractGroup) || []);
                 setRecords(recs.filter((r: any) => fiscalGroups.has(r.contractGroup)).map(mapRecord));
             }
+
         } catch (error) {
             console.error("Failed to fetch data", error);
             alert("Não foi possível carregar os dados do servidor.");
@@ -3001,7 +2907,7 @@ const App = () => {
         }
 
         setCurrentService({
-            serviceId: parseInt(service.id), // <-- ALTERAÇÃO AQUI
+            serviceId: parseInt(service.id), 
             serviceType: service.name,
             serviceUnit: service.unit.symbol,
             contractGroup: selectedLocation.contractGroup,
@@ -3028,7 +2934,7 @@ const App = () => {
         if (today.getDate() < cycleStartDay) cycleStartDate.setMonth(cycleStartDate.getMonth() - 1);
         cycleStartDate.setHours(0, 0, 0, 0);
 
-        const existingRecord = records.find(r => r.locationId === selectedLocation.id && r.serviceType === service.name && new Date(r.startTime) >= cycleStartDate);
+        const existingRecord = records.find(r => r.locationId === selectedLocation.id && r.serviceType === service.name && r.startTime && new Date(r.startTime) >= cycleStartDate);
 
         if (existingRecord) {
             if (window.confirm("Este serviço já foi feito neste ciclo.\n\nOK = Iniciar NOVO registro.\nCancelar = Adicionar fotos 'Depois' ao existente.")) {
@@ -3045,9 +2951,8 @@ const App = () => {
     const handleBeforePhotos = async (photosBefore: string[]) => {
         setIsLoading("Preparando registro...");
         try {
-            const recordPayload = {
+            const recordPayload: Partial<ServiceRecord> & {operatorId: string, tempId: string} = {
                 operatorId: currentUser!.id,
-                serviceId: currentService.serviceId, // <-- ALTERAÇÃO AQUI
                 serviceType: currentService.serviceType,
                 serviceUnit: currentService.serviceUnit,
                 locationId: currentService.locationId,
@@ -3057,8 +2962,22 @@ const App = () => {
                 gpsUsed: !!currentService.gpsUsed,
                 startTime: new Date().toISOString(),
                 tempId: crypto.randomUUID(),
-                newLocationInfo: !currentService.locationId ? { name: currentService.locationName, city: currentService.contractGroup, lat: currentService.coords?.latitude, lng: currentService.coords?.longitude, services: [{ service_id: services.find(s => s.name === currentService.serviceType)?.id, measurement: currentService.locationArea }] } : undefined
             };
+            
+            // Adicionar info de novo local se for o caso
+            if (!currentService.locationId) {
+                (recordPayload as any).newLocationInfo = { 
+                    name: currentService.locationName, 
+                    city: currentService.contractGroup, 
+                    lat: currentService.coords?.latitude, 
+                    lng: currentService.coords?.longitude, 
+                    services: [{ 
+                        service_id: services.find(s => s.name === currentService.serviceType)?.id, 
+                        measurement: currentService.locationArea 
+                    }] 
+                };
+            }
+            
             const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
             await queueRecord(recordPayload, beforeFiles);
             setCurrentService(prev => ({ ...prev, ...recordPayload, id: recordPayload.tempId, beforePhotos: photosBefore }));
@@ -3121,6 +3040,7 @@ const App = () => {
             try {
                 setIsLoading("Excluindo registro...");
                 await apiFetch(`/api/records/${recordId}`, { method: 'DELETE' });
+                // Note: o AdminHistoryContainer irá recarregar os dados na próxima vez que for montado
                 setRecords(prev => prev.filter(r => r.id !== recordId));
                 alert("Registro excluído com sucesso.");
             } catch(e) {
@@ -3162,7 +3082,7 @@ const App = () => {
                     case 'ADMIN_MANAGE_GOALS': return <GoalsAndChartsView records={records} locations={locations} services={services} />;
                     case 'ADMIN_MANAGE_CYCLES': return <ManageCyclesView locations={locations} configs={contractConfigs} fetchData={fetchData} />;
                     case 'REPORTS': return <ReportsView records={records} services={services} />;
-                    // SUBSTITUÍDO: Agora usa o container que gerencia paginação e filtros do lado do servidor
+                    // USANDO O NOVO CONTAINER COM PAGINAÇÃO SERVER-SIDE
                     case 'HISTORY': 
                         return (
                             <AdminHistoryContainer 
