@@ -852,17 +852,21 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
             const params = new URLSearchParams({
                 page: String(currentPage),
                 pageSize: String(pageSize),
-                // No backend, filtre por 'startDate' e 'endDate' no formato ISO
                 startDate: startDate ? new Date(startDate).toISOString() : '',
                 endDate: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)).toISOString() : '',
-                searchQuery: searchQueryToFetch // Usamos o estado que foi "commitado" (quando clicou em Aplicar Filtros)
+                searchQuery: searchQueryToFetch 
             });
 
-            // Simulando endpoint da API que aceita paginação e filtros
-            // OBS: A rota /api/records do App principal PRECISA ser alterada para aceitar e processar estes parâmetros.
-            const response: PaginatedRecordsResponse = await apiFetch(`/api/records?${params.toString()}`);
+            const response = await apiFetch(`/api/records?${params.toString()}`);
             
-            // Mapeamento necessário para compatibilidade de tipos, se a API retornar `id` como number
+            // CORREÇÃO: Verifica se a resposta é válida e se contém a propriedade 'records'
+            if (!response || !Array.isArray(response.records)) {
+                setPaginatedRecords([]);
+                setTotalRecords(0);
+                return;
+            }
+            
+            // Mapeamento mantido para compatibilidade de tipos
             const mappedRecords = response.records.map((r: any) => ({ 
                 ...r, 
                 id: String(r.id), 
@@ -874,19 +878,17 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
             setTotalRecords(response.totalCount);
         } catch (error) {
             console.error("Failed to fetch paginated records", error);
-            alert("Erro ao carregar o histórico. Verifique o console.");
+            alert("Erro ao carregar o histórico. Por favor, verifique se o servidor está retornando dados válidos com a estrutura { records: [], totalCount: 0 }.");
         } finally {
             setIsLoading(false);
         }
     }, [currentPage, pageSize, startDate, endDate, searchQueryToFetch]);
 
     useEffect(() => {
-        // Recarrega sempre que mudar página, tamanho da página ou os filtros de busca
         fetchPaginatedRecords();
     }, [fetchPaginatedRecords]);
 
     const handleApplyFilters = () => {
-        // Quando os filtros são aplicados, reinicia para a página 1 e commita a query
         setCurrentPage(1);
         setSearchQueryToFetch(searchQuery);
     };
@@ -900,7 +902,6 @@ const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
         });
     };
     
-    // Passa a lista paginada para o HistoryView
     return (
         <div className="history-container-wrapper">
             <h2>Histórico Geral (Admin)</h2>
@@ -1497,8 +1498,10 @@ const ManageLocationsView: React.FC<{
     const [serviceMeasurements, setServiceMeasurements] = useState<Record<string, string>>({});
     const [isGroupActionLoading, setIsGroupActionLoading] = useState(false);
     
-    // NOVO ESTADO DE BUSCA PARA LOCAIS
+    // ESTADOS DE BUSCA E PAGINAÇÃO ADICIONADOS
     const [searchLocationQuery, setSearchLocationQuery] = useState(''); 
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(30);
 
     const allGroups = [...new Set(locations.map(l => l.contractGroup))].filter(Boolean).sort();
 
@@ -1700,9 +1703,13 @@ const ManageLocationsView: React.FC<{
     // FILTRAGEM NA TELA POR NOME DE LOCAL
     const filteredLocationsByGroup = selectedGroup ? locations.filter(l => l.contractGroup === selectedGroup) : [];
 
-    const finalFilteredLocations = filteredLocationsByGroup
+    const sortedFilteredLocations = filteredLocationsByGroup
         .filter(loc => loc.name.toLowerCase().includes(searchLocationQuery.toLowerCase()))
         .sort((a,b) => a.name.localeCompare(b.name));
+
+    // LÓGICA DE PAGINAÇÃO APLICADA À LISTA JÁ FILTRADA
+    const startIndex = (currentPage - 1) * pageSize;
+    const paginatedLocations = sortedFilteredLocations.slice(startIndex, startIndex + pageSize);
 
     return (
         <div>
@@ -1769,20 +1776,51 @@ const ManageLocationsView: React.FC<{
                         {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
                     </div>
 
-                    {/* CAMPO DE BUSCA NA LISTA DE LOCAIS */}
+                    {/* CAMPO DE BUSCA E CONTROLES DE PAGINAÇÃO */}
                     <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
-                        <h3>Locais em "{selectedGroup}" ({finalFilteredLocations.length})</h3>
+                        <h3>Locais em "{selectedGroup}" ({sortedFilteredLocations.length})</h3>
                         <input 
                             type="search" 
                             placeholder="Buscar Local por Nome..." 
                             value={searchLocationQuery} 
-                            onChange={e => setSearchLocationQuery(e.target.value)} 
+                            onChange={e => { setSearchLocationQuery(e.target.value); setCurrentPage(1); }} // Reseta a página ao buscar
                         />
+
+                        {/* CONTROLES DE PAGINAÇÃO ADICIONADOS AQUI */}
+                        <div className="pagination-controls" style={{ marginTop: '1rem', textAlign: 'center' }}>
+                            <p>
+                                Total de Locais: {sortedFilteredLocations.length} | 
+                                Itens por Página: 
+                                <select value={pageSize} onChange={e => { setPageSize(parseInt(e.target.value)); setCurrentPage(1); }} style={{ margin: '0 5px' }}>
+                                    <option value={10}>10</option>
+                                    <option value={30}>30</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                </select>
+                            </p>
+                            <button 
+                                className="button button-sm" 
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
+                                disabled={currentPage === 1}
+                            >
+                                &lt; Anterior
+                            </button>
+                            <span style={{ margin: '0 1rem' }}>
+                                Página {currentPage} de {Math.ceil(sortedFilteredLocations.length / pageSize) || 1}
+                            </span>
+                            <button 
+                                className="button button-sm" 
+                                onClick={() => setCurrentPage(p => p + 1)} 
+                                disabled={currentPage >= Math.ceil(sortedFilteredLocations.length / pageSize)}
+                            >
+                                Próxima &gt;
+                            </button>
+                        </div>
+                        {/* FIM DOS CONTROLES DE PAGINAÇÃO */}
                     </div>
-                    {/* FIM DO CAMPO DE BUSCA */}
                     
                     <ul className="location-list">
-                        {finalFilteredLocations.map(loc => (
+                        {paginatedLocations.map(loc => (
                             <li key={loc.id} className="card list-item">
                                 <div className="list-item-info">
                                     <div className="list-item-header">
@@ -1802,8 +1840,9 @@ const ManageLocationsView: React.FC<{
                                 </div>
                             </li>
                         ))}
-                        {finalFilteredLocations.length === 0 && searchLocationQuery && <p style={{textAlign: 'center'}}>Nenhum local encontrado com o termo "{searchLocationQuery}"</p>}
-                        {finalFilteredLocations.length === 0 && !searchLocationQuery && <p style={{textAlign: 'center'}}>Nenhum local cadastrado neste contrato.</p>}
+                        {paginatedLocations.length === 0 && sortedFilteredLocations.length > 0 && <p style={{textAlign: 'center'}}>Use os controles de paginação para ver mais locais.</p>}
+                        {sortedFilteredLocations.length === 0 && searchLocationQuery && <p style={{textAlign: 'center'}}>Nenhum local encontrado com o termo "{searchLocationQuery}"</p>}
+                        {sortedFilteredLocations.length === 0 && !searchLocationQuery && <p style={{textAlign: 'center'}}>Nenhum local cadastrado neste contrato.</p>}
                     </ul>
                 </>
             )}
@@ -2870,20 +2909,14 @@ const App = () => {
           navigate('LOGIN', true);
     }
 
-    // A chamada de `apiFetch('/api/records?t=${Date.now()}')` foi removida daqui,
-    // pois a tela de History/Relatórios fará sua própria busca paginada/filtrada.
+    // A busca de dados completa, excluindo a paginação do histórico geral (agora no container).
     const fetchData = async () => {
         if (!currentUser) return;
         setIsLoading('Carregando dados...');
         try {
             const [locs, recs, srvs, configs, usrs, logs] = await Promise.all([
                 apiFetch(`/api/locations?t=${Date.now()}`),
-                // Aqui só buscamos os records necessários para o estado inicial/relatórios não paginados.
-                // Para o ADMIN/FISCAL, a tela HISTORY/REPORTS deve usar a rota com filtros e paginação.
-                // Aqui mantemos apenas os registros do operador ou fiscal, ou todos para o Admin se necessário para relatórios ou metas que ainda usam a lista completa.
-                // NOTA: Para resolver o problema de performance *realmente*, a API de records deve ser usada com paginação em todas as telas que a consomem.
-                // Como não podemos modificar o backend, vou manter a busca de todos para as demais telas, mas o History Admin vai usar o novo container.
-                apiFetch(`/api/records?t=${Date.now()}`),
+                apiFetch(`/api/records?t=${Date.now()}`), // Mantido para Reports/Goals/Operador/Fiscal
                 apiFetch(`/api/services?t=${Date.now()}`),
                 apiFetch('/api/contract-configs'),
                 currentUser.role === 'ADMIN' ? apiFetch('/api/users') : Promise.resolve(null),
