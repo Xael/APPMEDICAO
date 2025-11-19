@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
@@ -81,25 +81,20 @@ interface LocationRecord { id: string; contractGroup: string; name: string; obse
 interface ServiceRecord {
     id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: string;
     locationId?: string; locationName: string; contractGroup: string; locationArea?: number;
-    gpsUsed: boolean; startTime: string; endTime?: string; beforePhotos: string[]; afterPhotos: string[];
+    gpsUsed: boolean; startTime: string; endTime: string; beforePhotos: string[]; afterPhotos: string[];
     tempId?: string; coords?: GeolocationCoords;
     observations?: string;
     overrideMeasurement?: number;
 }
 interface Goal {
-    id: string;
-    contractGroup: string;
-    month: string;
-    targetArea: number;
-    serviceId: number;
+  id: string;
+  contractGroup: string;
+  month: string;
+  targetArea: number;
+  serviceId: number;
 }
 interface AuditLogEntry { id: string; timestamp: string; adminId: string; adminUsername: string; action: 'UPDATE' | 'DELETE' | 'ADJUST_MEASUREMENT'; recordId: string; details: string; }
 interface ContractConfig { id: number; contractGroup: string; cycleStartDay: number; }
-
-interface PaginatedRecordsResponse {
-    records: ServiceRecord[];
-    totalCount: number;
-}
 
 const formatDateTime = (isoString: string) => new Date(isoString).toLocaleString('pt-BR');
 const calculateDistance = (p1: GeolocationCoords, p2: GeolocationCoords) => {
@@ -248,75 +243,71 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
 };
 
 const Login: React.FC<{
-    onLogin: (user: User) => void;
-    onNavigate: (view: View) => void;
+  onLogin: (user: User) => void;
+  onNavigate: (view: View) => void;
 }> = ({ onLogin, onNavigate }) => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [message, setMessage] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
-    const handleLogin = async () => {
-        setError('');
-        setMessage('');
-        setIsLoading(true);
-        try {
-            const { access_token } = await apiFetch('/api/auth/login', {
-                method: 'POST',
-                body: JSON.stringify({ email, password })
-            });
-            setApiToken(access_token);
-            const me = await apiFetch('/api/auth/me');
-            const user: User = {
-                id: String(me.id),
-                username: me.name || me.email,
-                email: me.email,
-                role: me.role,
-                assignments: me.assignments || []
-            };
-            onLogin(user);
-        } catch (err) {
-            setError('E-mail ou senha inválidos.');
-            setApiToken(null);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+  const handleLogin = async () => {
+    setError('');
+    setMessage('');
+    setIsLoading(true);
+    try {
+      const { access_token } = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+      setApiToken(access_token);
+      const me = await apiFetch('/api/auth/me');
+      const user: User = {
+        id: String(me.id),
+        username: me.name || me.email,
+        email: me.email,
+        role: me.role,
+        assignments: me.assignments || []
+      };
+      onLogin(user);
+    } catch (err) {
+      setError('E-mail ou senha inválidos.');
+      setApiToken(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    return (
-        <div className="login-container card">
-            <h2>Login de Acesso</h2>
-            {error && <p className="text-danger">{error}</p>}
-            {message && <p className="text-success">{message}</p>}
-            <input
-                type="email"
-                placeholder="E-mail"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                id="login-email" // Corrigido: Adicionado ID
-                name="login-email" // Corrigido: Adicionado Name
-            />
-            <input
-                type="password"
-                placeholder="Senha"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                id="login-password" // Corrigido: Adicionado ID
-                name="login-password" // Corrigido: Adicionado Name
-            />
-            <button className="button" onClick={handleLogin} disabled={isLoading}>
-                {isLoading ? 'Entrando...' : 'Entrar'}
-            </button>
-            <button
-                className="button button-secondary"
-                onClick={() => onNavigate('FORGOT_PASSWORD')}
-                disabled={isLoading}
-            >
-                Esqueci minha senha
-            </button>
-        </div>
-    );
+  return (
+    <div className="login-container card">
+      <h2>Login de Acesso</h2>
+      {error && <p className="text-danger">{error}</p>}
+      {message && <p className="text-success">{message}</p>}
+      <input
+        type="email"
+        placeholder="E-mail"
+        value={email}
+        onChange={e => setEmail(e.target.value)}
+      />
+      <input
+        type="password"
+        placeholder="Senha"
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+      />
+      <button className="button" onClick={handleLogin} disabled={isLoading}>
+        {isLoading ? 'Entrando...' : 'Entrar'}
+      </button>
+      <button
+        className="button button-secondary"
+        onClick={() => onNavigate('FORGOT_PASSWORD')}
+        disabled={isLoading}
+      >
+        Esqueci minha senha
+      </button>
+    </div>
+  );
 };
 
 const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () => void; }> = ({ onNavigate, onLogout }) => (
@@ -396,7 +387,6 @@ const ManageCyclesView: React.FC<{
                         <input
                             type="number"
                             id={`cycle-day-${group}`}
-                            name={`cycle-day-${group}`} // Corrigido: Adicionado Name
                             min="1"
                             max="31"
                             value={cycleConfigs[group] || 1}
@@ -634,15 +624,7 @@ const OperatorLocationSelect: React.FC<{
             )}
             <div className="card-inset">
                 <h4>Ou, busque na lista</h4>
-                <input 
-                    type="search" 
-                    placeholder="Digite para buscar um local..." 
-                    value={searchQuery} 
-                    onChange={e => setSearchQuery(e.target.value)} 
-                    style={{marginBottom: '1rem'}}
-                    id="search-location" // Corrigido: Adicionado ID
-                    name="search-location" // Corrigido: Adicionado Name
-                />
+                <input type="search" placeholder="Digite para buscar um local..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{marginBottom: '1rem'}} />
                 <div className="location-selection-list">
                     {filteredLocations.length > 0 ? filteredLocations.map(loc => (
                         <button key={loc.id} className="button button-secondary location-button-with-obs" onClick={() => handleSelectFromList(loc)}>
@@ -654,14 +636,7 @@ const OperatorLocationSelect: React.FC<{
             </div>
             <div className="card-inset">
                 <h4>Ou, crie um novo local</h4>
-                <input 
-                    type="text" 
-                    placeholder="Digite o nome do NOVO local" 
-                    value={manualLocationName} 
-                    onChange={e => setManualLocationName(e.target.value)}
-                    id="manual-location-name" // Corrigido: Adicionado ID
-                    name="manual-location-name" // Corrigido: Adicionado Name
-                />
+                <input type="text" placeholder="Digite o nome do NOVO local" value={manualLocationName} onChange={e => setManualLocationName(e.target.value)} />
                 
                 <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '1rem', width: '100%' }}>
                     {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
@@ -715,17 +690,7 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
                 <div className="photo-gallery">
                     {photos.map((p, i) => <img key={i} src={p} alt={`Foto ${i+1}`} className="image-preview" />)}
                 </div>
-                {/* Corrigido: Adicionado ID e Name ao input file */}
-                <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileSelect} 
-                    style={{ display: 'none' }} 
-                    accept="image/*" 
-                    multiple 
-                    id="photo-upload-input" 
-                    name="photo-upload-input"
-                />
+                <input type="file" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} accept="image/*" multiple />
                 <div className="photo-actions">
                     <button className="button" onClick={() => setIsTakingPhoto(true)}>📷 {photos.length > 0 ? 'Tirar Outra Foto' : 'Iniciar Captura'}</button>
                     <button className="button button-secondary" onClick={handleUploadClick}>🖼️ Adicionar Foto do Dispositivo</button>
@@ -806,8 +771,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
                         <li key={record.id} className="list-item" style={{alignItems: 'center'}}>
                             {isAdmin && (
                                 <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0, marginRight: '1rem' }}>
-                                    <input type="checkbox" checked={selectedIds.has(record.id)} onChange={() => onToggleSelect(record.id)} style={{ width: '24px', height: '24px' }} id={`record-select-${record.id}`} />
-                                    <label htmlFor={`record-select-${record.id}`} style={{display: 'none'}}>Selecionar {record.locationName}</label>
+                                    <input type="checkbox" checked={selectedIds.has(record.id)} onChange={() => onToggleSelect(record.id)} style={{ width: '24px', height: '24px' }} />
                                 </div>
                             )}
                             <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer'}}>
@@ -825,8 +789,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
                                                 autoFocus
                                                 onBlur={() => handleSaveMeasurement(record.id)}
                                                 style={{width: '80px', padding: '2px'}}
-                                                id={`measurement-edit-${record.id}`} // Corrigido: Adicionado ID
-                                                name={`measurement-edit-${record.id}`} // Corrigido: Adicionado Name
                                             />
                                             <button className="button button-sm" onClick={() => handleSaveMeasurement(record.id)}>Ok</button>
                                         </span>
@@ -853,204 +815,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
         </div>
     );
 };
-
-interface AdminHistoryContainerProps {
-    onSelect: (record: ServiceRecord) => void;
-    onEdit: (record: ServiceRecord) => void;
-    onDelete: (recordId: string) => Promise<void>; // Retorna Promise<void>
-    onDeleteSelected: (selectedIds: Set<string>, refresh: () => Promise<void>) => Promise<void>; // Aceita refresh
-    onMeasurementUpdate: (recordId: number, newMeasurement: string) => Promise<void>;
-    addAuditLogEntry: (action: 'UPDATE' | 'DELETE' | 'ADJUST_MEASUREMENT', details: string, recordId?: string) => void;
-}
-
-const AdminHistoryContainer: React.FC<AdminHistoryContainerProps> = (props) => {
-    const [paginatedRecords, setPaginatedRecords] = useState<ServiceRecord[]>([]);
-    const [totalRecords, setTotalRecords] = useState(0);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(30); 
-    const [isLoading, setIsLoading] = useState(true);
-
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [searchQuery, setSearchQuery] = useState('');
-    const [searchQueryToFetch, setSearchQueryToFetch] = useState('');
-
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-    const fetchPaginatedRecords = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const params = new URLSearchParams({
-                page: String(currentPage),
-                pageSize: String(pageSize),
-                // Adiciona a data final, setando para o fim do dia
-                startDate: startDate ? new Date(startDate).toISOString() : '',
-                endDate: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)).toISOString() : '',
-                searchQuery: searchQueryToFetch 
-            });
-
-            const response = await apiFetch(`/api/records?${params.toString()}`);
-            
-            if (!response || !Array.isArray(response.records)) {
-                setPaginatedRecords([]);
-                setTotalRecords(0);
-                return;
-            }
-            
-            const mappedRecords = response.records.map((r: any) => ({ 
-                ...r, 
-                id: String(r.id), 
-                operatorId: String(r.operatorId), 
-                locationId: r.locationId ? String(r.locationId) : undefined,
-                beforePhotos: r.beforePhotos || [],
-                afterPhotos: r.afterPhotos || [],
-            }));
-
-            setPaginatedRecords(mappedRecords);
-            setTotalRecords(response.totalCount);
-        } catch (error) {
-            console.error("Failed to fetch paginated records", error);
-            alert("Erro ao carregar o histórico. Verifique a conexão ou logs do servidor.");
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentPage, pageSize, startDate, endDate, searchQueryToFetch]);
-
-    useEffect(() => {
-        // Correção: Garante que a busca seja feita quando os parâmetros de paginação ou filtro mudarem
-        fetchPaginatedRecords();
-    }, [fetchPaginatedRecords]);
-
-    const handleApplyFilters = () => {
-        // Reseta para a primeira página ao aplicar novos filtros
-        setCurrentPage(1);
-        setSearchQueryToFetch(searchQuery);
-    };
-
-    const handleToggleSelect = (recordId: string) => {
-        setSelectedIds(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(recordId)) newSet.delete(recordId);
-            else newSet.add(recordId);
-            return newSet;
-        });
-    };
-
-    const handleDeleteSingleRecord = async (recordId: string) => {
-        await props.onDelete(recordId);
-        // Após a exclusão, recarrega a página atual para remover o item da visualização.
-        fetchPaginatedRecords();
-    };
-
-    const handleDeleteSelected = async () => {
-        await props.onDeleteSelected(selectedIds, fetchPaginatedRecords);
-        setSelectedIds(new Set());
-    };
-
-    const currentSelectedIds = new Set(Array.from(selectedIds).filter(id => paginatedRecords.some(r => r.id === id)));
-
-    const handlePageSizeChange = (size: string) => {
-        setPageSize(parseInt(size));
-        setCurrentPage(1);
-    }
-    
-    return (
-        <div className="history-container-wrapper">
-            <h2>Histórico Geral (Admin)</h2>
-            <div className="card report-filters" style={{ marginBottom: '1rem', padding: '1rem' }}>
-                <h3>Filtros de Busca (Busca do lado do Servidor)</h3>
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <div className="form-group">
-                        <label htmlFor="admin-search-query">Buscar por Local/Operador (Nome)</label>
-                        <input 
-                            type="search" 
-                            placeholder="Buscar por nome..." 
-                            value={searchQuery} 
-                            onChange={e => setSearchQuery(e.target.value)}
-                            id="admin-search-query" // Corrigido: Adicionado ID
-                            name="admin-search-query" // Corrigido: Adicionado Name
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="admin-start-date">Data Início</label>
-                        <input 
-                            type="date" 
-                            value={startDate} 
-                            onChange={e => setStartDate(e.target.value)} 
-                            id="admin-start-date" // Corrigido: Adicionado ID
-                            name="admin-start-date" // Corrigido: Adicionado Name
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="admin-end-date">Data Fim</label>
-                        <input 
-                            type="date" 
-                            value={endDate} 
-                            onChange={e => setEndDate(e.target.value)} 
-                            id="admin-end-date" // Corrigido: Adicionado ID
-                            name="admin-end-date" // Corrigido: Adicionado Name
-                        />
-                    </div>
-                    <button className="button button-secondary" onClick={handleApplyFilters}>Aplicar Filtros</button>
-                    {searchQueryToFetch && <p style={{ margin: 0, padding: 0, opacity: 0.7 }}>A busca atual é: "{searchQueryToFetch}"</p>}
-                </div>
-            </div>
-            
-            {isLoading ? <Loader text="Carregando Histórico..." /> : (
-                <>
-                    <HistoryView 
-                        records={paginatedRecords}
-                        onSelect={props.onSelect}
-                        isAdmin={true}
-                        onEdit={props.onEdit}
-                        onDelete={handleDeleteSingleRecord} // Usa a função local que recarrega
-                        selectedIds={currentSelectedIds}
-                        onToggleSelect={handleToggleSelect}
-                        onDeleteSelected={handleDeleteSelected}
-                        onMeasurementUpdate={props.onMeasurementUpdate}
-                    />
-
-                    <div className="pagination-controls" style={{ marginTop: '1.5rem', textAlign: 'center' }}>
-                        <p>
-                            Total de Registros: **{totalRecords}** | 
-                            Itens por Página: 
-                            <select 
-                                value={pageSize} 
-                                onChange={e => handlePageSizeChange(e.target.value)} 
-                                style={{ margin: '0 5px' }}
-                                id="page-size-select" // Corrigido: Adicionado ID
-                                name="page-size-select" // Corrigido: Adicionado Name
-                            >
-                                <option value={10}>10</option>
-                                <option value={30}>30</option>
-                                <option value={50}>50</option>
-                                <option value={100}>100</option>
-                            </select>
-                        </p>
-                        <button 
-                            className="button button-sm" 
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
-                            disabled={currentPage === 1}
-                        >
-                            &lt; Anterior
-                        </button>
-                        <span style={{ margin: '0 1rem' }}>
-                            Página **{currentPage}** de **{Math.ceil(totalRecords / pageSize) || 1}**
-                        </span>
-                        <button 
-                            className="button button-sm" 
-                            onClick={() => setCurrentPage(p => p + 1)} 
-                            disabled={currentPage >= Math.ceil(totalRecords / pageSize)}
-                        >
-                            Próxima &gt;
-                        </button>
-                    </div>
-                </>
-            )}
-        </div>
-    );
-};
-
 
 const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
     <div className="detail-view">
@@ -1434,7 +1198,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                 );
                             })}
                         </div>
-                       <footer className="pdf-page-footer">Página {pageIndex + 1} de {pages.length}</footer>
+                         <footer className="pdf-page-footer">Página {pageIndex + 1} de {pages.length}</footer>
                     </div>
                 ))}
             </div>
@@ -1464,63 +1228,40 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     }
 
     return (
-           <div className="card">
-                <button className="button button-sm button-secondary" onClick={() => setReportType(null)} style={{float: 'right'}}>Trocar Tipo</button>
-                <h2>Filtros para {reportType === 'excel' ? 'Relatório Simples' : reportType === 'billing' ? 'Relatório Final' : 'Relatório de Fotos'}</h2>
-                <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch', clear: 'both'}}>
-                    <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
-                        <div className="form-group">
-                            <label htmlFor="report-start-date">Data de Início</label>
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} id="report-start-date" name="report-start-date" />
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="report-end-date">Data Final</label>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} id="report-end-date" name="report-end-date" />
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="report-contract-group">Contrato/Cidade</label>
-                            <select value={selectedContractGroup} onChange={e => setSelectedContractGroup(e.target.value)} id="report-contract-group" name="report-contract-group">
-                                <option value="">Todos</option>
-                                {allContractGroups.map(g => <option key={g} value={g}>{g}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <fieldset className="form-group-full">
-                        <legend>Filtrar por Serviços</legend>
-                        <div className="checkbox-group">
-                            {allServiceNames.map(name => (
-                                <div key={name} className="checkbox-item">
-                                    <input type="checkbox" id={`service-${name}`} checked={selectedServices.includes(name)} onChange={e => handleServiceFilterChange(name, e.target.checked)} />
-                                    <label htmlFor={`service-${name}`}>{name}</label>
-                                </div>
-                            ))}
-                        </div>
-                    </fieldset>
+         <div className="card">
+            <button className="button button-sm button-secondary" onClick={() => setReportType(null)} style={{float: 'right'}}>Trocar Tipo</button>
+            <h2>Filtros para {reportType === 'excel' ? 'Relatório Simples' : reportType === 'billing' ? 'Relatório Final' : 'Relatório de Fotos'}</h2>
+            <div className="report-filters" style={{flexDirection: 'column', alignItems: 'stretch', clear: 'both'}}>
+                <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
+                    <div className="form-group"><label>Data de Início</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+                    <div className="form-group"><label>Data Final</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+                    <div className="form-group"><label>Contrato/Cidade</label><select value={selectedContractGroup} onChange={e => setSelectedContractGroup(e.target.value)}><option value="">Todos</option>{allContractGroups.map(g => <option key={g} value={g}>{g}</option>)}</select></div>
                 </div>
-                
-                <div className="report-summary">
-                    <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
-                    {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
-                    <div className="button-group">
-                        {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0}>Exportar para Excel</button>}
-                        {reportType === 'billing' && <button className="button" onClick={handleExportBillingExcel} disabled={selectedIds.length === 0}>Gerar Relatório Final</button>}
-                        {reportType === 'photos' && <button className="button" onClick={handleGeneratePdfClick} disabled={selectedIds.length === 0}>Gerar PDF com Fotos</button>}
-                    </div>
-                </div>
-                <ul className="report-list" style={{marginTop: '1rem'}}>
-                    {filteredRecords.length > 0 && <li><label><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === filteredRecords.length && filteredRecords.length > 0} id="select-all-records" /> Selecionar Todos</label></li>}
-                    {filteredRecords.map(record => (
-                        <li key={record.id} className="report-item">
-                            <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={e => handleSelectOne(record.id, e.target.checked)} id={`report-record-${record.id}`} />
-                            <label htmlFor={`report-record-${record.id}`} style={{display: 'none'}}>Selecionar {record.locationName}</label>
-                            <div className="report-item-info">
-                                <p><strong>{record.locationName}</strong> - {record.serviceType}</p>
-                                <p><small>{record.contractGroup} | {formatDateTime(record.startTime)}</small></p>
-                            </div>
-                        </li>
-                    ))}
-                </ul>
+                <fieldset className="form-group-full"><legend>Filtrar por Serviços</legend><div className="checkbox-group">{allServiceNames.map(name => (<div key={name} className="checkbox-item"><input type="checkbox" id={`service-${name}`} checked={selectedServices.includes(name)} onChange={e => handleServiceFilterChange(name, e.target.checked)} /><label htmlFor={`service-${name}`}>{name}</label></div>))}</div></fieldset>
             </div>
+            
+            <div className="report-summary">
+                <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
+                {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
+                <div className="button-group">
+                    {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0}>Exportar para Excel</button>}
+                    {reportType === 'billing' && <button className="button" onClick={handleExportBillingExcel} disabled={selectedIds.length === 0}>Gerar Relatório Final</button>}
+                    {reportType === 'photos' && <button className="button" onClick={handleGeneratePdfClick} disabled={selectedIds.length === 0}>Gerar PDF com Fotos</button>}
+                </div>
+            </div>
+            <ul className="report-list" style={{marginTop: '1rem'}}>
+                {filteredRecords.length > 0 && <li><label><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === filteredRecords.length && filteredRecords.length > 0} /> Selecionar Todos</label></li>}
+                {filteredRecords.map(record => (
+                    <li key={record.id} className="report-item">
+                        <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={e => handleSelectOne(record.id, e.target.checked)} />
+                        <div className="report-item-info">
+                            <p><strong>{record.locationName}</strong> - {record.serviceType}</p>
+                            <p><small>{record.contractGroup} | {formatDateTime(record.startTime)}</small></p>
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </div>
     );
 };
 
@@ -1743,8 +1484,7 @@ const ManageLocationsView: React.FC<{
             <div className="card">
                 <h3>Gerenciar Contrato/Cidade</h3>
                 <div className="form-group contract-group-selector">
-                    <label htmlFor="contract-group-select" style={{display: 'none'}}>Selecione um Contrato/Cidade</label>
-                    <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); resetForm(); }} id="contract-group-select" name="contract-group-select">
+                    <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); resetForm(); }}>
                         <option value="">Selecione um Contrato/Cidade</option>
                         {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
@@ -1760,15 +1500,13 @@ const ManageLocationsView: React.FC<{
                 <>
                     <div className="form-container card">
                         <h3>{editingId ? 'Editando Local' : 'Adicionar Novo Local'} em "{selectedGroup}"</h3>
-                        <input type="text" placeholder="Nome do Local (Endereço)" value={name} onChange={e => setName(e.target.value)} id="location-name-input" name="location-name-input" />
+                        <input type="text" placeholder="Nome do Local (Endereço)" value={name} onChange={e => setName(e.target.value)} />
                         
                         <textarea 
                             placeholder="Observações (opcional)" 
                             value={observations} 
                             onChange={e => setObservations(e.target.value)}
                             rows={3}
-                            id="location-observations" // Corrigido: Adicionado ID
-                            name="location-observations" // Corrigido: Adicionado Name
                         ></textarea>
                         
                         <fieldset className="service-assignment-fieldset">
@@ -1783,15 +1521,7 @@ const ManageLocationsView: React.FC<{
                                                 <label htmlFor={`service-loc-${service.id}`}>{service.name}</label>
                                             </div>
                                             {isChecked && (
-                                                <input 
-                                                    type="number" 
-                                                    placeholder={`Medição (${service.unit.symbol})`} 
-                                                    value={serviceMeasurements[service.id] || ''} 
-                                                    onChange={e => handleMeasurementChange(service.id, e.target.value)} 
-                                                    style={{width: '100%'}} 
-                                                    id={`measurement-input-${service.id}`} // Corrigido: Adicionado ID
-                                                    name={`measurement-input-${service.id}`} // Corrigido: Adicionado Name
-                                                />
+                                                <input type="number" placeholder={`Medição (${service.unit.symbol})`} value={serviceMeasurements[service.id] || ''} onChange={e => handleMeasurementChange(service.id, e.target.value)} style={{width: '100%'}} />
                                             )}
                                         </div>
                                     );
@@ -1802,8 +1532,8 @@ const ManageLocationsView: React.FC<{
                         <fieldset className="form-group-full">
                             <legend>Coordenadas GPS (Opcional)</legend>
                             <div className="coord-inputs">
-                                <input type="number" placeholder="Latitude" value={coords?.latitude || ''} onChange={e => handleCoordChange('latitude', e.target.value)} id="coord-latitude" name="coord-latitude" />
-                                <input type="number" placeholder="Longitude" value={coords?.longitude || ''} onChange={e => handleCoordChange('longitude', e.target.value)} id="coord-longitude" name="coord-longitude" />
+                                <input type="number" placeholder="Latitude" value={coords?.latitude || ''} onChange={e => handleCoordChange('latitude', e.target.value)} />
+                                <input type="number" placeholder="Longitude" value={coords?.longitude || ''} onChange={e => handleCoordChange('longitude', e.target.value)} />
                             </div>
                             <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '0.5rem' }}>
                                 {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
@@ -1978,10 +1708,10 @@ const ManageUsersView: React.FC<{
         <div>
             <div className="form-container card">
                 <h3>{editingId ? 'Editando Funcionário' : 'Adicionar Novo Funcionário'}</h3>
-                <input type="text" placeholder="Nome de usuário" value={username} onChange={e => setUsername(e.target.value)} id="user-username" name="user-username" />
-                <input type="email" placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} id="user-email" name="user-email" />
-                <input type="text" placeholder={editingId ? 'Nova Senha (deixe em branco para não alterar)' : 'Senha'} value={password} onChange={e => setPassword(e.target.value)} id="user-password" name="user-password" />
-                <select value={role} onChange={e => setRole(e.target.value as Role)} id="user-role-select" name="user-role-select">
+                <input type="text" placeholder="Nome de usuário" value={username} onChange={e => setUsername(e.target.value)} />
+                <input type="email" placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} />
+                <input type="text" placeholder={editingId ? 'Nova Senha (deixe em branco para não alterar)' : 'Senha'} value={password} onChange={e => setPassword(e.target.value)} />
+                <select value={role} onChange={e => setRole(e.target.value as Role)}>
                     <option value="OPERATOR">Operador</option>
                     <option value="FISCAL">Fiscalização</option>
                     <option value="ADMIN">Administrador</option>
@@ -1994,31 +1724,31 @@ const ManageUsersView: React.FC<{
                         {assignments.length > 0 && (
                              <ul className="assignment-list">
                                  {assignments.map(assign => (
-                                    <li key={assign.contractGroup} className="assignment-item">
-                                        <div className="assignment-item-info">
-                                            <strong>{assign.contractGroup}</strong>
-                                            <p>{assign.serviceNames.join(', ')}</p>
-                                        </div>
-                                        <button className="button button-sm button-danger" onClick={() => handleRemoveAssignment(assign.contractGroup)}>Remover</button>
-                                    </li>
-                                ))}
+                                     <li key={assign.contractGroup} className="assignment-item">
+                                         <div className="assignment-item-info">
+                                             <strong>{assign.contractGroup}</strong>
+                                             <p>{assign.serviceNames.join(', ')}</p>
+                                         </div>
+                                         <button className="button button-sm button-danger" onClick={() => handleRemoveAssignment(assign.contractGroup)}>Remover</button>
+                                     </li>
+                                 ))}
                              </ul>
                         )}
 
                         <div className="add-assignment-form">
                             <h4>Adicionar Nova Atribuição</h4>
-                            <select value={newAssignmentGroup} onChange={e => setNewAssignmentGroup(e.target.value)} id="new-assignment-group" name="new-assignment-group">
+                            <select value={newAssignmentGroup} onChange={e => setNewAssignmentGroup(e.target.value)}>
                                 <option value="">Selecione o Contrato/Cidade</option>
                                 {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
                             </select>
                             <div className="checkbox-group">
                                 {allServices.map(service => (
-                                   <div key={service.id} className="checkbox-item">
-                                       <input type="checkbox" id={`service-assign-${service.id}`} 
-                                            checked={newAssignmentServices.has(service.name)} 
-                                            onChange={e => handleServiceCheckbox(service.name, e.target.checked)} />
-                                       <label htmlFor={`service-assign-${service.id}`}>{service.name}</label>
-                                   </div>
+                                 <div key={service.id} className="checkbox-item">
+                                     <input type="checkbox" id={`service-assign-${service.id}`} 
+                                         checked={newAssignmentServices.has(service.name)} 
+                                         onChange={e => handleServiceCheckbox(service.name, e.target.checked)} />
+                                     <label htmlFor={`service-assign-${service.id}`}>{service.name}</label>
+                                 </div>
                                 ))}
                             </div>
                             <button type="button" className="button button-sm" onClick={handleAddAssignment}>Adicionar Atribuição</button>
@@ -2184,18 +1914,18 @@ const GoalsAndChartsView: React.FC<{
                     <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
                         <div className="form-group">
                             <label htmlFor="start-date-chart">Data de Início</label>
-                            <input id="start-date-chart" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} name="start-date-chart" />
+                            <input id="start-date-chart" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
                         </div>
                         <div className="form-group">
                             <label htmlFor="end-date-chart">Data Final</label>
-                            <input id="end-date-chart" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} name="end-date-chart" />
+                            <input id="end-date-chart" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
                         </div>
                     </div>
                     <fieldset className="form-group-full">
                         <legend>Comparar Contratos</legend>
                         <div className="button-group" style={{justifyContent: 'flex-start', marginBottom: '1rem'}}>
-                            <button className="button button-sm" onClick={() => setSelectedContracts(allContractGroups)}>Selecionar Todos</button>
-                            <button className="button button-sm button-secondary" onClick={() => setSelectedContracts([])}>Limpar Seleção</button>
+                           <button className="button button-sm" onClick={() => setSelectedContracts(allContractGroups)}>Selecionar Todos</button>
+                           <button className="button button-sm button-secondary" onClick={() => setSelectedContracts([])}>Limpar Seleção</button>
                         </div>
                         <div className="checkbox-group">
                             {allContractGroups.map(group => (
@@ -2227,18 +1957,18 @@ const GoalsAndChartsView: React.FC<{
             
             <div className="form-container card">
                 <h3>{editingIdGoal ? 'Editando Meta' : 'Adicionar Nova Meta'}</h3>
-                <select value={serviceIdGoal} onChange={e => setServiceIdGoal(e.target.value)} id="goal-service-select" name="goal-service-select">
+                <select value={serviceIdGoal} onChange={e => setServiceIdGoal(e.target.value)}>
                     <option value="">Selecione um Serviço</option>
                     {services.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                 </select>
-                <input list="goal-contract-groups" placeholder="Digite ou selecione um Contrato/Cidade" value={contractGroupGoal} onChange={e => setContractGroupGoal(e.target.value)} id="goal-contract-group-input" name="goal-contract-group-input" />
+                <input list="goal-contract-groups" placeholder="Digite ou selecione um Contrato/Cidade" value={contractGroupGoal} onChange={e => setContractGroupGoal(e.target.value)} />
                 <datalist id="goal-contract-groups">
                     {allContractGroups.map(g => <option key={g} value={g} />)}
                 </datalist>
-                <input type="month" value={monthGoal} onChange={e => setMonthGoal(e.target.value)} id="goal-month-input" name="goal-month-input" />
-                <input type="number" placeholder="Meta de Medição" value={targetAreaGoal} onChange={e => setTargetAreaGoal(e.target.value)} id="goal-target-area" name="goal-target-area" />
+                <input type="month" value={monthGoal} onChange={e => setMonthGoal(e.target.value)} />
+                <input type="number" placeholder="Meta de Medição" value={targetAreaGoal} onChange={e => setTargetAreaGoal(e.target.value)} />
                 <button className="button admin-button" onClick={handleSaveGoal}>{editingIdGoal ? 'Salvar Alterações' : 'Adicionar Meta'}</button>
                 {editingIdGoal && <button className="button button-secondary" onClick={resetFormGoal}>Cancelar Edição</button>}
             </div>
@@ -2394,49 +2124,41 @@ const AdminEditRecordView: React.FC<{
         <div className="card edit-form-container">
             <h3>{isOperator ? 'Adicionar Fotos/Informações' : 'Editar Registro de Serviço'}</h3>
             <div className="form-group">
-                <label htmlFor="edit-location-name">Nome do Local</label>
+                <label>Nome do Local</label>
                 <input
                     type="text"
                     value={formData.locationName}
                     onChange={e => handleChange("locationName", e.target.value)}
                     readOnly={isOperator}
-                    id="edit-location-name" // Corrigido: Adicionado ID
-                    name="edit-location-name" // Corrigido: Adicionado Name
                 />
             </div>
 
             <div className="form-group">
-                <label htmlFor="edit-service-type">Tipo de Serviço</label>
+                <label>Tipo de Serviço</label>
                 <input
                     type="text"
                     value={formData.serviceType}
                     onChange={e => handleChange("serviceType", e.target.value)}
                     readOnly={isOperator}
-                    id="edit-service-type" // Corrigido: Adicionado ID
-                    name="edit-service-type" // Corrigido: Adicionado Name
                 />
             </div>
 
             <div className="form-group">
-                <label htmlFor="edit-location-area">Medição ({formData.serviceUnit})</label>
+                <label>Medição ({formData.serviceUnit})</label>
                 <input
                     type="number"
                     value={formData.locationArea || ''}
                     onChange={e => handleChange("locationArea", parseFloat(e.target.value) || 0)}
                     readOnly={isOperator}
-                    id="edit-location-area" // Corrigido: Adicionado ID
-                    name="edit-location-area" // Corrigido: Adicionado Name
                 />
             </div>
 
             <div className="form-group">
-                <label htmlFor="edit-service-unit">Unidade</label>
+                <label>Unidade</label>
                 <select
                     value={formData.serviceUnit}
                     onChange={e => handleChange("serviceUnit", e.target.value as 'm²' | 'm linear')}
                     disabled={isOperator}
-                    id="edit-service-unit" // Corrigido: Adicionado ID
-                    name="edit-service-unit" // Corrigido: Adicionado Name
                 >
                     <option value="m²">m²</option>
                     <option value="m linear">m linear</option>
@@ -2444,38 +2166,32 @@ const AdminEditRecordView: React.FC<{
             </div>
 
             <div className="form-group">
-                <label htmlFor="edit-contract-group">Contrato/Cidade</label>
+                <label>Contrato/Cidade</label>
                 <input
                     type="text"
                     value={formData.contractGroup}
                     onChange={e => handleChange("contractGroup", e.target.value)}
                     readOnly={isOperator}
-                    id="edit-contract-group" // Corrigido: Adicionado ID
-                    name="edit-contract-group" // Corrigido: Adicionado Name
                 />
             </div>
 
             <div className="form-group">
-                <label htmlFor="edit-start-time">Início</label>
+                <label>Início</label>
                 <input
                     type="datetime-local"
                     value={formData.startTime ? new Date(new Date(formData.startTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
                     onChange={e => handleChange("startTime", new Date(e.target.value).toISOString())}
                     readOnly={isOperator}
-                    id="edit-start-time" // Corrigido: Adicionado ID
-                    name="edit-start-time" // Corrigido: Adicionado Name
                 />
             </div>
 
             <div className="form-group">
-                <label htmlFor="edit-end-time">Fim</label>
+                <label>Fim</label>
                 <input
                     type="datetime-local"
                     value={formData.endTime ? new Date(new Date(formData.endTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
                     onChange={e => handleChange("endTime", new Date(e.target.value).toISOString())}
                     readOnly={isOperator}
-                    id="edit-end-time" // Corrigido: Adicionado ID
-                    name="edit-end-time" // Corrigido: Adicionado Name
                 />
             </div>
 
@@ -2502,7 +2218,6 @@ const AdminEditRecordView: React.FC<{
                     multiple
                     onChange={e => handlePhotoUpload("BEFORE", e.target.files)}
                     style={{display: 'none'}}
-                    name="before-upload" // Corrigido: Adicionado Name
                 />
             </div>
 
@@ -2529,7 +2244,6 @@ const AdminEditRecordView: React.FC<{
                     multiple
                     onChange={e => handlePhotoUpload("AFTER", e.target.files)}
                     style={{display: 'none'}}
-                    name="after-upload" // Corrigido: Adicionado Name
                 />
             </div>
 
@@ -2749,8 +2463,8 @@ const ManageServicesView: React.FC<{
             <div className="card">
                 <h3>Gerenciar Unidades de Medida</h3>
                 <div className="form-container add-service-form" style={{alignItems: 'flex-end'}}>
-                    <input type="text" placeholder="Nome da Unidade (ex: Horas)" value={unitName} onChange={e => setUnitName(e.target.value)} id="unit-name-input" name="unit-name-input" />
-                    <input type="text" placeholder="Símbolo (ex: h)" value={unitSymbol} onChange={e => setUnitSymbol(e.target.value)} style={{flexGrow: 0, width: '100px'}} id="unit-symbol-input" name="unit-symbol-input" />
+                    <input type="text" placeholder="Nome da Unidade (ex: Horas)" value={unitName} onChange={e => setUnitName(e.target.value)} />
+                    <input type="text" placeholder="Símbolo (ex: h)" value={unitSymbol} onChange={e => setUnitSymbol(e.target.value)} style={{flexGrow: 0, width: '100px'}}/>
                     <button className="button admin-button" onClick={handleSaveUnit} disabled={isLoading}>
                         {editingUnitId ? 'Salvar' : 'Adicionar'}
                     </button>
@@ -2772,8 +2486,8 @@ const ManageServicesView: React.FC<{
             <div className="card" style={{ marginTop: '2rem' }}>
                 <h3>Gerenciar Tipos de Serviço</h3>
                 <div className="form-container add-service-form" style={{alignItems: 'flex-end'}}>
-                    <input type="text" placeholder="Nome do Serviço" value={serviceName} onChange={e => setServiceName(e.target.value)} id="service-name-input" name="service-name-input" />
-                    <select value={selectedUnitId} onChange={e => setSelectedUnitId(e.target.value)} id="service-unit-select" name="service-unit-select">
+                    <input type="text" placeholder="Nome do Serviço" value={serviceName} onChange={e => setServiceName(e.target.value)} />
+                    <select value={selectedUnitId} onChange={e => setSelectedUnitId(e.target.value)}>
                         <option value="">Selecione uma unidade</option>
                         {units.map(unit => (
                             <option key={unit.id} value={unit.id}>
@@ -2802,6 +2516,8 @@ const ManageServicesView: React.FC<{
     );
 };
 
+// Substitua o componente App inteiro, do começo ao fim, por este código:
+
 // --- Função auxiliar para determinar a view inicial ---
 const getInitialView = (): View => {
     const path = window.location.pathname;
@@ -2816,8 +2532,7 @@ const App = () => {
     const [currentUser, setCurrentUser] = useLocalStorage<User | null>('crbCurrentUser', null);
     const [users, setUsers] = useState<User[]>([]);
     const [locations, setLocations] = useState<LocationRecord[]>([]);
-    // `records` é mantido para REPORTS/GOALS/OPERATOR/FISCAL, mas não para o Histórico Admin
-    const [records, setRecords] = useState<ServiceRecord[]>([]); 
+    const [records, setRecords] = useState<ServiceRecord[]>([]);
     const [services, setServices] = useState<ServiceDefinition[]>([]);
     const [contractConfigs, setContractConfigs] = useState<ContractConfig[]>([]);
     const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
@@ -2827,9 +2542,16 @@ const App = () => {
     const [selectedLocation, setSelectedLocation] = useState<(LocationRecord & { _gpsUsed?: boolean }) | null>(null);
     const [history, setHistory] = useState<View[]>([]);
     const [isLoading, setIsLoading] = useState<string | null>(null);
-    // Não precisa de selectedRecordIds no App, pois ele é gerenciado dentro do AdminHistoryContainer
+    const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
 
-    // Removida a função handleToggleRecordSelection do App, pois é movida para AdminHistoryContainer
+    const handleToggleRecordSelection = (recordId: string) => {
+        setSelectedRecordIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(recordId)) newSet.delete(recordId);
+            else newSet.add(recordId);
+            return newSet;
+        });
+    };
     
     const addAuditLogEntry = async (action: 'UPDATE' | 'DELETE' | 'ADJUST_MEASUREMENT', details: string, recordId?: string) => {
         if (!currentUser || currentUser.role !== 'ADMIN') return;
@@ -2848,12 +2570,13 @@ const App = () => {
         catch (error) { console.error("Failed to fetch audit log", error); }
     };
 
-    const handleDeleteSelectedRecords = async (selectedIds: Set<string>, refresh: () => Promise<void>) => {
-        if (selectedIds.size === 0 || !window.confirm(`Tem certeza que deseja excluir os ${selectedIds.size} registros selecionados?`)) return;
+    const handleDeleteSelectedRecords = async () => {
+        if (selectedRecordIds.size === 0 || !window.confirm(`Tem certeza que deseja excluir os ${selectedRecordIds.size} registros selecionados?`)) return;
         setIsLoading("Excluindo registros...");
         try {
-            await Promise.all(Array.from(selectedIds).map(id => apiFetch(`/api/records/${id}`, { method: 'DELETE' })));
-            await refresh(); // Recarrega os dados do AdminHistoryContainer
+            await Promise.all(Array.from(selectedRecordIds).map(id => apiFetch(`/api/records/${id}`, { method: 'DELETE' })));
+            setRecords(prev => prev.filter(r => !selectedRecordIds.has(r.id)));
+            setSelectedRecordIds(new Set());
             alert("Registros excluídos com sucesso.");
         } catch (e) {
             alert("Falha ao excluir um ou mais registros.");
@@ -2897,26 +2620,25 @@ const App = () => {
     };
 
     const handleLogout = () => {
-          setCurrentUser(null);
-          setApiToken(null);
-          setHistory([]);
-          setSelectedContractGroup(null);
-          setSelectedLocation(null);
-          setCurrentService({});
-          setLocations([]);
-          setRecords([]);
-          setUsers([]);
-          navigate('LOGIN', true);
+         setCurrentUser(null);
+         setApiToken(null);
+         setHistory([]);
+         setSelectedContractGroup(null);
+         setSelectedLocation(null);
+         setCurrentService({});
+         setLocations([]);
+         setRecords([]);
+         setUsers([]);
+         navigate('LOGIN', true);
     }
 
-    // A busca de dados completa, **exceto** para o histórico Admin, que será Server-Side.
     const fetchData = async () => {
         if (!currentUser) return;
         setIsLoading('Carregando dados...');
         try {
-            // Chamadas para dados globais (Locations, Services, Configs, Users, Logs)
-            const [locs, srvs, configs, usrs, logs] = await Promise.all([
+            const [locs, recs, srvs, configs, usrs, logs] = await Promise.all([
                 apiFetch(`/api/locations?t=${Date.now()}`),
+                apiFetch(`/api/records?t=${Date.now()}`),
                 apiFetch(`/api/services?t=${Date.now()}`),
                 apiFetch('/api/contract-configs'),
                 currentUser.role === 'ADMIN' ? apiFetch('/api/users') : Promise.resolve(null),
@@ -2926,24 +2648,19 @@ const App = () => {
             setLocations(locs.map((l: any) => ({ ...l, id: String(l.id), services: (l.services || []).map((s: any) => ({ ...s, serviceId: String(s.serviceId) })) })));
             setServices(srvs.map((s: any) => ({...s, id: String(s.id), unitId: String(s.unitId) })));
             setContractConfigs(configs || []);
-            if (currentUser.role === 'ADMIN') {
-                 if (usrs) setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
-                 if(logs) setAuditLog(logs);
-            }
             
-            // BUSCA DE RECORDS: MANTIDA APENAS PARA OPERADOR/FISCAL e para as views REPORTS/GOALS (que não usam paginação)
-            const recs = await apiFetch(`/api/records?t=${Date.now()}&onlyRecords=true`); // Adicionado onlyRecords para evitar paginação neste fetch
             const mapRecord = (r: any) => ({ ...r, id: String(r.id), operatorId: String(r.operatorId), locationId: r.locationId ? String(r.locationId) : undefined });
 
             if (currentUser.role === 'ADMIN') {
-                 setRecords(recs.map(mapRecord));
+                setRecords(recs.map(mapRecord));
+                if (usrs) setUsers(usrs.map((u: any) => ({...u, id: String(u.id), username: u.name })));
+                if(logs) setAuditLog(logs);
             } else if (currentUser.role === 'OPERATOR') {
                 setRecords(recs.filter((r: any) => String(r.operatorId) === String(currentUser.id)).map(mapRecord));
             } else {
                 const fiscalGroups = new Set(currentUser.assignments?.map(a => a.contractGroup) || []);
                 setRecords(recs.filter((r: any) => fiscalGroups.has(r.contractGroup)).map(mapRecord));
             }
-
         } catch (error) {
             console.error("Failed to fetch data", error);
             alert("Não foi possível carregar os dados do servidor.");
@@ -3006,7 +2723,7 @@ const App = () => {
         }
 
         setCurrentService({
-            serviceId: parseInt(service.id), 
+            serviceId: parseInt(service.id), // <-- ALTERAÇÃO AQUI
             serviceType: service.name,
             serviceUnit: service.unit.symbol,
             contractGroup: selectedLocation.contractGroup,
@@ -3033,7 +2750,7 @@ const App = () => {
         if (today.getDate() < cycleStartDay) cycleStartDate.setMonth(cycleStartDate.getMonth() - 1);
         cycleStartDate.setHours(0, 0, 0, 0);
 
-        const existingRecord = records.find(r => r.locationId === selectedLocation.id && r.serviceType === service.name && r.startTime && new Date(r.startTime) >= cycleStartDate);
+        const existingRecord = records.find(r => r.locationId === selectedLocation.id && r.serviceType === service.name && new Date(r.startTime) >= cycleStartDate);
 
         if (existingRecord) {
             if (window.confirm("Este serviço já foi feito neste ciclo.\n\nOK = Iniciar NOVO registro.\nCancelar = Adicionar fotos 'Depois' ao existente.")) {
@@ -3050,8 +2767,9 @@ const App = () => {
     const handleBeforePhotos = async (photosBefore: string[]) => {
         setIsLoading("Preparando registro...");
         try {
-            const recordPayload: Partial<ServiceRecord> & {operatorId: string, tempId: string} = {
+            const recordPayload = {
                 operatorId: currentUser!.id,
+                serviceId: currentService.serviceId, // <-- ALTERAÇÃO AQUI
                 serviceType: currentService.serviceType,
                 serviceUnit: currentService.serviceUnit,
                 locationId: currentService.locationId,
@@ -3061,22 +2779,8 @@ const App = () => {
                 gpsUsed: !!currentService.gpsUsed,
                 startTime: new Date().toISOString(),
                 tempId: crypto.randomUUID(),
+                newLocationInfo: !currentService.locationId ? { name: currentService.locationName, city: currentService.contractGroup, lat: currentService.coords?.latitude, lng: currentService.coords?.longitude, services: [{ service_id: services.find(s => s.name === currentService.serviceType)?.id, measurement: currentService.locationArea }] } : undefined
             };
-            
-            // Adicionar info de novo local se for o caso
-            if (!currentService.locationId) {
-                (recordPayload as any).newLocationInfo = { 
-                    name: currentService.locationName, 
-                    city: currentService.contractGroup, 
-                    lat: currentService.coords?.latitude, 
-                    lng: currentService.coords?.longitude, 
-                    services: [{ 
-                        service_id: services.find(s => s.name === currentService.serviceType)?.id, 
-                        measurement: currentService.locationArea 
-                    }] 
-                };
-            }
-            
             const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
             await queueRecord(recordPayload, beforeFiles);
             setCurrentService(prev => ({ ...prev, ...recordPayload, id: recordPayload.tempId, beforePhotos: photosBefore }));
@@ -3139,7 +2843,7 @@ const App = () => {
             try {
                 setIsLoading("Excluindo registro...");
                 await apiFetch(`/api/records/${recordId}`, { method: 'DELETE' });
-                // Não atualiza o estado records aqui, pois AdminHistoryContainer irá recarregar.
+                setRecords(prev => prev.filter(r => r.id !== recordId));
                 alert("Registro excluído com sucesso.");
             } catch(e) {
                 alert("Falha ao excluir o registro.");
@@ -3155,10 +2859,6 @@ const App = () => {
                 body: JSON.stringify({ overrideMeasurement: newMeasurementValue }),
             });
             setRecords(prevRecords => prevRecords.map(r => r.id === String(recordId) ? { ...r, ...response } : r));
-            // Adicionar ao log de auditoria
-            const record = records.find(r => r.id === String(recordId));
-            const details = `Medição ajustada para ${newMeasurementValue} ${record?.serviceUnit || ''}. Local: ${record?.locationName}. Operador: ${record?.operatorName}.`;
-            await addAuditLogEntry('ADJUST_MEASUREMENT', details, String(recordId));
         } catch (error) {
             console.error("Erro ao salvar medição:", error);
             alert('Não foi possível salvar a medição ajustada.');
@@ -3180,18 +2880,7 @@ const App = () => {
                     case 'ADMIN_MANAGE_GOALS': return <GoalsAndChartsView records={records} locations={locations} services={services} />;
                     case 'ADMIN_MANAGE_CYCLES': return <ManageCyclesView locations={locations} configs={contractConfigs} fetchData={fetchData} />;
                     case 'REPORTS': return <ReportsView records={records} services={services} />;
-                    // USANDO O NOVO CONTAINER COM PAGINAÇÃO SERVER-SIDE
-                    case 'HISTORY': 
-                        return (
-                            <AdminHistoryContainer 
-                                onSelect={handleSelectRecord} 
-                                onEdit={handleEditRecord} 
-                                onDelete={handleDeleteRecord} 
-                                onDeleteSelected={handleDeleteSelectedRecords} 
-                                onMeasurementUpdate={handleMeasurementUpdate} 
-                                addAuditLogEntry={addAuditLogEntry}
-                            />
-                        );
+                    case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} selectedIds={selectedRecordIds} onToggleSelect={handleToggleRecordSelection} onDeleteSelected={handleDeleteSelectedRecords} onMeasurementUpdate={handleMeasurementUpdate} />;
                     case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
                     case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado.</p>;
                     case 'AUDIT_LOG': return <AuditLogView log={auditLog} />;
