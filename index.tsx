@@ -77,7 +77,7 @@ interface LocationServiceDetail { serviceId: string; name: string; measurement: 
 interface UserAssignment { contractGroup: string; serviceNames: string[]; }
 interface User { id: string; username: string; email?: string; password?: string; role: Role; assignments?: UserAssignment[]; }
 interface GeolocationCoords { latitude: number; longitude: number; }
-interface LocationRecord { id: string; contractGroup: string; name: string; observations?: string; coords?: GeolocationCoords; services?: LocationServiceDetail[]; }
+interface LocationRecord { id: string; contractGroup: string; name: string; observations?: string; coords?: GeolocationCoords; services?: LocationServiceDetail[]; parentId?: string | null; isGroup?: boolean; }
 interface ServiceRecord {
     id: string; operatorId: string; operatorName: string; serviceType: string; serviceUnit: string;
     locationId?: string; locationName: string; contractGroup: string; locationArea?: number;
@@ -85,6 +85,8 @@ interface ServiceRecord {
     tempId?: string; coords?: GeolocationCoords;
     observations?: string;
     overrideMeasurement?: number;
+    serviceId?: number;
+    serviceOrderNumber?: string;
 }
 interface Goal {
   id: string;
@@ -407,7 +409,6 @@ const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: ()
     <div className="dashboard-container">
         <div className="admin-dashboard">
             <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
-            <button className="button" onClick={() => onNavigate('HISTORY')}>📖 Histórico de Serviços</button>
         </div>
         <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
     </div>
@@ -439,7 +440,8 @@ const OperatorServiceSelect: React.FC<{
     onSelectService: (service: ServiceDefinition, measurement?: number) => void;
     records: ServiceRecord[];
     contractConfigs: ContractConfig[];
-}> = ({ location, services, user, onSelectService, records, contractConfigs }) => {
+    locations: LocationRecord[];
+}> = ({ location, services, user, onSelectService, records, contractConfigs, locations }) => {
 
     const isManualLocation = location.id.startsWith('manual-');
 
@@ -464,9 +466,17 @@ const OperatorServiceSelect: React.FC<{
         const assignment = user.assignments?.find(a => a.contractGroup === location.contractGroup);
         const assignedServiceNames = new Set(assignment?.serviceNames || []);
         
+        let servicesForLocation: LocationServiceDetail[] = [];
+        if (location.parentId) {
+            const parentLocation = locations.find(l => l.id === location.parentId);
+            servicesForLocation = parentLocation?.services || [];
+        } else {
+            servicesForLocation = location.services || [];
+        }
+
         const relevantServices = isManualLocation 
             ? services.filter(s => assignedServiceNames.has(s.name))
-            : services.filter(s => (location.services || []).some(ls => ls.serviceId === s.id));
+            : services.filter(s => servicesForLocation.some(ls => ls.serviceId === s.id));
 
         if (isManualLocation) {
             return relevantServices.map(service => ({ ...service, status: 'pending' }));
@@ -522,7 +532,7 @@ const OperatorServiceSelect: React.FC<{
                             {service.status === 'done' ? (
                                 <span style={{color: 'green', fontSize: '1.5rem'}}>✅</span>
                             ) : (
-                                <span style={{color: '#f0ad4e', fontSize: '1.5rem'}}>⚠️</span>
+                                <span style={{color: '#f0ad4e', fontSize: '1.rem'}}>⚠️</span>
                             )}
                         </button>
                     ))
@@ -537,14 +547,11 @@ const OperatorLocationSelect: React.FC<{
     contractGroup: string;
     onSelectLocation: (loc: LocationRecord, gpsUsed: boolean) => void;
 }> = ({ locations, contractGroup, onSelectLocation }) => {
-    const [manualLocationName, setManualLocationName] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [gpsLocation, setGpsLocation] = useState<GeolocationCoords | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [nearbyLocation, setNearbyLocation] = useState<LocationRecord | null>(null);
+
     const contractLocations = locations.filter(l => l.contractGroup === contractGroup);
-    
-    const [isFetchingCoords, setIsFetchingCoords] = useState(false);
 
     useEffect(() => {
         const watchId = navigator.geolocation.watchPosition(
@@ -552,109 +559,100 @@ const OperatorLocationSelect: React.FC<{
                 const currentCoords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
                 setGpsLocation(currentCoords);
                 setError(null);
-                const closest = contractLocations
-                    .filter(l => l.coords)
-                    .map(l => ({ ...l, distance: calculateDistance(currentCoords, l.coords!) }))
-                    .filter(l => l.distance < 100)
-                    .sort((a, b) => a.distance - b.distance)[0];
-                setNearbyLocation(closest || null);
             },
             (err) => setError('Não foi possível obter a localização GPS.'),
             { enableHighAccuracy: true }
         );
         return () => navigator.geolocation.clearWatch(watchId);
     }, [contractLocations]);
-    
-    const handleGetCoordinates = () => {
-        setIsFetchingCoords(true);
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const newCoords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-                setGpsLocation(newCoords);
-                setIsFetchingCoords(false);
-                alert('Coordenadas GPS capturadas com sucesso!');
-            },
-            (error) => {
-                alert(`Erro ao obter GPS: ${error.message}`);
-                setIsFetchingCoords(false);
-            },
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
-    };
 
-    const handleConfirmNearby = () => {
-        if(nearbyLocation) { onSelectLocation(nearbyLocation, true); }
-    };
-    
-    const handleConfirmNewManual = () => {
-        if (manualLocationName.trim()) {
-            const newManualLocation: LocationRecord = { 
-                id: `manual-${new Date().getTime()}`, 
-                name: manualLocationName.trim(), 
-                contractGroup: contractGroup, 
-                coords: gpsLocation || undefined,
-                services: [] 
-            };
-            onSelectLocation(newManualLocation, !!gpsLocation);
-        } else {
-            alert('Por favor, digite o nome do novo local.');
-        }
-    };
-    
     const handleSelectFromList = (loc: LocationRecord) => {
         onSelectLocation(loc, false);
     };
+
+    const handleAddNewStreet = (parentLocation: LocationRecord) => {
+        const streetName = prompt(`Digite o nome da NOVA RUA para o bairro "${parentLocation.name}":`);
+        if (streetName && streetName.trim()) {
+            const newStreetLocation: LocationRecord = {
+                id: `manual-${new Date().getTime()}`,
+                name: streetName.trim(),
+                contractGroup: contractGroup,
+                parentId: parentLocation.id,
+                coords: gpsLocation || undefined,
+                services: []
+            };
+            onSelectLocation(newStreetLocation, !!gpsLocation);
+        }
+    };
     
-    const filteredLocations = contractLocations.filter(loc =>
-        loc.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Processar locais para criar uma estrutura hierárquica
+    const topLevelLocations = contractLocations.filter(l => !l.parentId);
+    const childrenMap = contractLocations.reduce((acc, loc) => {
+        if (loc.parentId) {
+            if (!acc[loc.parentId]) acc[loc.parentId] = [];
+            acc[loc.parentId].push(loc);
+        }
+        return acc;
+    }, {} as Record<string, LocationRecord[]>);
+
+    const filteredTopLevel = topLevelLocations.filter(loc => loc.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
     return (
         <div className="card">
             <h2>Selecione o Local em "{contractGroup}"</h2>
             {error && <p className="text-danger">{error}</p>}
             
-            {nearbyLocation && (
-                <div className="card-inset">
-                    <h4>Local Próximo Encontrado via GPS</h4>
-                    <p><strong>{nearbyLocation.name}</strong></p>
-                    <p>Você está neste local?</p>
-                    <button className="button" onClick={handleConfirmNearby}>Sim, Confirmar e Continuar</button>
-                </div>
-            )}
-            <div className="card-inset">
-                <h4>Ou, busque na lista</h4>
-                <input type="search" placeholder="Digite para buscar um local..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{marginBottom: '1rem'}} />
-                <div className="location-selection-list">
-                    {filteredLocations.length > 0 ? filteredLocations.map(loc => (
-                        <button key={loc.id} className="button button-secondary location-button-with-obs" onClick={() => handleSelectFromList(loc)}>
-                            <span className="location-name">{loc.name}</span>
-                            {loc.observations && <span className="location-observation">Obs: {loc.observations}</span>}
-                        </button>
-                    )) : <p>Nenhum local encontrado com esse nome.</p>}
-                </div>
+            <input type="search" placeholder="Buscar por bairro ou endereço..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{marginBottom: '1rem'}} />
+            
+            <div className="location-selection-list">
+                {filteredTopLevel.length > 0 ? filteredTopLevel.map(loc => {
+                    const children = childrenMap[loc.id] || [];
+                    const isNeighborhood = loc.isGroup; // Use explicit 'isGroup' flag
+
+                    if (isNeighborhood) {
+                        return (
+                            <details key={loc.id} style={{marginBottom: '0.5rem'}}>
+                                <summary className="button button-secondary location-button-with-obs" style={{width: '100%', textAlign: 'left', cursor: 'pointer'}}>
+                                    <span className="location-name">Bairro: {loc.name}</span>
+                                    {loc.observations && <span className="location-observation">Obs: {loc.observations}</span>}
+                                </summary>
+                                <div style={{padding: '0.5rem 0.5rem 0.5rem 1.5rem', borderLeft: '2px solid var(--medium-gray-color)'}}>
+                                    {children.map(street => (
+                                        <button key={street.id} className="button button-secondary location-button-with-obs" onClick={() => handleSelectFromList(street)} style={{marginBottom: '0.5rem'}}>
+                                            <span className="location-name">{street.name}</span>
+                                            {street.observations && <span className="location-observation">Obs: {street.observations}</span>}
+                                        </button>
+                                    ))}
+                                    <button className="button button-sm" onClick={() => handleAddNewStreet(loc)}>+ Adicionar Nova Rua</button>
+                                </div>
+                            </details>
+                        )
+                    } else { // It's a simple, top-level address
+                        return (
+                             <button key={loc.id} className="button button-secondary location-button-with-obs" onClick={() => handleSelectFromList(loc)}>
+                                <span className="location-name">{loc.name}</span>
+                                {loc.observations && <span className="location-observation">Obs: {loc.observations}</span>}
+                            </button>
+                        )
+                    }
+                }) : <p>Nenhum local encontrado.</p>}
             </div>
-            <div className="card-inset">
-                <h4>Ou, crie um novo local</h4>
-                <input type="text" placeholder="Digite o nome do NOVO local" value={manualLocationName} onChange={e => setManualLocationName(e.target.value)} />
-                
-                <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '1rem', width: '100%' }}>
-                    {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
-                </button>
-                {gpsLocation && <p style={{textAlign: 'center', fontSize: '0.8rem', color: 'green'}}>Coordenadas GPS prontas para serem salvas com o novo local.</p>}
-                
-                <button className="button" onClick={handleConfirmNewManual} disabled={!manualLocationName.trim()} style={{ marginTop: '1rem', width: '100%' }}>
-                    Confirmar Novo Local
+             <div className="card-inset">
+                <h4>Não encontrou? Crie um endereço único</h4>
+                 <button className="button" onClick={() => handleAddNewStreet({id: 'manual-root', name:'Novo Local Avulso', contractGroup})}>
+                    Criar Novo Local Avulso
                 </button>
             </div>
         </div>
     );
 };
 
-const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: string[]) => void; onCancel: () => void }> = ({ phase, onComplete, onCancel }) => {
+
+const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: string[], serviceOrderNumber?: string) => void; onCancel: () => void }> = ({ phase, onComplete, onCancel }) => {
     const [photos, setPhotos] = useState<string[]>([]);
     const [isTakingPhoto, setIsTakingPhoto] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [serviceOrderNumber, setServiceOrderNumber] = useState('');
     const title = phase === 'BEFORE' ? 'Fotos Iniciais ("Antes")' : 'Fotos Finais ("Depois")';
     const instruction = `Capture fotos do local ${phase === 'BEFORE' ? 'antes' : 'após'} o serviço. Tire quantas quiser. Pressione 'Encerrar' quando terminar.`;
 
@@ -685,6 +683,20 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
         <div className="card">
             <h2>{title}</h2>
             <p>{instruction}</p>
+
+            {phase === 'BEFORE' && (
+                <div className="form-container" style={{marginBottom: '1rem'}}>
+                    <label htmlFor="service-order-input" style={{textAlign: 'left', fontWeight: 500}}>Número da Ordem de Serviço (Opcional)</label>
+                    <input
+                        id="service-order-input"
+                        type="text"
+                        placeholder="Digite o número da O.S."
+                        value={serviceOrderNumber}
+                        onChange={(e) => setServiceOrderNumber(e.target.value)}
+                    />
+                </div>
+            )}
+
             <div className="photo-section">
                 <h3>Fotos Capturadas ({photos.length})</h3>
                 <div className="photo-gallery">
@@ -698,7 +710,7 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
             </div>
             <div style={{display: 'flex', gap: '1rem', marginTop: '1rem'}}>
                 <button className="button button-danger" onClick={onCancel}>Cancelar</button>
-                <button className="button button-success" onClick={() => onComplete(photos)} disabled={photos.length === 0}>✅ Encerrar Captação</button>
+                <button className="button button-success" onClick={() => onComplete(photos, serviceOrderNumber)} disabled={photos.length === 0}>✅ Encerrar Captação</button>
             </div>
         </div>
     );
@@ -710,12 +722,14 @@ const ConfirmStep: React.FC<{ recordData: Partial<ServiceRecord>; onSave: () => 
         <div className="detail-section" style={{textAlign: 'left'}}>
             <p><strong>Contrato/Cidade:</strong> {recordData.contractGroup}</p>
             <p><strong>Serviço:</strong> {recordData.serviceType}</p>
+            {recordData.serviceOrderNumber && <p><strong>Ordem de Serviço:</strong> {recordData.serviceOrderNumber}</p>}
             <p><strong>Local:</strong> {recordData.locationName} {recordData.gpsUsed && '📍(GPS)'}</p>
             <p><strong>Data/Hora:</strong> {formatDateTime(new Date().toISOString())}</p>
             {recordData.locationArea ? <p><strong>Metragem:</strong> {recordData.locationArea} {recordData.serviceUnit}</p> : <p><strong>Metragem:</strong> Não informada (novo local)</p>}
             <p>O registro e as fotos foram salvos e enviados ao servidor.</p>
         </div>
         <div className="button-group">
+            <button className="button button-secondary" onClick={onCancel}>Voltar ao Início</button>
             <button className="button button-success" onClick={onSave}>✅ Concluir</button>
         </div>
     </div>
@@ -777,6 +791,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
                             <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer'}}>
                                 <p><strong>Local:</strong> {record.locationName}, {record.contractGroup} {record.gpsUsed && <span className="gps-indicator">📍</span>}</p>
                                 <p><strong>Serviço:</strong> {record.serviceType}</p>
+                                {record.serviceOrderNumber && <p><strong>O.S.:</strong> {record.serviceOrderNumber}</p>}
                                 <p><strong>Data:</strong> {formatDateTime(record.startTime)}</p>
                                 {isAdmin && <p><strong>Operador:</strong> {record.operatorName}</p>}
                                 <p><strong>Medição: </strong> 
@@ -822,6 +837,7 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
             <h3>Resumo</h3>
             <p><strong>Contrato/Cidade:</strong> {record.contractGroup}</p>
             <p><strong>Local:</strong> {record.locationName} {record.gpsUsed && <span className='gps-indicator'>📍(GPS)</span>}</p>
+            <p><strong>Ordem de Serviço:</strong> {record.serviceOrderNumber || 'N/A'}</p>
             <p><strong>Observações:</strong> {record.observations || 'Nenhuma'}</p>
             <p><strong>Serviço:</strong> {record.serviceType}</p>
             {record.overrideMeasurement !== null && record.overrideMeasurement !== undefined 
@@ -843,7 +859,7 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
     </div>
 );
 
-const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
+const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; locations: LocationRecord[]; }> = ({ records, services, locations }) => {
     const [reportType, setReportType] = useState<'excel' | 'photos' | 'billing' | null>(null);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -881,6 +897,17 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
     const selectedRecords = records.filter(r => selectedIds.includes(r.id));
     const totalArea = selectedRecords.reduce((sum, r) => sum + ((r.overrideMeasurement ?? r.locationArea) || 0), 0);
+    
+    const getNeighborhoodForRecord = (record: ServiceRecord, allLocations: LocationRecord[]): string => {
+        const location = allLocations.find(l => l.id === record.locationId);
+        if (location?.parentId) {
+            const parent = allLocations.find(p => p.id === location.parentId);
+            return parent?.name || 'Bairro não encontrado';
+        }
+        const isParent = allLocations.some(l => l.parentId === record.locationId);
+        if (isParent) return record.locationName;
+        return '';
+    };
 
     const handleExportExcel = async () => {
         if (selectedRecords.length === 0) {
@@ -893,7 +920,9 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         worksheet.columns = [
             { header: 'ID', key: 'id', width: 10 }, { header: 'Data Início', key: 'startTime', width: 20 },
             { header: 'Data Fim', key: 'endTime', width: 20 }, { header: 'Contrato/Cidade', key: 'contractGroup', width: 25 },
+            { header: 'Bairro', key: 'neighborhood', width: 30 },
             { header: 'Local', key: 'locationName', width: 40 }, 
+            { header: 'Nº Ordem de Serviço', key: 'serviceOrderNumber', width: 20 },
             { header: 'Observações', key: 'observations', width: 40 },
             { header: 'Serviço', key: 'serviceType', width: 30 },
             { header: 'Medição', key: 'locationArea', width: 15 }, { header: 'Unidade', key: 'serviceUnit', width: 15 },
@@ -903,7 +932,10 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             worksheet.addRow({
                 id: record.id, startTime: formatDateTime(record.startTime),
                 endTime: record.endTime ? formatDateTime(record.endTime) : 'Não finalizado',
-                contractGroup: record.contractGroup, locationName: record.locationName,
+                contractGroup: record.contractGroup, 
+                neighborhood: getNeighborhoodForRecord(record, locations),
+                locationName: record.locationName,
+                serviceOrderNumber: record.serviceOrderNumber || '',
                 observations: record.observations || '',
                 serviceType: record.serviceType, locationArea: record.overrideMeasurement ?? record.locationArea,
                 serviceUnit: record.serviceUnit, operatorName: record.operatorName,
@@ -972,29 +1004,31 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             const records = groupedRecords[serviceType];
             if (records.length === 0) return;
 
-            worksheet.mergeCells(7, currentColumn, 7, currentColumn + 3);
+            worksheet.mergeCells(7, currentColumn, 7, currentColumn + 5);
             const headerCell = worksheet.getCell(7, currentColumn);
             headerCell.value = serviceType.toUpperCase();
             headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
 
-            const subheaders = ['DATA', 'LOCAL', 'OBSERVAÇÕES', `METRAGEM EM`];
+            const subheaders = ['DATA', 'BAIRRO', 'LOCAL', 'ORDEM DE SERVIÇO', 'OBSERVAÇÕES', 'METRAGEM EM'];
             subheaders.forEach((text, i) => {
                 const cell = worksheet.getCell(8, currentColumn + i);
                 cell.value = text;
                 cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
             });
 
-            const metragemColumn = worksheet.getColumn(currentColumn + 3);
+            const metragemColumn = worksheet.getColumn(currentColumn + 5);
             metragemColumn.numFmt = numberFormat;
 
             let currentRow = 9;
             records.forEach(record => {
                 worksheet.getCell(currentRow, currentColumn).value = new Date(record.startTime).toLocaleDateString('pt-BR');
-                worksheet.getCell(currentRow, currentColumn + 1).value = record.locationName;
-                worksheet.getCell(currentRow, currentColumn + 2).value = record.observations || '';
-                worksheet.getCell(currentRow, currentColumn + 3).value = record.overrideMeasurement ?? record.locationArea;
-
-                for (let i = 0; i < 4; i++) {
+                worksheet.getCell(currentRow, currentColumn + 1).value = getNeighborhoodForRecord(record, locations);
+                worksheet.getCell(currentRow, currentColumn + 2).value = record.locationName;
+                worksheet.getCell(currentRow, currentColumn + 3).value = record.serviceOrderNumber || '';
+                worksheet.getCell(currentRow, currentColumn + 4).value = record.observations || '';
+                worksheet.getCell(currentRow, currentColumn + 5).value = record.overrideMeasurement ?? record.locationArea;
+                
+                for (let i = 0; i < subheaders.length; i++) {
                     worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
                 }
                 currentRow++;
@@ -1008,7 +1042,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 lastRow: currentRow - 1
             });
 
-            currentColumn += 5;
+            currentColumn += subheaders.length + 1;
         });
         
         const summaryStartCol = currentColumn;
@@ -1175,6 +1209,13 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                                         {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
                                                     </>
                                                 )}
+                                                 {record.serviceOrderNumber && (
+                                                    <>
+                                                        {' | '}
+                                                        <strong>O.S.:</strong>
+                                                        {` ${record.serviceOrderNumber}`}
+                                                    </>
+                                                )}
                                             </p>
                                         </div>
                                         <table className="pdf-photo-table">
@@ -1184,11 +1225,11 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                                     <tr key={index}>
                                                         <td>
                                                             {pair.before && <img src={loadedImages[`${API_BASE}${pair.before}`]} alt={`Antes ${index + 1}`} />}
-                                                            <p className="caption">Foto Antes {index + 1}</p>
+                                                            <p className="caption">Foto Antes {index + 1}<br/>{record.locationName}</p>
                                                         </td>
                                                         <td>
                                                             {pair.after && <img src={loadedImages[`${API_BASE}${pair.after}`]} alt={`Depois ${index + 1}`} />}
-                                                            <p className="caption">Foto Depois {index + 1}</p>
+                                                            <p className="caption">Foto Depois {index + 1}<br/>{record.locationName}</p>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -1279,15 +1320,19 @@ const ManageLocationsView: React.FC<{
     const [editingId, setEditingId] = useState<string | null>(null);
     const [serviceMeasurements, setServiceMeasurements] = useState<Record<string, string>>({});
     const [isGroupActionLoading, setIsGroupActionLoading] = useState(false);
+    const [locationType, setLocationType] = useState<'SIMPLE' | 'NEIGHBORHOOD' | 'STREET'>('SIMPLE');
+    const [parentId, setParentId] = useState<string | null>(null);
 
     const allGroups = [...new Set(locations.map(l => l.contractGroup))].filter(Boolean).sort();
-
+    
     const resetForm = () => {
         setName('');
         setObservations('');
         setCoords(null);
         setServiceMeasurements({});
         setEditingId(null);
+        setLocationType('SIMPLE');
+        setParentId(null);
     };
 
     const handleAddNewGroup = () => {
@@ -1412,7 +1457,7 @@ const ManageLocationsView: React.FC<{
             return;
         }
 
-        const servicesPayload = Object.entries(serviceMeasurements)
+        const servicesPayload = locationType === 'STREET' ? [] : Object.entries(serviceMeasurements)
             .map(([service_id, measurementStr]) => {
                 const measurement = parseFloat(measurementStr);
                 const service = services.find(s => s.id === service_id);
@@ -1421,19 +1466,19 @@ const ManageLocationsView: React.FC<{
             })
             .filter(Boolean);
 
-        if (servicesPayload.length === 0) {
-            if (!window.confirm("Nenhum serviço com medição válida foi adicionado. Deseja salvar este local mesmo assim?")) {
-                return;
-            }
+        if (locationType !== 'STREET' && servicesPayload.length === 0 && !window.confirm("Nenhum serviço com medição válida foi adicionado. Deseja salvar este local mesmo assim?")) {
+            return;
         }
         
-        const payload = {
+        const payload: any = {
             city: selectedGroup.trim(),
             name,
             observations,
             lat: coords?.latitude,
             lng: coords?.longitude,
             services: servicesPayload,
+            isGroup: locationType === 'NEIGHBORHOOD',
+            parentId: locationType === 'STREET' ? parentId : null
         };
 
         try {
@@ -1457,6 +1502,13 @@ const ManageLocationsView: React.FC<{
         setObservations(loc.observations || '');
         setCoords(loc.coords || null);
         setSelectedGroup(loc.contractGroup);
+        if (loc.parentId) {
+            setLocationType('STREET');
+            setParentId(loc.parentId);
+        } else {
+            setLocationType(loc.isGroup ? 'NEIGHBORHOOD' : 'SIMPLE');
+            setParentId(null);
+        }
         const initialMeasurements = (loc.services || []).reduce((acc, srv) => {
             acc[srv.serviceId] = String(srv.measurement);
             return acc;
@@ -1478,6 +1530,17 @@ const ManageLocationsView: React.FC<{
     };
 
     const filteredLocations = selectedGroup ? locations.filter(l => l.contractGroup === selectedGroup) : [];
+    const topLevelLocations = filteredLocations.filter(l => !l.parentId);
+    const childrenMap = filteredLocations.reduce((acc, loc) => {
+        if (loc.parentId) {
+            if (!acc[loc.parentId]) acc[loc.parentId] = [];
+            acc[loc.parentId].push(loc);
+        }
+        return acc;
+    }, {} as Record<string, LocationRecord[]>);
+
+    const neighborhoodOptions = filteredLocations.filter(l => !l.parentId && locations.some(child => child.parentId === l.id));
+
 
     return (
         <div>
@@ -1500,70 +1563,79 @@ const ManageLocationsView: React.FC<{
                 <>
                     <div className="form-container card">
                         <h3>{editingId ? 'Editando Local' : 'Adicionar Novo Local'} em "{selectedGroup}"</h3>
-                        <input type="text" placeholder="Nome do Local (Endereço)" value={name} onChange={e => setName(e.target.value)} />
                         
-                        <textarea 
-                            placeholder="Observações (opcional)" 
-                            value={observations} 
-                            onChange={e => setObservations(e.target.value)}
-                            rows={3}
-                        ></textarea>
-                        
-                        <fieldset className="service-assignment-fieldset">
-                            <legend>Serviços e Medições do Local</legend>
-                            <div className="checkbox-group">
-                                {services.sort((a,b) => a.name.localeCompare(b.name)).map(service => {
-                                    const isChecked = service.id in serviceMeasurements;
-                                    return (
-                                        <div key={service.id} className="checkbox-item" style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', border: '1px solid #eee', padding: '0.5rem', borderRadius: '4px'}}>
-                                            <div>
-                                                <input type="checkbox" id={`service-loc-${service.id}`} checked={isChecked} onChange={e => handleServiceToggle(service.id, e.target.checked)} />
-                                                <label htmlFor={`service-loc-${service.id}`}>{service.name}</label>
-                                            </div>
-                                            {isChecked && (
-                                                <input type="number" placeholder={`Medição (${service.unit.symbol})`} value={serviceMeasurements[service.id] || ''} onChange={e => handleMeasurementChange(service.id, e.target.value)} style={{width: '100%'}} />
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                        <fieldset className="form-group-full">
+                            <legend>Tipo de Local</legend>
+                             <div style={{display: 'flex', justifyContent: 'space-around', gap: '1rem'}}>
+                                <label><input type="radio" name="locType" value="SIMPLE" checked={locationType === 'SIMPLE'} onChange={() => setLocationType('SIMPLE')} /> Endereço Único</label>
+                                <label><input type="radio" name="locType" value="NEIGHBORHOOD" checked={locationType === 'NEIGHBORHOOD'} onChange={() => setLocationType('NEIGHBORHOOD')} /> Bairro (Agrupador)</label>
+                                <label><input type="radio" name="locType" value="STREET" checked={locationType === 'STREET'} onChange={() => setLocationType('STREET')} /> Rua (Dentro de Bairro)</label>
                             </div>
                         </fieldset>
 
-                        <fieldset className="form-group-full">
-                            <legend>Coordenadas GPS (Opcional)</legend>
-                            <div className="coord-inputs">
-                                <input type="number" placeholder="Latitude" value={coords?.latitude || ''} onChange={e => handleCoordChange('latitude', e.target.value)} />
-                                <input type="number" placeholder="Longitude" value={coords?.longitude || ''} onChange={e => handleCoordChange('longitude', e.target.value)} />
-                            </div>
-                            <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '0.5rem' }}>
-                                {isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}
-                            </button>
+                        {locationType === 'STREET' && (
+                            <select value={parentId || ''} onChange={e => setParentId(e.target.value)}>
+                                <option value="">Selecione o Bairro</option>
+                                {topLevelLocations.filter(l => l.isGroup).map(loc => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
+                            </select>
+                        )}
+                        <input type="text" placeholder={locationType === 'STREET' ? 'Nome da Rua' : locationType === 'NEIGHBORHOOD' ? 'Nome do Bairro' : 'Nome do Local/Endereço'} value={name} onChange={e => setName(e.target.value)} />
+                        
+                        <textarea placeholder="Observações (opcional)" value={observations} onChange={e => setObservations(e.target.value)} rows={3}></textarea>
+                        
+                        {locationType !== 'STREET' && (
+                            <fieldset className="service-assignment-fieldset"><legend>Serviços e Medições do Local</legend><div className="checkbox-group">
+                                {services.sort((a,b) => a.name.localeCompare(b.name)).map(service => {
+                                    const isChecked = service.id in serviceMeasurements;
+                                    return (<div key={service.id} className="checkbox-item" style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', border: '1px solid #eee', padding: '0.5rem', borderRadius: '4px'}}>
+                                        <div><input type="checkbox" id={`service-loc-${service.id}`} checked={isChecked} onChange={e => handleServiceToggle(service.id, e.target.checked)} /><label htmlFor={`service-loc-${service.id}`}>{service.name}</label></div>
+                                        {isChecked && (<input type="number" placeholder={`Medição (${service.unit.symbol})`} value={serviceMeasurements[service.id] || ''} onChange={e => handleMeasurementChange(service.id, e.target.value)} style={{width: '100%'}} />)}
+                                    </div>);
+                                })}
+                            </div></fieldset>
+                        )}
+
+                        <fieldset className="form-group-full"><legend>Coordenadas GPS (Opcional)</legend>
+                            <div className="coord-inputs"><input type="number" placeholder="Latitude" value={coords?.latitude || ''} onChange={e => handleCoordChange('latitude', e.target.value)} /><input type="number" placeholder="Longitude" value={coords?.longitude || ''} onChange={e => handleCoordChange('longitude', e.target.value)} /></div>
+                            <button className="button button-secondary" onClick={handleGetCoordinates} disabled={isFetchingCoords} style={{ marginTop: '0.5rem' }}>{isFetchingCoords ? 'Obtendo...' : '📍 Obter GPS Atual'}</button>
                         </fieldset>
                         
                         <button className="button admin-button" onClick={handleSave}>{editingId ? 'Salvar Alterações' : 'Adicionar Local'}</button>
                         {editingId && <button className="button button-secondary" onClick={resetForm}>Cancelar Edição</button>}
                     </div>
                     
-                    <ul className="location-list">
-                        {filteredLocations.sort((a,b) => a.name.localeCompare(b.name)).map(loc => (
-                            <li key={loc.id} className="card list-item">
-                                <div className="list-item-info">
-                                    <div className="list-item-header">
-                                        <h3>{loc.name}</h3>
-                                        <div>
-                                            <button className="button button-sm admin-button" onClick={() => handleEdit(loc)}>Editar</button>
-                                            <button className="button button-sm button-danger" onClick={() => handleDelete(loc.id)}>Excluir</button>
+                     <ul className="location-list">
+                        {topLevelLocations.sort((a,b) => a.name.localeCompare(b.name)).map(loc => (
+                           <React.Fragment key={loc.id}>
+                                <li className="card list-item">
+                                    <div className="list-item-info">
+                                         <div className="list-item-header">
+                                            <h3>{loc.name} {loc.isGroup ? '(Bairro)' : ''}</h3>
+                                            <div>
+                                                <button className="button button-sm admin-button" onClick={() => handleEdit(loc)}>Editar</button>
+                                                <button className="button button-sm button-danger" onClick={() => handleDelete(loc.id)}>Excluir</button>
+                                            </div>
                                         </div>
+                                        <p><em>{loc.observations}</em></p>
+                                         <div className="location-services-list"><strong>Serviços:</strong>{(loc.services && loc.services.length > 0) ? (<ul>{loc.services.map(s => <li key={s.serviceId}>{s.name}: {s.measurement} {s.unit.symbol}</li>)}</ul>) : ' Nenhum atribuído'}</div>
                                     </div>
-                                    <p><em>{loc.observations}</em></p>
-                                    <div className="location-services-list">
-                                        <strong>Serviços:</strong>
-                                        {(loc.services && loc.services.length > 0) ? (
-                                            <ul>{loc.services.map(s => <li key={s.serviceId}>{s.name}: {s.measurement} {s.unit.symbol}</li>)}</ul>
-                                        ) : ' Nenhum atribuído'}
-                                    </div>
-                                </div>
-                            </li>
+                                </li>
+                                {(childrenMap[loc.id] || []).sort((a,b) => a.name.localeCompare(b.name)).map(child => (
+                                    <li key={child.id} className="card list-item" style={{ marginLeft: '2rem', borderLeft: '3px solid var(--primary-color)' }}>
+                                        <div className="list-item-info">
+                                             <div className="list-item-header">
+                                                <h3>{child.name} (Rua)</h3>
+                                                <div>
+                                                    <button className="button button-sm admin-button" onClick={() => handleEdit(child)}>Editar</button>
+                                                    <button className="button button-sm button-danger" onClick={() => handleDelete(child.id)}>Excluir</button>
+                                                </div>
+                                            </div>
+                                            <p><em>{child.observations}</em></p>
+                                            <div className="location-services-list"><strong>Serviços:</strong>{(child.services && child.services.length > 0) ? (<ul>{child.services.map(s => <li key={s.serviceId}>{s.name}: {s.measurement} {s.unit.symbol}</li>)}</ul>) : ' Nenhum atribuído'}</div>
+                                        </div>
+                                    </li>
+                                ))}
+                           </React.Fragment>
                         ))}
                     </ul>
                 </>
@@ -1571,6 +1643,7 @@ const ManageLocationsView: React.FC<{
         </div>
     );
 };
+
 
 const ManageUsersView: React.FC<{ 
     users: User[];
@@ -2018,6 +2091,7 @@ const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinis
             <div className="detail-section" style={{textAlign: 'left', marginBottom: '1.5rem'}}>
                 <p><strong>Contrato/Cidade:</strong> {service.contractGroup}</p>
                 <p><strong>Serviço:</strong> {service.serviceType}</p>
+                 {service.serviceOrderNumber && <p><strong>Ordem de Serviço:</strong> {service.serviceOrderNumber}</p>}
                 <p><strong>Local:</strong> {service.locationName}</p>
                 <p><strong>Início:</strong> {service.startTime ? formatDateTime(service.startTime) : 'N/A'}</p>
             </div>
@@ -2123,6 +2197,15 @@ const AdminEditRecordView: React.FC<{
     return (
         <div className="card edit-form-container">
             <h3>{isOperator ? 'Adicionar Fotos/Informações' : 'Editar Registro de Serviço'}</h3>
+            <div className="form-group">
+                <label>Nº Ordem de Serviço</label>
+                <input
+                    type="text"
+                    value={formData.serviceOrderNumber || ''}
+                    onChange={e => handleChange("serviceOrderNumber", e.target.value)}
+                    readOnly={isOperator}
+                />
+            </div>
             <div className="form-group">
                 <label>Nome do Local</label>
                 <input
@@ -2645,7 +2728,7 @@ const App = () => {
                 currentUser.role === 'ADMIN' ? apiFetch('/api/auditlog') : Promise.resolve(null),
             ]);
             
-            setLocations(locs.map((l: any) => ({ ...l, id: String(l.id), services: (l.services || []).map((s: any) => ({ ...s, serviceId: String(s.serviceId) })) })));
+            setLocations(locs.map((l: any) => ({ ...l, id: String(l.id), isGroup: !!l.isGroup, parentId: l.parentId ? String(l.parentId) : null, services: (l.services || []).map((s: any) => ({ ...s, serviceId: String(s.serviceId) })) })));
             setServices(srvs.map((s: any) => ({...s, id: String(s.id), unitId: String(s.unitId) })));
             setContractConfigs(configs || []);
             
@@ -2714,16 +2797,30 @@ const App = () => {
     const startNewServiceRecord = (service: ServiceDefinition, measurement?: number) => {
         if (!selectedLocation) return;
         const isManual = selectedLocation.id.startsWith('manual-');
-        const serviceDetail = selectedLocation.services?.find(s => s.serviceId === service.id);
-        const locationArea = isManual ? measurement : serviceDetail?.measurement;
+        
+        let locationArea: number | undefined;
+
+        if (selectedLocation.parentId) {
+            // É uma rua dentro de um bairro, busca o pai e pega a medição de lá.
+            const parentLocation = locations.find(l => l.id === selectedLocation.parentId);
+            const serviceDetail = parentLocation?.services?.find(s => s.serviceId === service.id);
+            locationArea = serviceDetail?.measurement;
+        } else if (isManual) {
+            // É um local manual, usa a medição informada.
+            locationArea = measurement;
+        } else {
+            // É um local autônomo (ou um bairro), pega a medição diretamente.
+            const serviceDetail = selectedLocation.services?.find(s => s.serviceId === service.id);
+            locationArea = serviceDetail?.measurement;
+        }
 
         if (locationArea === undefined) {
-            alert("Erro: Medição não encontrada. Contate o administrador.");
+            alert("Erro: Medição não encontrada para este serviço. Contate o administrador.");
             return;
         }
 
         setCurrentService({
-            serviceId: parseInt(service.id), // <-- ALTERAÇÃO AQUI
+            serviceId: parseInt(service.id),
             serviceType: service.name,
             serviceUnit: service.unit.symbol,
             contractGroup: selectedLocation.contractGroup,
@@ -2735,7 +2832,7 @@ const App = () => {
         });
         navigate('PHOTO_STEP');
     };
-
+    
     const handleServiceSelect = (service: ServiceDefinition, measurement?: number) => {
         if (!selectedLocation) return;
         if (selectedLocation.id.startsWith('manual-')) {
@@ -2764,22 +2861,24 @@ const App = () => {
         }
     };
     
-    const handleBeforePhotos = async (photosBefore: string[]) => {
+    const handleBeforePhotos = async (photosBefore: string[], serviceOrderNumber?: string) => {
         setIsLoading("Preparando registro...");
         try {
+            const { serviceId, serviceType, serviceUnit, locationId, locationName, contractGroup, locationArea, gpsUsed, coords } = currentService;
             const recordPayload = {
                 operatorId: currentUser!.id,
-                serviceId: currentService.serviceId, // <-- ALTERAÇÃO AQUI
-                serviceType: currentService.serviceType,
-                serviceUnit: currentService.serviceUnit,
-                locationId: currentService.locationId,
-                locationName: currentService.locationName,
-                contractGroup: currentService.contractGroup,
-                locationArea: currentService.locationArea,
-                gpsUsed: !!currentService.gpsUsed,
+                serviceId,
+                serviceType,
+                serviceUnit,
+                locationId,
+                locationName,
+                contractGroup,
+                locationArea,
+                gpsUsed: !!gpsUsed,
                 startTime: new Date().toISOString(),
+                serviceOrderNumber: serviceOrderNumber?.trim() || undefined,
                 tempId: crypto.randomUUID(),
-                newLocationInfo: !currentService.locationId ? { name: currentService.locationName, city: currentService.contractGroup, lat: currentService.coords?.latitude, lng: currentService.coords?.longitude, services: [{ service_id: services.find(s => s.name === currentService.serviceType)?.id, measurement: currentService.locationArea }] } : undefined
+                newLocationInfo: !locationId ? { name: locationName, city: contractGroup, lat: coords?.latitude, lng: coords?.longitude, parentId: (selectedLocation as any)?.parentId, services: [{ service_id: services.find(s => s.name === serviceType)?.id, measurement: locationArea }] } : undefined
             };
             const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
             await queueRecord(recordPayload, beforeFiles);
@@ -2879,7 +2978,7 @@ const App = () => {
                     case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
                     case 'ADMIN_MANAGE_GOALS': return <GoalsAndChartsView records={records} locations={locations} services={services} />;
                     case 'ADMIN_MANAGE_CYCLES': return <ManageCyclesView locations={locations} configs={contractConfigs} fetchData={fetchData} />;
-                    case 'REPORTS': return <ReportsView records={records} services={services} />;
+                    case 'REPORTS': return <ReportsView records={records} services={services} locations={locations} />;
                     case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} selectedIds={selectedRecordIds} onToggleSelect={handleToggleRecordSelection} onDeleteSelected={handleDeleteSelectedRecords} onMeasurementUpdate={handleMeasurementUpdate} />;
                     case 'DETAIL': return selectedRecord ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado.</p>;
                     case 'ADMIN_EDIT_RECORD': return selectedRecord ? <AdminEditRecordView record={selectedRecord} onSave={handleUpdateRecord} onCancel={handleBack} setIsLoading={setIsLoading} currentUser={currentUser} /> : <p>Nenhum registro selecionado.</p>;
@@ -2892,8 +2991,7 @@ const App = () => {
                 const fiscalRecords = records.filter(r => fiscalGroups.has(r.contractGroup));
                 switch(view) {
                     case 'FISCAL_DASHBOARD': return <FiscalDashboard onNavigate={navigate} onLogout={handleLogout} />;
-                    case 'REPORTS': return <ReportsView records={fiscalRecords} services={services} />;
-                    case 'HISTORY': return <HistoryView records={fiscalRecords} onSelect={handleSelectRecord} isAdmin={false} selectedIds={new Set()} onToggleSelect={() => {}} onMeasurementUpdate={async () => {}} />;
+                    case 'REPORTS': return <ReportsView records={fiscalRecords} services={services} locations={locations} />;
                     case 'DETAIL':
                         const canView = selectedRecord && fiscalGroups.has(selectedRecord.contractGroup);
                         return canView ? <DetailView record={selectedRecord} /> : <p>Registro não encontrado ou acesso não permitido.</p>;
@@ -2904,10 +3002,10 @@ const App = () => {
                 switch(view) {
                     case 'OPERATOR_GROUP_SELECT': return <OperatorGroupSelect user={currentUser} onSelectGroup={handleGroupSelect} onLogout={handleLogout} />;
                     case 'OPERATOR_LOCATION_SELECT': return selectedContractGroup ? <OperatorLocationSelect locations={locations} contractGroup={selectedContractGroup} onSelectLocation={handleLocationSelect} /> : <p>Nenhum contrato selecionado.</p>;
-                    case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} records={records} contractConfigs={contractConfigs} /> : <p>Nenhum local selecionado.</p>;
+                    case 'OPERATOR_SERVICE_SELECT': return selectedLocation ? <OperatorServiceSelect location={selectedLocation} services={services} user={currentUser} onSelectService={handleServiceSelect} records={records} contractConfigs={contractConfigs} locations={locations} /> : <p>Nenhum local selecionado.</p>;
                     case 'OPERATOR_SERVICE_IN_PROGRESS': return <ServiceInProgressView service={currentService} onFinish={() => navigate('PHOTO_STEP')} />;
                     case 'PHOTO_STEP':
-                        const isAfterPhase = currentService.beforePhotos && currentService.beforePhotos.length > 0;
+                        const isAfterPhase = !!(currentService.beforePhotos && currentService.beforePhotos.length > 0);
                         return <PhotoStep phase={isAfterPhase ? "AFTER" : "BEFORE"} onComplete={isAfterPhase ? handleAfterPhotos : handleBeforePhotos} onCancel={resetService} />;
                     case 'CONFIRM_STEP': return <ConfirmStep recordData={currentService} onSave={handleSave} onCancel={resetService} />;
                     case 'HISTORY': 
