@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
@@ -122,6 +122,44 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
     };
     return [storedValue, setValue];
 };
+
+// --- Ícones SVG ---
+const Icons = {
+    Search: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+    ChevronLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>,
+    ChevronRight: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+};
+
+// --- Componentes UI Reutilizáveis ---
+const Pagination: React.FC<{ currentPage: number; totalPages: number; onPageChange: (page: number) => void }> = ({ currentPage, totalPages, onPageChange }) => {
+    if (totalPages <= 1) return null;
+    return (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem', padding: '1rem 0' }}>
+            <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="button button-sm button-secondary">
+                <Icons.ChevronLeft />
+            </button>
+            <span style={{ fontSize: '0.9rem', color: 'var(--dark-gray-color)' }}>Página {currentPage} de {totalPages}</span>
+            <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="button button-sm button-secondary">
+                <Icons.ChevronRight />
+            </button>
+        </div>
+    );
+};
+
+const SearchBar: React.FC<{ value: string; onChange: (val: string) => void; placeholder?: string }> = ({ value, onChange, placeholder = "Buscar..." }) => (
+    <div style={{ position: 'relative', marginBottom: '1rem' }}>
+        <input
+            type="text"
+            placeholder={placeholder}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            style={{ width: '100%', padding: '0.75rem 0.75rem 0.75rem 2.5rem', borderRadius: '8px', border: '1px solid #ddd' }}
+        />
+        <div style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#888' }}>
+            <Icons.Search />
+        </div>
+    </div>
+);
 
 // --- Componentes ---
 
@@ -749,6 +787,9 @@ interface HistoryViewProps {
 const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, onEdit, onDelete, selectedIds, onToggleSelect, onDeleteSelected, onMeasurementUpdate }) => {
     const [editingMeasurementId, setEditingMeasurementId] = useState<string | null>(null);
     const [newMeasurement, setNewMeasurement] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
 
     const handleSaveMeasurement = async (recordId: string) => {
         await onMeasurementUpdate(parseInt(recordId), newMeasurement);
@@ -769,8 +810,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
         return original;
     };
 
+    // Filter and Pagination Logic
+    const filteredRecords = useMemo(() => {
+        return records.filter(record => 
+            record.locationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            record.serviceType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            record.operatorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (record.serviceOrderNumber && record.serviceOrderNumber.includes(searchTerm))
+        );
+    }, [records, searchTerm]);
+
+    const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE);
+    const currentRecords = filteredRecords.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    // Reset page when search changes
+    useEffect(() => { setCurrentPage(1); }, [searchTerm]);
+
     return (
         <div>
+            <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar por local, serviço, operador ou O.S..." />
+
             {isAdmin && selectedIds.size > 0 && (
                 <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
                     <button className="button button-danger" onClick={onDeleteSelected}>
@@ -778,54 +837,57 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
                     </button>
                 </div>
             )}
-            {records.length === 0 ? <p style={{textAlign: 'center'}}>Nenhum serviço registrado ainda.</p>
+            {currentRecords.length === 0 ? <p style={{textAlign: 'center'}}>Nenhum registro encontrado.</p>
             : (
-                <ul className="history-list">
-                    {records.map(record => (
-                        <li key={record.id} className="list-item" style={{alignItems: 'center'}}>
-                            {isAdmin && (
-                                <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0, marginRight: '1rem' }}>
-                                    <input type="checkbox" checked={selectedIds.has(record.id)} onChange={() => onToggleSelect(record.id)} style={{ width: '24px', height: '24px' }} />
+                <>
+                    <ul className="history-list">
+                        {currentRecords.map(record => (
+                            <li key={record.id} className="list-item" style={{alignItems: 'center'}}>
+                                {isAdmin && (
+                                    <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0, marginRight: '1rem' }}>
+                                        <input type="checkbox" checked={selectedIds.has(record.id)} onChange={() => onToggleSelect(record.id)} style={{ width: '24px', height: '24px' }} />
+                                    </div>
+                                )}
+                                <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer'}}>
+                                    <p><strong>Local:</strong> {record.locationName}, {record.contractGroup} {record.gpsUsed && <span className="gps-indicator">📍</span>}</p>
+                                    <p><strong>Serviço:</strong> {record.serviceType}</p>
+                                    {record.serviceOrderNumber && <p><strong>O.S.:</strong> {record.serviceOrderNumber}</p>}
+                                    <p><strong>Data:</strong> {formatDateTime(record.startTime)}</p>
+                                    {isAdmin && <p><strong>Operador:</strong> {record.operatorName}</p>}
+                                    <p><strong>Medição: </strong> 
+                                        {editingMeasurementId === record.id ? (
+                                            <span onClick={e => e.stopPropagation()}>
+                                                <input 
+                                                    type="number" 
+                                                    value={newMeasurement}
+                                                    onChange={e => setNewMeasurement(e.target.value)}
+                                                    autoFocus
+                                                    onBlur={() => handleSaveMeasurement(record.id)}
+                                                    style={{width: '80px', padding: '2px'}}
+                                                />
+                                                <button className="button button-sm" onClick={() => handleSaveMeasurement(record.id)}>Ok</button>
+                                            </span>
+                                        ) : (
+                                            <span onDoubleClick={isAdmin ? () => { setEditingMeasurementId(record.id); setNewMeasurement(String(record.overrideMeasurement ?? record.locationArea ?? '')) } : undefined}>
+                                                {renderMeasurement(record)}
+                                            </span>
+                                        )}
+                                    </p>
+                                    <div className="history-item-photos">
+                                        {(record.beforePhotos || []).slice(0,2).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt="antes" />)}
+                                        {(record.afterPhotos || []).slice(0,2).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt="depois" />)}
+                                    </div>
                                 </div>
-                            )}
-                            <div onClick={() => onSelect(record)} style={{ flexGrow: 1, cursor: 'pointer'}}>
-                                <p><strong>Local:</strong> {record.locationName}, {record.contractGroup} {record.gpsUsed && <span className="gps-indicator">📍</span>}</p>
-                                <p><strong>Serviço:</strong> {record.serviceType}</p>
-                                {record.serviceOrderNumber && <p><strong>O.S.:</strong> {record.serviceOrderNumber}</p>}
-                                <p><strong>Data:</strong> {formatDateTime(record.startTime)}</p>
-                                {isAdmin && <p><strong>Operador:</strong> {record.operatorName}</p>}
-                                <p><strong>Medição: </strong> 
-                                    {editingMeasurementId === record.id ? (
-                                        <span onClick={e => e.stopPropagation()}>
-                                            <input 
-                                                type="number" 
-                                                value={newMeasurement}
-                                                onChange={e => setNewMeasurement(e.target.value)}
-                                                autoFocus
-                                                onBlur={() => handleSaveMeasurement(record.id)}
-                                                style={{width: '80px', padding: '2px'}}
-                                            />
-                                            <button className="button button-sm" onClick={() => handleSaveMeasurement(record.id)}>Ok</button>
-                                        </span>
-                                    ) : (
-                                        <span onDoubleClick={isAdmin ? () => { setEditingMeasurementId(record.id); setNewMeasurement(String(record.overrideMeasurement ?? record.locationArea ?? '')) } : undefined}>
-                                            {renderMeasurement(record)}
-                                        </span>
-                                    )}
-                                </p>
-                                <div className="history-item-photos">
-                                    {(record.beforePhotos || []).slice(0,2).map((p,i) => <img key={`b-${i}`} src={`${API_BASE}${p}`} alt="antes" />)}
-                                    {(record.afterPhotos || []).slice(0,2).map((p,i) => <img key={`a-${i}`} src={`${API_BASE}${p}`} alt="depois" />)}
+                                <div className="list-item-actions">
+                                    {isAdmin && onEdit && ( <button className="button button-sm admin-button" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Editar</button> )}
+                                    {!isAdmin && onEdit && !record.endTime && ( <button className="button button-sm" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Reabrir</button> )}
+                                    {isAdmin && onDelete && ( <button className="button button-sm button-danger" onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}>Excluir</button> )}
                                 </div>
-                            </div>
-                            <div className="list-item-actions">
-                                {isAdmin && onEdit && ( <button className="button button-sm admin-button" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Editar</button> )}
-                                {!isAdmin && onEdit && !record.endTime && ( <button className="button button-sm" onClick={(e) => { e.stopPropagation(); onEdit(record); }}>Reabrir</button> )}
-                                {isAdmin && onDelete && ( <button className="button button-sm button-danger" onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}>Excluir</button> )}
-                            </div>
-                        </li>
-                    ))}
-                </ul>
+                            </li>
+                        ))}
+                    </ul>
+                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                </>
             )}
         </div>
     );
@@ -868,26 +930,54 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const printableRef = useRef<HTMLDivElement>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    
+    // New state for search and pagination
+    const [localSearch, setLocalSearch] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
 
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
     
     const handleServiceFilterChange = (service: string, isChecked: boolean) => { setSelectedServices(prev => isChecked ? [...prev, service] : prev.filter(s => s !== service)); };
     
-    const filteredRecords = records.filter(r => {
-        const recordDate = new Date(r.startTime);
-        const start = startDate ? new Date(startDate) : null;
-        const end = endDate ? new Date(endDate) : null;
-        if (start && recordDate < start) return false;
-        if (end) { end.setHours(23, 59, 59, 999); if (recordDate > end) return false; }
-        if (selectedServices.length > 0 && !selectedServices.includes(r.serviceType)) return false;
-        if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
-        return true;
-    }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    const filteredRecords = useMemo(() => {
+        return records.filter(r => {
+            const recordDate = new Date(r.startTime);
+            const start = startDate ? new Date(startDate) : null;
+            const end = endDate ? new Date(endDate) : null;
+            if (start && recordDate < start) return false;
+            if (end) { end.setHours(23, 59, 59, 999); if (recordDate > end) return false; }
+            if (selectedServices.length > 0 && !selectedServices.includes(r.serviceType)) return false;
+            if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
+            return true;
+        }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    }, [records, startDate, endDate, selectedServices, selectedContractGroup]);
     
+    // Apply local search on filtered records
+    const displayRecords = useMemo(() => {
+        return filteredRecords.filter(r => 
+            r.locationName.toLowerCase().includes(localSearch.toLowerCase()) ||
+            (r.serviceOrderNumber && r.serviceOrderNumber.includes(localSearch))
+        );
+    }, [filteredRecords, localSearch]);
+
+    const totalPages = Math.ceil(displayRecords.length / ITEMS_PER_PAGE);
+    const currentRecords = displayRecords.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+    
+    useEffect(() => { setCurrentPage(1); }, [localSearch, filteredRecords]);
+
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if(e.target.checked) setSelectedIds(filteredRecords.map(r => r.id));
-        else setSelectedIds([]);
+        if(e.target.checked) {
+            // Select visible records from search result
+            const idsToSelect = displayRecords.map(r => r.id);
+            // Merge with existing selection
+            setSelectedIds(prev => [...new Set([...prev, ...idsToSelect])]);
+        } else {
+            // Deselect visible records
+            const idsToDeselect = new Set(displayRecords.map(r => r.id));
+            setSelectedIds(prev => prev.filter(id => !idsToDeselect.has(id)));
+        }
     };
 
     const handleSelectOne = (id: string, isChecked: boolean) => {
@@ -1282,7 +1372,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             </div>
             
             <div className="report-summary">
-                <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
+                <h3>{selectedIds.length} registros selecionados</h3>
                 {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
                 <div className="button-group">
                     {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0}>Exportar para Excel</button>}
@@ -1290,18 +1380,28 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     {reportType === 'photos' && <button className="button" onClick={handleGeneratePdfClick} disabled={selectedIds.length === 0}>Gerar PDF com Fotos</button>}
                 </div>
             </div>
-            <ul className="report-list" style={{marginTop: '1rem'}}>
-                {filteredRecords.length > 0 && <li><label><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === filteredRecords.length && filteredRecords.length > 0} /> Selecionar Todos</label></li>}
-                {filteredRecords.map(record => (
-                    <li key={record.id} className="report-item">
-                        <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={e => handleSelectOne(record.id, e.target.checked)} />
-                        <div className="report-item-info">
-                            <p><strong>{record.locationName}</strong> - {record.serviceType}</p>
-                            <p><small>{record.contractGroup} | {formatDateTime(record.startTime)}</small></p>
-                        </div>
-                    </li>
-                ))}
-            </ul>
+            
+            <div style={{marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1rem'}}>
+                <h4>Selecionar Registros</h4>
+                <SearchBar value={localSearch} onChange={setLocalSearch} placeholder="Pesquisar local ou O.S. na lista..." />
+                
+                {displayRecords.length > 0 && <div style={{marginBottom: '0.5rem'}}><label><input type="checkbox" onChange={handleSelectAll} /> Selecionar/Deselecionar Todos da Busca</label></div>}
+
+                <ul className="report-list">
+                    {currentRecords.map(record => (
+                        <li key={record.id} className="report-item">
+                            <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={e => handleSelectOne(record.id, e.target.checked)} />
+                            <div className="report-item-info">
+                                <p><strong>{record.locationName}</strong> - {record.serviceType}</p>
+                                <p><small>{record.contractGroup} | {formatDateTime(record.startTime)}</small></p>
+                                {record.serviceOrderNumber && <p style={{fontSize:'0.8rem', color:'#666'}}>OS: {record.serviceOrderNumber}</p>}
+                            </div>
+                        </li>
+                    ))}
+                    {displayRecords.length === 0 && <p>Nenhum registro encontrado com os filtros atuais.</p>}
+                </ul>
+                <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+            </div>
         </div>
     );
 };
@@ -1322,6 +1422,11 @@ const ManageLocationsView: React.FC<{
     const [isGroupActionLoading, setIsGroupActionLoading] = useState(false);
     const [locationType, setLocationType] = useState<'SIMPLE' | 'NEIGHBORHOOD' | 'STREET'>('SIMPLE');
     const [parentId, setParentId] = useState<string | null>(null);
+    
+    // Search and Pagination State
+    const [searchTerm, setSearchTerm] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
 
     const allGroups = [...new Set(locations.map(l => l.contractGroup))].filter(Boolean).sort();
     
@@ -1340,76 +1445,49 @@ const ManageLocationsView: React.FC<{
         if (newGroup && newGroup.trim()) {
             setSelectedGroup(newGroup.trim());
             resetForm();
+            setSearchTerm(''); // Clear search to show the new group context
         }
     };
 
     const handleEditGroup = async () => {
         if (!selectedGroup) return;
-
         const newGroupName = prompt(`Digite o novo nome para o contrato/cidade "${selectedGroup}":`, selectedGroup);
-
-        if (!newGroupName || newGroupName.trim() === '' || newGroupName.trim() === selectedGroup) {
-            return;
-        }
+        if (!newGroupName || newGroupName.trim() === '' || newGroupName.trim() === selectedGroup) return;
 
         if (window.confirm(`Tem certeza que deseja renomear "${selectedGroup}" para "${newGroupName.trim()}"? Isso afetará todos os locais associados.`)) {
             setIsGroupActionLoading(true);
             try {
-                await apiFetch(`/api/contract-groups/${encodeURIComponent(selectedGroup)}`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ newName: newGroupName.trim() })
-                });
-                
+                await apiFetch(`/api/contract-groups/${encodeURIComponent(selectedGroup)}`, { method: 'PUT', body: JSON.stringify({ newName: newGroupName.trim() }) });
                 addAuditLogEntry('UPDATE', `Contrato/Cidade '${selectedGroup}' renomeado para '${newGroupName.trim()}'`);
                 alert('Contrato/Cidade renomeado com sucesso!');
-                
                 await fetchData(); 
                 setSelectedGroup(newGroupName.trim());
-
             } catch (error) {
                 alert('Falha ao renomear o Contrato/Cidade.');
                 console.error(error);
-            } finally {
-                setIsGroupActionLoading(false);
-            }
+            } finally { setIsGroupActionLoading(false); }
         }
     };
 
     const handleDeleteGroup = async () => {
         if (!selectedGroup) return;
-        
         const associatedLocationsCount = locations.filter(l => l.contractGroup === selectedGroup).length;
-
-        if (!window.confirm(`ATENÇÃO: Esta ação é irreversível.\n\nVocê está prestes a excluir o Contrato/Cidade "${selectedGroup}" e todos os seus ${associatedLocationsCount} locais associados.\n\nDeseja continuar?`)) {
-            return;
-        }
-
+        if (!window.confirm(`ATENÇÃO: Esta ação é irreversível.\n\nVocê está prestes a excluir o Contrato/Cidade "${selectedGroup}" e todos os seus ${associatedLocationsCount} locais associados.\n\nDeseja continuar?`)) return;
         const password = prompt('Para confirmar a exclusão, por favor, digite sua senha:');
-        if (!password) {
-            alert('A senha é necessária para confirmar a exclusão.');
-            return;
-        }
+        if (!password) { alert('A senha é necessária para confirmar a exclusão.'); return; }
 
         setIsGroupActionLoading(true);
         try {
-            await apiFetch(`/api/contract-groups/${encodeURIComponent(selectedGroup)}`, {
-                method: 'DELETE',
-                body: JSON.stringify({ password: password })
-            });
-            
+            await apiFetch(`/api/contract-groups/${encodeURIComponent(selectedGroup)}`, { method: 'DELETE', body: JSON.stringify({ password: password }) });
             addAuditLogEntry('DELETE', `Contrato/Cidade '${selectedGroup}' e todos os seus locais associados foram excluídos.`);
             alert('Contrato/Cidade e todos os locais associados foram excluídos com sucesso!');
-
             await fetchData();
             resetForm();
             setSelectedGroup('');
-
         } catch (error) {
-            alert('Falha ao excluir o Contrato/Cidade. Verifique sua senha ou se o contrato ainda possui registros de serviço associados.');
+            alert('Falha ao excluir. Verifique sua senha.');
             console.error(error);
-        } finally {
-            setIsGroupActionLoading(false);
-        }
+        } finally { setIsGroupActionLoading(false); }
     };
 
     const handleGetCoordinates = () => {
@@ -1443,32 +1521,21 @@ const ManageLocationsView: React.FC<{
 
     const handleServiceToggle = (serviceId: string, isChecked: boolean) => {
         const newMeasurements = { ...serviceMeasurements };
-        if (isChecked) {
-            newMeasurements[serviceId] = '';
-        } else {
-            delete newMeasurements[serviceId];
-        }
+        if (isChecked) { newMeasurements[serviceId] = ''; } else { delete newMeasurements[serviceId]; }
         setServiceMeasurements(newMeasurements);
     };
 
     const handleSave = async () => {
-        if (!selectedGroup || !name) {
-            alert('Contrato/Cidade e Nome do Local são obrigatórios.');
-            return;
-        }
-
+        if (!selectedGroup || !name) { alert('Contrato/Cidade e Nome do Local são obrigatórios.'); return; }
         const servicesPayload = locationType === 'STREET' ? [] : Object.entries(serviceMeasurements)
             .map(([service_id, measurementStr]) => {
                 const measurement = parseFloat(measurementStr);
                 const service = services.find(s => s.id === service_id);
                 if (!service || isNaN(measurement)) return null;
                 return { service_id, measurement };
-            })
-            .filter(Boolean);
+            }).filter(Boolean);
 
-        if (locationType !== 'STREET' && servicesPayload.length === 0 && !window.confirm("Nenhum serviço com medição válida foi adicionado. Deseja salvar este local mesmo assim?")) {
-            return;
-        }
+        if (locationType !== 'STREET' && servicesPayload.length === 0 && !window.confirm("Nenhum serviço com medição válida foi adicionado. Deseja salvar este local mesmo assim?")) return;
         
         const payload: any = {
             city: selectedGroup.trim(),
@@ -1482,18 +1549,12 @@ const ManageLocationsView: React.FC<{
         };
 
         try {
-            if (editingId) {
-                await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
-            } else {
-                await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) });
-            }
+            if (editingId) { await apiFetch(`/api/locations/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) }); }
+            else { await apiFetch('/api/locations', { method: 'POST', body: JSON.stringify(payload) }); }
             alert(`Local "${name}" salvo com sucesso!`);
             resetForm();
             await fetchData();
-        } catch (error) {
-            alert('Falha ao salvar local.');
-            console.error(error);
-        }
+        } catch (error) { alert('Falha ao salvar local.'); console.error(error); }
     };
 
     const handleEdit = (loc: LocationRecord) => {
@@ -1502,6 +1563,8 @@ const ManageLocationsView: React.FC<{
         setObservations(loc.observations || '');
         setCoords(loc.coords || null);
         setSelectedGroup(loc.contractGroup);
+        setSearchTerm(''); // Clear search to allow editing form to appear in context
+        
         if (loc.parentId) {
             setLocationType('STREET');
             setParentId(loc.parentId);
@@ -1522,48 +1585,86 @@ const ManageLocationsView: React.FC<{
             try {
                 await apiFetch(`/api/locations/${id}`, { method: 'DELETE' });
                 await fetchData();
-            } catch (error) {
-                alert('Falha ao excluir local. Tente novamente.');
-                console.error(error);
-            }
+            } catch (error) { alert('Falha ao excluir local.'); console.error(error); }
         }
     };
 
-    const filteredLocations = selectedGroup ? locations.filter(l => l.contractGroup === selectedGroup) : [];
-    const topLevelLocations = filteredLocations.filter(l => !l.parentId);
-    const childrenMap = filteredLocations.reduce((acc, loc) => {
-        if (loc.parentId) {
-            if (!acc[loc.parentId]) acc[loc.parentId] = [];
-            acc[loc.parentId].push(loc);
+    // Determine what to display
+    const displayedLocations = useMemo(() => {
+        if (searchTerm) {
+            // Global Search
+            return locations.filter(l => 
+                l.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                l.contractGroup.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        } else if (selectedGroup) {
+            // Filter by group, showing top level only
+            return locations.filter(l => l.contractGroup === selectedGroup && !l.parentId);
         }
-        return acc;
-    }, {} as Record<string, LocationRecord[]>);
+        return [];
+    }, [searchTerm, selectedGroup, locations]);
 
-    const neighborhoodOptions = filteredLocations.filter(l => !l.parentId && locations.some(child => child.parentId === l.id));
+    const totalPages = Math.ceil(displayedLocations.length / ITEMS_PER_PAGE);
+    const currentLocations = displayedLocations.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
+    useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedGroup]);
+
+    const childrenMap = useMemo(() => {
+        return locations.reduce((acc, loc) => {
+            if (loc.parentId) {
+                if (!acc[loc.parentId]) acc[loc.parentId] = [];
+                acc[loc.parentId].push(loc);
+            }
+            return acc;
+        }, {} as Record<string, LocationRecord[]>);
+    }, [locations]);
 
     return (
         <div>
             <div className="card">
                 <h3>Gerenciar Contrato/Cidade</h3>
-                <div className="form-group contract-group-selector">
-                    <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); resetForm(); }}>
-                        <option value="">Selecione um Contrato/Cidade</option>
-                        {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                     <div className="contract-group-actions">
-                        <button className="button button-sm admin-button" onClick={handleEditGroup} disabled={!selectedGroup || isGroupActionLoading}>Editar Nome</button>
-                        <button className="button button-sm button-danger" onClick={handleDeleteGroup} disabled={!selectedGroup || isGroupActionLoading}>Excluir Contrato</button>
+                
+                <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Pesquisar endereço em todos os contratos..." />
+                
+                {!searchTerm && (
+                    <div className="form-group contract-group-selector">
+                        <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); resetForm(); }}>
+                            <option value="">Selecione um Contrato/Cidade</option>
+                            {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                         <div className="contract-group-actions">
+                            <button className="button button-sm admin-button" onClick={handleEditGroup} disabled={!selectedGroup || isGroupActionLoading}>Editar Nome</button>
+                            <button className="button button-sm button-danger" onClick={handleDeleteGroup} disabled={!selectedGroup || isGroupActionLoading}>Excluir Contrato</button>
+                        </div>
+                        <button className="button button-secondary" onClick={handleAddNewGroup}>Adicionar Novo</button>
                     </div>
-                    <button className="button button-secondary" onClick={handleAddNewGroup}>Adicionar Novo</button>
-                </div>
+                )}
             </div>
 
-            {selectedGroup && (
+            {searchTerm ? (
+                 <div className="card">
+                    <h4>Resultados da Busca ({displayedLocations.length})</h4>
+                    <ul className="location-list">
+                        {currentLocations.map(loc => (
+                            <li key={loc.id} className="card list-item">
+                                <div className="list-item-info">
+                                    <div className="list-item-header">
+                                        <h3>{loc.name} <small style={{fontWeight:'normal', fontSize:'0.8rem'}}>({loc.contractGroup})</small></h3>
+                                        <div>
+                                            <button className="button button-sm admin-button" onClick={() => handleEdit(loc)}>Editar</button>
+                                        </div>
+                                    </div>
+                                    <p>{loc.isGroup ? 'Tipo: Bairro' : loc.parentId ? 'Tipo: Rua' : 'Tipo: Local'}</p>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                </div>
+            ) : (selectedGroup && (
                 <>
                     <div className="form-container card">
                         <h3>{editingId ? 'Editando Local' : 'Adicionar Novo Local'} em "{selectedGroup}"</h3>
-                        
                         <fieldset className="form-group-full">
                             <legend>Tipo de Local</legend>
                              <div style={{display: 'flex', justifyContent: 'space-around', gap: '1rem'}}>
@@ -1576,7 +1677,7 @@ const ManageLocationsView: React.FC<{
                         {locationType === 'STREET' && (
                             <select value={parentId || ''} onChange={e => setParentId(e.target.value)}>
                                 <option value="">Selecione o Bairro</option>
-                                {topLevelLocations.filter(l => l.isGroup).map(loc => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
+                                {locations.filter(l => l.contractGroup === selectedGroup && l.isGroup).map(loc => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
                             </select>
                         )}
                         <input type="text" placeholder={locationType === 'STREET' ? 'Nome da Rua' : locationType === 'NEIGHBORHOOD' ? 'Nome do Bairro' : 'Nome do Local/Endereço'} value={name} onChange={e => setName(e.target.value)} />
@@ -1605,7 +1706,7 @@ const ManageLocationsView: React.FC<{
                     </div>
                     
                      <ul className="location-list">
-                        {topLevelLocations.sort((a,b) => a.name.localeCompare(b.name)).map(loc => (
+                        {currentLocations.sort((a,b) => a.name.localeCompare(b.name)).map(loc => (
                            <React.Fragment key={loc.id}>
                                 <li className="card list-item">
                                     <div className="list-item-info">
@@ -1638,8 +1739,9 @@ const ManageLocationsView: React.FC<{
                            </React.Fragment>
                         ))}
                     </ul>
+                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                 </>
-            )}
+            ))}
         </div>
     );
 };
@@ -2235,6 +2337,18 @@ const AdminEditRecordView: React.FC<{
                     readOnly={isOperator}
                 />
             </div>
+            
+            {/* Added Observations Field */}
+            <div className="form-group">
+                <label>Observações</label>
+                <textarea 
+                    className="input-field"
+                    style={{ minHeight: '100px', resize: 'vertical', width: '100%' }}
+                    value={formData.observations || ''}
+                    onChange={(e) => handleChange("observations", e.target.value)}
+                    placeholder="Edite ou adicione observações sobre este serviço..."
+                />
+            </div>
 
             <div className="form-group">
                 <label>Unidade</label>
@@ -2598,8 +2712,6 @@ const ManageServicesView: React.FC<{
         </div>
     );
 };
-
-// Substitua o componente App inteiro, do começo ao fim, por este código:
 
 // --- Função auxiliar para determinar a view inicial ---
 const getInitialView = (): View => {
