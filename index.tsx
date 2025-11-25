@@ -2453,74 +2453,82 @@ const AdminEditRecordView: React.FC<{
 };
 
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
-    
-    const handleExportPdf = () => {
-        const doc = new jsPDF();
-        doc.setFont('Helvetica', 'normal');
-        doc.setFontSize(18);
-        doc.text('Log de Auditoria - CRB Serviços', 14, 22);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
 
-        let y = 35;
-        const pageMargin = 14;
-        const pageWidth = doc.internal.pageSize.getWidth() - (pageMargin * 2);
+    const filteredLog = useMemo(() => {
+        return log.filter(entry => 
+            entry.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            entry.adminUsername.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            entry.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            String(entry.recordId).includes(searchTerm)
+        ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }, [log, searchTerm]);
 
-        log.forEach(entry => {
-            if (y > 270) {
-                doc.addPage();
-                y = 20;
-            }
-            doc.setFontSize(12);
-            doc.setFont('Helvetica', 'bold');
-            doc.text(`Data: ${formatDateTime(entry.timestamp)}`, pageMargin, y);
-            y += 7;
-            
-            doc.setFontSize(10);
-            doc.setFont('Helvetica', 'normal');
-            
-            const details = [
-                `Usuário: ${entry.adminUsername}`,
-                `Ação: ${entry.action === 'UPDATE' ? 'Atualização' : entry.action === 'DELETE' ? 'Exclusão' : 'Ajuste de Medição'}`,
-                `ID do Registro: ${entry.recordId}`,
-                `Detalhes: ${entry.details}`
-            ];
-            
-            details.forEach(line => {
-                const splitText = doc.splitTextToSize(line, pageWidth);
-                doc.text(splitText, pageMargin, y);
-                y += (splitText.length * 5);
+    const totalPages = Math.ceil(filteredLog.length / ITEMS_PER_PAGE);
+    const currentLogs = filteredLog.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    useEffect(() => { setCurrentPage(1); }, [searchTerm]);
+
+    const handleExportExcel = async () => {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Log de Auditoria');
+
+        worksheet.columns = [
+            { header: 'Data/Hora', key: 'timestamp', width: 20 },
+            { header: 'Usuário', key: 'username', width: 20 },
+            { header: 'Ação', key: 'action', width: 20 },
+            { header: 'ID Registro', key: 'recordId', width: 15 },
+            { header: 'Detalhes', key: 'details', width: 50 },
+        ];
+
+        filteredLog.forEach(entry => {
+            worksheet.addRow({
+                timestamp: formatDateTime(entry.timestamp),
+                username: entry.adminUsername,
+                action: entry.action === 'UPDATE' ? 'Atualização' : entry.action === 'DELETE' ? 'Exclusão' : 'Ajuste de Medição',
+                recordId: entry.recordId,
+                details: entry.details
             });
-            
-            y += 5;
-            doc.setDrawColor(200);
-            doc.line(pageMargin, y, pageWidth + pageMargin, y);
-            y += 10;
         });
 
-        doc.save(`log_auditoria_crb_${new Date().toISOString().split('T')[0]}.pdf`);
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `log_auditoria_${new Date().toISOString().split('T')[0]}.xlsx`;
+        link.click();
     };
 
     return (
-        <div>
-            <div className="audit-log-header">
+        <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h2>Registros de Alterações</h2>
-                <button className="button admin-button" onClick={handleExportPdf} disabled={log.length === 0}>
-                    Exportar para PDF
+                <button className="button admin-button" onClick={handleExportExcel} disabled={filteredLog.length === 0}>
+                    Exportar para Excel
                 </button>
             </div>
-            {log.length === 0 ? (
-                <p>Nenhuma alteração administrativa foi registrada ainda.</p>
+
+            <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar por usuário, detalhes ou ID..." />
+
+            {currentLogs.length === 0 ? (
+                <p>Nenhuma alteração encontrada com os filtros atuais.</p>
             ) : (
-                <ul className="audit-log-list">
-                    {log.map(entry => (
-                        <li key={entry.id} className="audit-log-item">
-                            <p><strong>Data:</strong> {formatDateTime(entry.timestamp)}</p>
-                            <p><strong>Usuário:</strong> {entry.adminUsername}</p>
-                            <p><strong>Ação:</strong> {entry.action === 'UPDATE' ? 'Atualização de Registro' : entry.action === 'DELETE' ? 'Exclusão de Registro' : 'Ajuste de Medição'}</p>
-                            <p><strong>ID do Registro:</strong> {entry.recordId}</p>
-                            <p><strong>Detalhes:</strong> {entry.details}</p>
-                        </li>
-                    ))}
-                </ul>
+                <>
+                    <ul className="audit-log-list">
+                        {currentLogs.map(entry => (
+                            <li key={entry.id} className="audit-log-item" style={{borderBottom: '1px solid #eee', paddingBottom: '1rem', marginBottom: '1rem'}}>
+                                <p><strong>Data:</strong> {formatDateTime(entry.timestamp)}</p>
+                                <p><strong>Usuário:</strong> {entry.adminUsername}</p>
+                                <p><strong>Ação:</strong> {entry.action === 'UPDATE' ? 'Atualização de Registro' : entry.action === 'DELETE' ? 'Exclusão de Registro' : 'Ajuste de Medição'}</p>
+                                <p><strong>ID do Registro:</strong> {entry.recordId}</p>
+                                <p><strong>Detalhes:</strong> {entry.details}</p>
+                            </li>
+                        ))}
+                    </ul>
+                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                </>
             )}
         </div>
     );
