@@ -1457,7 +1457,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         </div>
     );
 };
-
+            
 const ManageLocationsView: React.FC<{
     locations: LocationRecord[];
     services: ServiceDefinition[];
