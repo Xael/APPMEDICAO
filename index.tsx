@@ -61,7 +61,7 @@ type View =
     | 'ADMIN_EDIT_RECORD'
     | 'AUDIT_LOG'
     | 'FISCAL_DASHBOARD'
-    | 'S'
+    | 'REPORTS'
     | 'HISTORY'
     | 'DETAIL'
     | 'OPERATOR_GROUP_SELECT'
@@ -177,7 +177,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 case 'ADMIN_MANAGE_USERS': return 'Gerenciar Funcionários';
                 case 'ADMIN_MANAGE_GOALS': return 'Metas & Gráficos';
                 case 'ADMIN_MANAGE_CYCLES': return 'Gerenciar Ciclos de Medição';
-                case 'S': return 'Gerador de Relatórios';
+                case 'REPORTS': return 'Gerador de Relatórios';
                 case 'HISTORY': return 'Histórico Geral';
                 case 'DETAIL': return 'Detalhes do Serviço';
                 case 'ADMIN_EDIT_RECORD': return 'Editar Registro de Serviço';
@@ -188,7 +188,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
         if (currentUser.role === 'FISCAL') {
              switch(view) {
                 case 'FISCAL_DASHBOARD': return 'Painel de Fiscalização';
-                case 'S': return 'Relatórios';
+                case 'REPORTS': return 'Relatórios';
                 case 'HISTORY': return 'Histórico de Serviços';
                 case 'DETAIL': return 'Detalhes do Serviço';
                 default: return 'Modo Fiscalização';
@@ -358,7 +358,7 @@ const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () 
             <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_USERS')}>Gerenciar Funcionários</button>
             <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_GOALS')}>🎯 Metas & Gráficos</button>
             <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_CYCLES')}>🗓️ Gerenciar Ciclos de Medição</button>
-            <button className="button admin-button" onClick={() => onNavigate('S')}>Gerador de Relatórios</button>
+            <button className="button admin-button" onClick={() => onNavigate('REPORTS')}>Gerador de Relatórios</button>
             <button className="button admin-button" onClick={() => onNavigate('HISTORY')}>Histórico Geral</button>
             <button className="button admin-button" onClick={() => onNavigate('AUDIT_LOG')}>📜 Log de Auditoria</button>
         </div>
@@ -446,7 +446,7 @@ const ManageCyclesView: React.FC<{
 const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () => void; }> = ({ onNavigate, onLogout }) => (
     <div className="dashboard-container">
         <div className="admin-dashboard">
-            <button className="button" onClick={() => onNavigate('S')}>📊 Gerar Relatórios</button>
+            <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
         </div>
         <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
     </div>
