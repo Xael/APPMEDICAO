@@ -61,7 +61,7 @@ type View =
     | 'ADMIN_EDIT_RECORD'
     | 'AUDIT_LOG'
     | 'FISCAL_DASHBOARD'
-    | 'REPORTS'
+    | 'S'
     | 'HISTORY'
     | 'DETAIL'
     | 'OPERATOR_GROUP_SELECT'
@@ -177,7 +177,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
                 case 'ADMIN_MANAGE_USERS': return 'Gerenciar Funcionários';
                 case 'ADMIN_MANAGE_GOALS': return 'Metas & Gráficos';
                 case 'ADMIN_MANAGE_CYCLES': return 'Gerenciar Ciclos de Medição';
-                case 'REPORTS': return 'Gerador de Relatórios';
+                case 'S': return 'Gerador de Relatórios';
                 case 'HISTORY': return 'Histórico Geral';
                 case 'DETAIL': return 'Detalhes do Serviço';
                 case 'ADMIN_EDIT_RECORD': return 'Editar Registro de Serviço';
@@ -188,7 +188,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
         if (currentUser.role === 'FISCAL') {
              switch(view) {
                 case 'FISCAL_DASHBOARD': return 'Painel de Fiscalização';
-                case 'REPORTS': return 'Relatórios';
+                case 'S': return 'Relatórios';
                 case 'HISTORY': return 'Histórico de Serviços';
                 case 'DETAIL': return 'Detalhes do Serviço';
                 default: return 'Modo Fiscalização';
@@ -358,7 +358,7 @@ const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () 
             <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_USERS')}>Gerenciar Funcionários</button>
             <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_GOALS')}>🎯 Metas & Gráficos</button>
             <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_CYCLES')}>🗓️ Gerenciar Ciclos de Medição</button>
-            <button className="button admin-button" onClick={() => onNavigate('REPORTS')}>Gerador de Relatórios</button>
+            <button className="button admin-button" onClick={() => onNavigate('S')}>Gerador de Relatórios</button>
             <button className="button admin-button" onClick={() => onNavigate('HISTORY')}>Histórico Geral</button>
             <button className="button admin-button" onClick={() => onNavigate('AUDIT_LOG')}>📜 Log de Auditoria</button>
         </div>
@@ -446,7 +446,7 @@ const ManageCyclesView: React.FC<{
 const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () => void; }> = ({ onNavigate, onLogout }) => (
     <div className="dashboard-container">
         <div className="admin-dashboard">
-            <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
+            <button className="button" onClick={() => onNavigate('S')}>📊 Gerar Relatórios</button>
         </div>
         <button className="button button-danger" style={{ marginTop: '2rem' }} onClick={onLogout}>Sair do Sistema</button>
     </div>
@@ -921,7 +921,7 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
     </div>
 );
 
-const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; locations: LocationRecord[]; }> = ({ records, services, locations }) => {
+const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
     const [reportType, setReportType] = useState<'excel' | 'photos' | 'billing' | null>(null);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -930,54 +930,26 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const printableRef = useRef<HTMLDivElement>(null);
     const [isGenerating, setIsGenerating] = useState(false);
-    
-    // New state for search and pagination
-    const [localSearch, setLocalSearch] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
-    const ITEMS_PER_PAGE = 10;
 
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
     
     const handleServiceFilterChange = (service: string, isChecked: boolean) => { setSelectedServices(prev => isChecked ? [...prev, service] : prev.filter(s => s !== service)); };
     
-    const filteredRecords = useMemo(() => {
-        return records.filter(r => {
-            const recordDate = new Date(r.startTime);
-            const start = startDate ? new Date(startDate) : null;
-            const end = endDate ? new Date(endDate) : null;
-            if (start && recordDate < start) return false;
-            if (end) { end.setHours(23, 59, 59, 999); if (recordDate > end) return false; }
-            if (selectedServices.length > 0 && !selectedServices.includes(r.serviceType)) return false;
-            if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
-            return true;
-        }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-    }, [records, startDate, endDate, selectedServices, selectedContractGroup]);
+    const filteredRecords = records.filter(r => {
+        const recordDate = new Date(r.startTime);
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+        if (start && recordDate < start) return false;
+        if (end) { end.setHours(23, 59, 59, 999); if (recordDate > end) return false; }
+        if (selectedServices.length > 0 && !selectedServices.includes(r.serviceType)) return false;
+        if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
+        return true;
+    }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
     
-    // Apply local search on filtered records
-    const displayRecords = useMemo(() => {
-        return filteredRecords.filter(r => 
-            r.locationName.toLowerCase().includes(localSearch.toLowerCase()) ||
-            (r.serviceOrderNumber && r.serviceOrderNumber.includes(localSearch))
-        );
-    }, [filteredRecords, localSearch]);
-
-    const totalPages = Math.ceil(displayRecords.length / ITEMS_PER_PAGE);
-    const currentRecords = displayRecords.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-    
-    useEffect(() => { setCurrentPage(1); }, [localSearch, filteredRecords]);
-
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if(e.target.checked) {
-            // Select visible records from search result
-            const idsToSelect = displayRecords.map(r => r.id);
-            // Merge with existing selection
-            setSelectedIds(prev => [...new Set([...prev, ...idsToSelect])]);
-        } else {
-            // Deselect visible records
-            const idsToDeselect = new Set(displayRecords.map(r => r.id));
-            setSelectedIds(prev => prev.filter(id => !idsToDeselect.has(id)));
-        }
+        if(e.target.checked) setSelectedIds(filteredRecords.map(r => r.id));
+        else setSelectedIds([]);
     };
 
     const handleSelectOne = (id: string, isChecked: boolean) => {
@@ -986,18 +958,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     };
 
     const selectedRecords = records.filter(r => selectedIds.includes(r.id));
-    const totalArea = selectedRecords.reduce((sum, r) => sum + ((r.overrideMeasurement ?? r.locationArea) || 0), 0);
-    
-    const getNeighborhoodForRecord = (record: ServiceRecord, allLocations: LocationRecord[]): string => {
-        const location = allLocations.find(l => l.id === record.locationId);
-        if (location?.parentId) {
-            const parent = allLocations.find(p => p.id === location.parentId);
-            return parent?.name || 'Bairro não encontrado';
-        }
-        const isParent = allLocations.some(l => l.parentId === record.locationId);
-        if (isParent) return record.locationName;
-        return '';
-    };
+    const totalArea = selectedRecords.reduce((sum, r) => sum + (r.locationArea || 0), 0);
 
     const handleExportExcel = async () => {
         if (selectedRecords.length === 0) {
@@ -1010,11 +971,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         worksheet.columns = [
             { header: 'ID', key: 'id', width: 10 }, { header: 'Data Início', key: 'startTime', width: 20 },
             { header: 'Data Fim', key: 'endTime', width: 20 }, { header: 'Contrato/Cidade', key: 'contractGroup', width: 25 },
-            { header: 'Bairro', key: 'neighborhood', width: 30 },
-            { header: 'Local', key: 'locationName', width: 40 }, 
-            { header: 'Nº Ordem de Serviço', key: 'serviceOrderNumber', width: 20 },
-            { header: 'Observações', key: 'observations', width: 40 },
-            { header: 'Serviço', key: 'serviceType', width: 30 },
+            { header: 'Local', key: 'locationName', width: 40 }, { header: 'Serviço', key: 'serviceType', width: 30 },
             { header: 'Medição', key: 'locationArea', width: 15 }, { header: 'Unidade', key: 'serviceUnit', width: 15 },
             { header: 'Operador', key: 'operatorName', width: 25 }, { header: 'Usou GPS', key: 'gpsUsed', width: 10 },
         ];
@@ -1022,12 +979,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             worksheet.addRow({
                 id: record.id, startTime: formatDateTime(record.startTime),
                 endTime: record.endTime ? formatDateTime(record.endTime) : 'Não finalizado',
-                contractGroup: record.contractGroup, 
-                neighborhood: getNeighborhoodForRecord(record, locations),
-                locationName: record.locationName,
-                serviceOrderNumber: record.serviceOrderNumber || '',
-                observations: record.observations || '',
-                serviceType: record.serviceType, locationArea: record.overrideMeasurement ?? record.locationArea,
+                contractGroup: record.contractGroup, locationName: record.locationName,
+                serviceType: record.serviceType, locationArea: record.locationArea,
                 serviceUnit: record.serviceUnit, operatorName: record.operatorName,
                 gpsUsed: record.gpsUsed ? 'Sim' : 'Não',
             });
@@ -1058,13 +1011,16 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Planilha de Faturamento');
 
-        const centerBoldStyle = { font: { bold: true }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
-        const centerStyle = { alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
-        const titleStyle = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' as 'center', vertical: 'middle' as 'middle' } };
+        // --- STYLES ---
+        const centerBoldStyle = { font: { bold: true }, alignment: { horizontal: 'center' as const, vertical: 'middle' as const } };
+        const centerStyle = { alignment: { horizontal: 'center' as const, vertical: 'middle' as const } };
+        const titleStyle = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' as const, vertical: 'middle' as const } };
         const yellowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } as ExcelJS.Fill;
+        const grayFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } as ExcelJS.Fill;
         const thinBorder = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } as ExcelJS.Borders;
         const numberFormat = '#,##0.00';
 
+        // --- HEADER ---
         worksheet.mergeCells('A1:L1');
         worksheet.getCell('A1').value = 'C.R.B COMERCIO E SERVIÇOS DE MANUTENÇÃO EM GERAL LTDA';
         worksheet.getCell('A1').style = centerBoldStyle;
@@ -1082,48 +1038,50 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         const formattedEndDate = endDate ? new Date(endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
         worksheet.getCell('J5').value = `${formattedStartDate} até ${formattedEndDate}`;
 
+        // --- DATA ---
         const groupedRecords = selectedRecords.reduce((acc, record) => {
             (acc[record.serviceType] = acc[record.serviceType] || []).push(record);
             return acc;
         }, {} as Record<string, ServiceRecord[]>);
 
         let currentColumn = 1;
+        let maxRows = 8;
         const serviceSummaryInfo: { service: string, unit: string, metragemColumn: string, firstRow: number, lastRow: number }[] = [];
 
         Object.keys(groupedRecords).forEach(serviceType => {
             const records = groupedRecords[serviceType];
             if (records.length === 0) return;
 
-            worksheet.mergeCells(7, currentColumn, 7, currentColumn + 5);
+            // Service Header
+            worksheet.mergeCells(7, currentColumn, 7, currentColumn + 2);
             const headerCell = worksheet.getCell(7, currentColumn);
             headerCell.value = serviceType.toUpperCase();
             headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
 
-            const subheaders = ['DATA', 'BAIRRO', 'LOCAL', 'ORDEM DE SERVIÇO', 'OBSERVAÇÕES', 'METRAGEM EM'];
+            // Subheaders
+            const subheaders = ['DATA', 'LOCAL', `METRAGEM EM`];
             subheaders.forEach((text, i) => {
                 const cell = worksheet.getCell(8, currentColumn + i);
                 cell.value = text;
                 cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
             });
 
-            const metragemColumn = worksheet.getColumn(currentColumn + 5);
+            const metragemColumn = worksheet.getColumn(currentColumn + 2);
             metragemColumn.numFmt = numberFormat;
 
             let currentRow = 9;
             records.forEach(record => {
                 worksheet.getCell(currentRow, currentColumn).value = new Date(record.startTime).toLocaleDateString('pt-BR');
-                worksheet.getCell(currentRow, currentColumn + 1).value = getNeighborhoodForRecord(record, locations);
-                worksheet.getCell(currentRow, currentColumn + 2).value = record.locationName;
-                worksheet.getCell(currentRow, currentColumn + 3).value = record.serviceOrderNumber || '';
-                worksheet.getCell(currentRow, currentColumn + 4).value = record.observations || '';
-                worksheet.getCell(currentRow, currentColumn + 5).value = record.overrideMeasurement ?? record.locationArea;
-                
-                for (let i = 0; i < subheaders.length; i++) {
-                    worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
+                worksheet.getCell(currentRow, currentColumn + 1).value = record.locationName;
+                worksheet.getCell(currentRow, currentColumn + 2).value = record.locationArea;
+                // Apply borders to data cells
+                for (let i = 0; i < 3; i++) {
+                     worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
                 }
                 currentRow++;
             });
 
+            if (currentRow > maxRows) maxRows = currentRow;
             serviceSummaryInfo.push({
                 service: serviceType,
                 unit: records[0].serviceUnit,
@@ -1132,9 +1090,10 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 lastRow: currentRow - 1
             });
 
-            currentColumn += subheaders.length + 1;
+            currentColumn += 4; // 3 columns for data + 1 spacer column
         });
         
+        // --- QUADRO RESUMO ---
         const summaryStartCol = currentColumn;
         worksheet.mergeCells(7, summaryStartCol, 7, summaryStartCol + 3);
         const summaryHeader = worksheet.getCell(7, summaryStartCol);
@@ -1154,23 +1113,27 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             const totalCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 3);
             totalCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
             totalCell.numFmt = numberFormat;
+
+            // Apply borders to summary cells
             [summaryStartCol, summaryStartCol + 2, summaryStartCol + 3].forEach(colIdx => {
                 worksheet.getCell(summaryCurrentRow, colIdx).border = thinBorder;
             })
             summaryCurrentRow++;
         });
 
+        // Set column widths
         worksheet.columns.forEach(column => {
-            if (!column.width) {
-                let maxLength = 0;
-                column.eachCell!({ includeEmpty: true }, cell => {
-                    let columnLength = cell.value ? cell.value.toString().length : 10;
-                    if (columnLength > maxLength) { maxLength = columnLength; }
-                });
-                column.width = maxLength < 10 ? 10 : maxLength + 2;
-            }
+            let maxLength = 0;
+            column.eachCell!({ includeEmpty: true }, cell => {
+                let columnLength = cell.value ? cell.value.toString().length : 10;
+                if (columnLength > maxLength) {
+                    maxLength = columnLength;
+                }
+            });
+            column.width = maxLength < 10 ? 10 : maxLength + 2;
         });
 
+        // --- DOWNLOAD ---
         try {
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1187,6 +1150,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         }
     };
 
+
     const handleGeneratePdfClick = () => {
         if (selectedRecords.length === 0) {
             alert("Por favor, selecione ao menos um registro para gerar o PDF.");
@@ -1196,7 +1160,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     };
 
     const PdfLayout = () => {
-        const recordsPerPage = 2;
+        // ========== PAGINAÇÃO INTELIGENTE (CORREÇÃO DE DEFORMAÇÃO) ==========
         const [pages, setPages] = useState<ServiceRecord[][]>([]);
         const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
         const [isLoadingImages, setIsLoadingImages] = useState(true);
@@ -1220,6 +1184,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
         useEffect(() => {
             const processRecords = async () => {
+                // 1. Pré-carregar todas as imagens
                 const allImageUrls = selectedRecords.flatMap(r => [...(r.beforePhotos || []), ...(r.afterPhotos || [])]);
                 const uniqueImageUrls = [...new Set(allImageUrls)];
                 const imagePromises = uniqueImageUrls.map(url => getBase64Image(`${API_BASE}${url}`).then(base64 => ({ url, base64 })));
@@ -1229,13 +1194,55 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     return acc;
                 }, {} as Record<string, string>);
                 setLoadedImages(imageMap);
-                const paginatedRecords = [];
-                for (let i = 0; i < selectedRecords.length; i += recordsPerPage) {
-                    paginatedRecords.push(selectedRecords.slice(i, i + recordsPerPage));
+
+                // 2. Lógica de "Pontos" para Paginação
+                // Uma página A4 tem uma capacidade de "pontos" de altura.
+                // - Cabeçalho do registro + Infos: ~2.5 pontos
+                // - Cada LINHA de fotos (2 fotos lado a lado): ~2.0 pontos
+                // Capacidade Máxima sugerida: 10 pontos.
+                const PAGE_CAPACITY = 10;
+                const HEADER_COST = 2.5;
+                const ROW_COST = 2.0;
+
+                const paginatedRecords: ServiceRecord[][] = [];
+                let currentPage: ServiceRecord[] = [];
+                let currentLoad = 0;
+
+                selectedRecords.forEach(record => {
+                    const maxPhotos = Math.max((record.beforePhotos || []).length, (record.afterPhotos || []).length);
+                    const photoRows = Math.ceil(maxPhotos); // 1 foto conta como 1 linha devido à tabela lateral
+                    const recordCost = HEADER_COST + (photoRows * ROW_COST);
+
+                    // Se o registro sozinho é maior que uma página inteira, ele vai numa página nova sozinho.
+                    if (recordCost > PAGE_CAPACITY) {
+                        if (currentPage.length > 0) {
+                            paginatedRecords.push(currentPage);
+                            currentPage = [];
+                            currentLoad = 0;
+                        }
+                        paginatedRecords.push([record]); // Página exclusiva para ele
+                    } 
+                    // Se somar com o atual estourar, quebra página antes
+                    else if (currentLoad + recordCost > PAGE_CAPACITY) {
+                        paginatedRecords.push(currentPage);
+                        currentPage = [record];
+                        currentLoad = recordCost;
+                    } 
+                    // Senão, adiciona na página atual
+                    else {
+                        currentPage.push(record);
+                        currentLoad += recordCost;
+                    }
+                });
+
+                if (currentPage.length > 0) {
+                    paginatedRecords.push(currentPage);
                 }
+
                 setPages(paginatedRecords);
                 setIsLoadingImages(false);
             };
+            
             if (selectedRecords.length > 0) { processRecords(); } else { setIsLoadingImages(false); }
         }, []);
 
@@ -1246,11 +1253,29 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     try {
                         const doc = new jsPDF('p', 'mm', 'a4');
                         const pageElements = printableRef.current.querySelectorAll('.printable-page');
+                        const pdfPageWidth = doc.internal.pageSize.getWidth();
+                        const pdfPageHeight = doc.internal.pageSize.getHeight();
+
                         for (let i = 0; i < pageElements.length; i++) {
                             const page = pageElements[i] as HTMLElement;
+                            
+                            // Aumenta escala para melhor qualidade
                             const canvas = await html2canvas(page, { scale: 2, useCORS: true, logging: false });
+                            const imgData = canvas.toDataURL('image/jpeg', 0.85); // Compressão leve
+
                             if (i > 0) doc.addPage();
-                            doc.addImage(canvas.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight());
+
+                            // ========== CÁLCULO PROPORCIONAL (CRÍTICO) ==========
+                            // Calcula a altura que a imagem DEVE ter para manter a proporção
+                            const imgProps = doc.getImageProperties(imgData);
+                            const proportionalHeight = (imgProps.height * pdfPageWidth) / imgProps.width;
+
+                            // Usa a altura proporcional. Se for menor que a página A4, sobra espaço branco embaixo (ok).
+                            // Se for maior, vai cortar ou encolher, mas nossa paginação acima deve prevenir que seja MUITO maior.
+                            // Para garantir que cabe na página se passar um pouquinho, usamos Math.min
+                            // MAS o ideal é deixar proportionalHeight para não deformar.
+                            
+                            doc.addImage(imgData, 'JPEG', 0, 0, pdfPageWidth, proportionalHeight);
                         }
                         doc.save(`relatorio_fotos_crb_${new Date().toISOString().split('T')[0]}.pdf`);
                     } catch (error) {
@@ -1266,60 +1291,98 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         if (isLoadingImages) return null;
         
         const today = new Date().toLocaleDateString('pt-BR');
+        
+        // Estilo inline para garantir visualização correta no PDF
+        const styles = {
+            page: {
+                width: '210mm',
+                minHeight: '297mm', // Permite crescer se necessário, o html2canvas captura tudo
+                padding: '10mm',
+                backgroundColor: 'white',
+                boxSizing: 'border-box' as const,
+                border: '1px solid #eee', // Borda visual na tela
+                marginBottom: '20px'
+            },
+            header: { display: 'flex', alignItems: 'center', marginBottom: '10px', borderBottom: '2px solid #333', paddingBottom: '10px' },
+            logo: { maxHeight: '35px', width: 'auto', marginRight: '15px' },
+            headerText: { flexGrow: 1 },
+            recordBlock: { marginBottom: '15px', pageBreakInside: 'avoid' as const, border: '1px solid #ccc', padding: '10px', borderRadius: '4px' },
+            infoTable: { width: '100%', marginBottom: '10px', borderCollapse: 'collapse' as const },
+            infoCell: { padding: '4px', borderBottom: '1px solid #eee', fontSize: '10pt' },
+            photoTable: { width: '100%', borderCollapse: 'collapse' as const },
+            photoCell: { width: '50%', padding: '5px', textAlign: 'center' as const, verticalAlign: 'top' as const, border: '1px solid #ddd' },
+            img: { width: '100%', maxHeight: '180px', objectFit: 'contain' as const, display: 'block', margin: '0 auto' },
+            caption: { fontSize: '8pt', marginTop: '4px', color: '#555' }
+        };
+
         return (
-            <div className="printable-report-container" ref={printableRef}>
+            <div className="printable-report-container" ref={printableRef} style={{ position: 'absolute', top: '-10000px' }}>
                 {pages.map((pageRecords, pageIndex) => (
-                    <div key={pageIndex} className="printable-page">
-                        <header className="pdf-page-header">
-                            <div style={{ display: 'flex', alignItems: 'center' }}>
-                                <img src={logoSrc} alt="Logo" style={{ maxHeight: '25px', width: 'auto' }} />
-                                <h2 style={{fontSize: '16pt', margin: '0 0 0 10px'}}>Relatório Fotográfico</h2>
+                    <div key={pageIndex} className="printable-page" style={styles.page}>
+                        <header style={styles.header}>
+                            <img src={logoSrc} alt="Logo" style={styles.logo} />
+                            <div style={styles.headerText}>
+                                <h2 style={{margin: 0, fontSize: '14pt'}}>Relatório Fotográfico</h2>
+                                <p style={{margin: 0, fontSize: '10pt'}}>CRB Serviços Gerais</p>
                             </div>
-                            <p style={{textAlign: 'right', fontSize: '10pt'}}>CRB Serviços<br/>Data de Emissão: {today}</p>
+                            <div style={{textAlign: 'right', fontSize: '9pt'}}>
+                                <p>Emissão: {today}</p>
+                                <p>Pág. {pageIndex + 1}/{pages.length}</p>
+                            </div>
                         </header>
+                        
                         <div className="pdf-page-content">
                             {pageRecords.map(record => {
-                                const photoPairs = [];
                                 const maxPhotos = Math.max((record.beforePhotos || []).length, (record.afterPhotos || []).length);
+                                const photoPairs = [];
                                 for (let i = 0; i < maxPhotos; i++) {
                                     photoPairs.push({ before: record.beforePhotos?.[i], after: record.afterPhotos?.[i] });
                                 }
                                 return (
-                                    <div key={record.id} className="pdf-record-block">
-                                        <div className="pdf-record-info">
-                                            <h3>{record.locationName}</h3>
-                                            <p>
-                                                <strong>Contrato/Cidade:</strong> {record.contractGroup} |
-                                                <strong> Serviço:</strong> {record.serviceType} |
-                                                <strong> Data:</strong> {formatDateTime(record.startTime)}
-                                                {record.locationArea && record.locationArea > 0 && (
-                                                    <>
-                                                        {' | '}
-                                                        <strong>Medição:</strong>
-                                                        {` ${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}`}
-                                                    </>
-                                                )}
-                                                 {record.serviceOrderNumber && (
-                                                    <>
-                                                        {' | '}
-                                                        <strong>O.S.:</strong>
-                                                        {` ${record.serviceOrderNumber}`}
-                                                    </>
-                                                )}
-                                            </p>
-                                        </div>
-                                        <table className="pdf-photo-table">
-                                            <thead><tr><th>ANTES</th><th>DEPOIS</th></tr></thead>
+                                    <div key={record.id} style={styles.recordBlock}>
+                                        <table style={styles.infoTable}>
+                                            <tbody>
+                                                <tr>
+                                                    <td style={styles.infoCell}><strong>Local:</strong> {record.locationName}</td>
+                                                    <td style={styles.infoCell}><strong>Data:</strong> {formatDateTime(record.startTime)}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style={styles.infoCell}><strong>Serviço:</strong> {record.serviceType}</td>
+                                                    <td style={styles.infoCell}>
+                                                        <strong>Medição:</strong> {record.locationArea ? `${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}` : 'N/A'}
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td style={styles.infoCell} colSpan={2}><strong>Contrato:</strong> {record.contractGroup}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+
+                                        <table style={styles.photoTable}>
+                                            <thead>
+                                                <tr style={{backgroundColor: '#f8f9fa'}}>
+                                                    <th style={{...styles.photoCell, fontSize: '10pt'}}>ANTES</th>
+                                                    <th style={{...styles.photoCell, fontSize: '10pt'}}>DEPOIS</th>
+                                                </tr>
+                                            </thead>
                                             <tbody>
                                                 {photoPairs.map((pair, index) => (
                                                     <tr key={index}>
-                                                        <td>
-                                                            {pair.before && <img src={loadedImages[`${API_BASE}${pair.before}`]} alt={`Antes ${index + 1}`} />}
-                                                            <p className="caption">Foto Antes {index + 1}<br/>{record.locationName}</p>
+                                                        <td style={styles.photoCell}>
+                                                            {pair.before ? (
+                                                                <>
+                                                                    <img src={loadedImages[`${API_BASE}${pair.before}`]} alt="Antes" style={styles.img} />
+                                                                    <div style={styles.caption}>Foto {index + 1}</div>
+                                                                </>
+                                                            ) : <div style={{height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc'}}>Sem foto</div>}
                                                         </td>
-                                                        <td>
-                                                            {pair.after && <img src={loadedImages[`${API_BASE}${pair.after}`]} alt={`Depois ${index + 1}`} />}
-                                                            <p className="caption">Foto Depois {index + 1}<br/>{record.locationName}</p>
+                                                        <td style={styles.photoCell}>
+                                                            {pair.after ? (
+                                                                <>
+                                                                    <img src={loadedImages[`${API_BASE}${pair.after}`]} alt="Depois" style={styles.img} />
+                                                                    <div style={styles.caption}>Foto {index + 1}</div>
+                                                                </>
+                                                            ) : <div style={{height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc'}}>Sem foto</div>}
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -1329,7 +1392,6 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                 );
                             })}
                         </div>
-                         <footer className="pdf-page-footer">Página {pageIndex + 1} de {pages.length}</footer>
                     </div>
                 ))}
             </div>
@@ -1339,7 +1401,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     if (isGenerating) {
         return (
             <>
-                <Loader text="Gerando relatório, por favor aguarde..." />
+                <Loader text="Gerando relatório PDF, por favor aguarde... Isso pode levar alguns segundos." />
                 {reportType === 'photos' && <PdfLayout />}
             </>
         );
@@ -1370,9 +1432,9 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 </div>
                 <fieldset className="form-group-full"><legend>Filtrar por Serviços</legend><div className="checkbox-group">{allServiceNames.map(name => (<div key={name} className="checkbox-item"><input type="checkbox" id={`service-${name}`} checked={selectedServices.includes(name)} onChange={e => handleServiceFilterChange(name, e.target.checked)} /><label htmlFor={`service-${name}`}>{name}</label></div>))}</div></fieldset>
             </div>
-            
+          
             <div className="report-summary">
-                <h3>{selectedIds.length} registros selecionados</h3>
+                <h3>{selectedIds.length} de {filteredRecords.length} registros selecionados</h3>
                 {reportType === 'excel' && <p>Total Medição (Excel): {totalArea.toLocaleString('pt-br')} </p>}
                 <div className="button-group">
                     {reportType === 'excel' && <button className="button" onClick={handleExportExcel} disabled={selectedIds.length === 0}>Exportar para Excel</button>}
@@ -1380,28 +1442,18 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     {reportType === 'photos' && <button className="button" onClick={handleGeneratePdfClick} disabled={selectedIds.length === 0}>Gerar PDF com Fotos</button>}
                 </div>
             </div>
-            
-            <div style={{marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1rem'}}>
-                <h4>Selecionar Registros</h4>
-                <SearchBar value={localSearch} onChange={setLocalSearch} placeholder="Pesquisar local ou O.S. na lista..." />
-                
-                {displayRecords.length > 0 && <div style={{marginBottom: '0.5rem'}}><label><input type="checkbox" onChange={handleSelectAll} /> Selecionar/Deselecionar Todos da Busca</label></div>}
-
-                <ul className="report-list">
-                    {currentRecords.map(record => (
-                        <li key={record.id} className="report-item">
-                            <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={e => handleSelectOne(record.id, e.target.checked)} />
-                            <div className="report-item-info">
-                                <p><strong>{record.locationName}</strong> - {record.serviceType}</p>
-                                <p><small>{record.contractGroup} | {formatDateTime(record.startTime)}</small></p>
-                                {record.serviceOrderNumber && <p style={{fontSize:'0.8rem', color:'#666'}}>OS: {record.serviceOrderNumber}</p>}
-                            </div>
-                        </li>
-                    ))}
-                    {displayRecords.length === 0 && <p>Nenhum registro encontrado com os filtros atuais.</p>}
-                </ul>
-                <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
-            </div>
+            <ul className="report-list" style={{marginTop: '1rem'}}>
+                {filteredRecords.length > 0 && <li><label><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === filteredRecords.length && filteredRecords.length > 0} /> Selecionar Todos</label></li>}
+                {filteredRecords.map(record => (
+                    <li key={record.id} className="report-item">
+                        <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={e => handleSelectOne(record.id, e.target.checked)} />
+                        <div className="report-item-info">
+                            <p><strong>{record.locationName}</strong> - {record.serviceType}</p>
+                            <p><small>{record.contractGroup} | {formatDateTime(record.startTime)}</small></p>
+                        </div>
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 };
