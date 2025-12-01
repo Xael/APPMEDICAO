@@ -1372,7 +1372,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                                             {pair.before ? (
                                                                 <>
                                                                     <img src={loadedImages[`${API_BASE}${pair.before}`]} alt="Antes" style={styles.img} />
-                                                                    <div style={styles.caption}>Foto {index + 1}</div>
+                                                                    <div style={styles.caption}>{record.locationName}</div>
                                                                 </>
                                                             ) : <div style={{height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc'}}>Sem foto</div>}
                                                         </td>
@@ -1380,7 +1380,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                                             {pair.after ? (
                                                                 <>
                                                                     <img src={loadedImages[`${API_BASE}${pair.after}`]} alt="Depois" style={styles.img} />
-                                                                    <div style={styles.caption}>Foto {index + 1}</div>
+                                                                    <div style={styles.caption}>{record.locationName}</div>
                                                                 </>
                                                             ) : <div style={{height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc'}}>Sem foto</div>}
                                                         </td>
