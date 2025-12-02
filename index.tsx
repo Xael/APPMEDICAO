@@ -2294,23 +2294,33 @@ const AdminEditRecordView: React.FC<{
         }
     };
 
-    const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
+const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
         if (!files || files.length === 0) return;
         setIsLoading("Enviando fotos...");
         const formDataUpload = new FormData();
         formDataUpload.append("phase", phase);
         Array.from(files).forEach(file => formDataUpload.append("files", file));
+        
         try {
-            const updated = await apiFetch(`/api/records/${formData.id}/photos`, {
+            // 1. Envia as fotos (POST)
+            await apiFetch(`/api/records/${formData.id}/photos`, {
                 method: "POST",
                 body: formDataUpload
             });
+
+            // 2. CORREÇÃO: Busca o registro atualizado (GET) para garantir a lista completa de fotos
+            // Isso evita que o estado local fique apenas com as novas fotos e sobrescreva as antigas ao salvar.
+            const freshRecord = await apiFetch(`/api/records/${formData.id}`);
+            
             const fullRecord = {
-                ...updated,
-                id: String(updated.id),
-                operatorId: String(updated.operatorId),
+                ...freshRecord,
+                id: String(freshRecord.id),
+                operatorId: String(freshRecord.operatorId),
             };
+            
             setFormData(fullRecord); 
+            alert("Fotos adicionadas com sucesso!"); // Feedback visual opcional
+
         } catch (err) {
             alert(`Falha ao enviar fotos '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
             console.error(err);
