@@ -3046,37 +3046,49 @@ const App = () => {
 const handleBeforePhotos = async (photosBefore: string[], serviceOrderNumber?: string) => {
         setIsLoading("Salvando fotos...");
         try {
-            // VERIFICAÇÃO CRÍTICA: Se já temos um ID e NÃO é um ID temporário, 
-            // significa que estamos editando um registro existente (fluxo "Cancelar/Adicionar").
-            // Nesse caso, apenas anexamos as fotos, sem criar um novo registro.
-            const isExistingRecord = currentService.id && !currentService.tempId;
+            // VERIFICAÇÃO SIMPLIFICADA:
+            // Se existe um ID (seja do servidor ou temporário), estamos EDITANDO/ADICIONANDO.
+            // Se não existe ID, é um registro NOVO (primeira vez).
+            const recordId = currentService.id || currentService.tempId;
+            const isEditing = !!recordId;
 
-            if (isExistingRecord) {
-                // --- LÓGICA DE ANEXAR (APPEND) ---
-                const fd = new FormData();
-                fd.append("phase", "BEFORE"); // Força fase ANTES
+            if (isEditing) {
+                // --- MODO ADIÇÃO (OK ou CANCELAR em registro existente) ---
+                // Adiciona as novas fotos às existentes, sem apagar nada.
+
+                // 1. Se o registro já existe no servidor (tem ID real), envia as fotos para a API
+                if (currentService.id && !currentService.tempId) {
+                    const fd = new FormData();
+                    fd.append("phase", "BEFORE"); // Fase "Antes"
+                    
+                    // Prepara arquivos com nomes únicos para evitar colisão
+                    const beforeFiles = photosBefore.map((p, i) => 
+                        dataURLtoFile(p, `before_append_${Date.now()}_${i}.jpg`)
+                    );
+                    beforeFiles.forEach(f => fd.append("files", f));
+
+                    // POST para a rota de FOTOS (apenas anexa, não substitui registro)
+                    await apiFetch(`/api/records/${currentService.id}/photos`, {
+                        method: 'POST',
+                        body: fd
+                    });
+                }
                 
-                const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_append_${i}.jpg`));
-                beforeFiles.forEach(f => fd.append("files", f));
-
-                // Se houver número de OS novo, podemos tentar atualizar (opcional, dependendo da API)
-                // Aqui focamos nas fotos para não substituir o registro
-                await apiFetch(`/api/records/${currentService.id}/photos`, {
-                    method: 'POST', // POST normalmente anexa, não substitui
-                    body: fd
-                });
-
-                // Atualiza o estado local para mostrar as fotos antigas + novas
+                // 2. ATUALIZAÇÃO DO ESTADO VISUAL (O MAIS IMPORTANTE)
+                // Mantém as fotos antigas (...prev.beforePhotos) e junta com as novas (...photosBefore)
                 setCurrentService(prev => ({
                     ...prev,
                     beforePhotos: [...(prev.beforePhotos || []), ...photosBefore],
                     serviceOrderNumber: serviceOrderNumber || prev.serviceOrderNumber
                 }));
 
-                // Segue o fluxo normal
+                // Segue para a tela de progresso
                 navigate('OPERATOR_SERVICE_IN_PROGRESS');
+
             } else {
-                // --- LÓGICA DE CRIAR NOVO (PRESERVA O ORIGINAL PARA CASOS "OK") ---
+                // --- MODO CRIAÇÃO (SÓ NA PRIMEIRA VEZ) ---
+                // Apenas aqui criamos um registro novo do zero.
+                
                 const { serviceId, serviceType, serviceUnit, locationId, locationName, contractGroup, locationArea, gpsUsed, coords } = currentService;
                 
                 const recordPayload = {
@@ -3096,9 +3108,17 @@ const handleBeforePhotos = async (photosBefore: string[], serviceOrderNumber?: s
                 };
                 
                 const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
+                
+                // Cria o registro na fila/banco
                 await queueRecord(recordPayload, beforeFiles);
                 
-                setCurrentService(prev => ({ ...prev, ...recordPayload, id: recordPayload.tempId, beforePhotos: photosBefore }));
+                // Define o estado inicial
+                setCurrentService(prev => ({ 
+                    ...prev, 
+                    ...recordPayload, 
+                    id: recordPayload.tempId, 
+                    beforePhotos: photosBefore 
+                }));
                 navigate('OPERATOR_SERVICE_IN_PROGRESS');
             }
         } catch (err) {
