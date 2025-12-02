@@ -3043,33 +3043,70 @@ const App = () => {
         }
     };
     
-    const handleBeforePhotos = async (photosBefore: string[], serviceOrderNumber?: string) => {
-        setIsLoading("Preparando registro...");
+const handleBeforePhotos = async (photosBefore: string[], serviceOrderNumber?: string) => {
+        setIsLoading("Salvando fotos...");
         try {
-            const { serviceId, serviceType, serviceUnit, locationId, locationName, contractGroup, locationArea, gpsUsed, coords } = currentService;
-            const recordPayload = {
-                operatorId: currentUser!.id,
-                serviceId,
-                serviceType,
-                serviceUnit,
-                locationId,
-                locationName,
-                contractGroup,
-                locationArea,
-                gpsUsed: !!gpsUsed,
-                startTime: new Date().toISOString(),
-                serviceOrderNumber: serviceOrderNumber?.trim() || undefined,
-                tempId: crypto.randomUUID(),
-                newLocationInfo: !locationId ? { name: locationName, city: contractGroup, lat: coords?.latitude, lng: coords?.longitude, parentId: (selectedLocation as any)?.parentId, services: [{ service_id: services.find(s => s.name === serviceType)?.id, measurement: locationArea }] } : undefined
-            };
-            const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
-            await queueRecord(recordPayload, beforeFiles);
-            setCurrentService(prev => ({ ...prev, ...recordPayload, id: recordPayload.tempId, beforePhotos: photosBefore }));
-            navigate('OPERATOR_SERVICE_IN_PROGRESS');
+            // VERIFICAÇÃO CRÍTICA: Se já temos um ID e NÃO é um ID temporário, 
+            // significa que estamos editando um registro existente (fluxo "Cancelar/Adicionar").
+            // Nesse caso, apenas anexamos as fotos, sem criar um novo registro.
+            const isExistingRecord = currentService.id && !currentService.tempId;
+
+            if (isExistingRecord) {
+                // --- LÓGICA DE ANEXAR (APPEND) ---
+                const fd = new FormData();
+                fd.append("phase", "BEFORE"); // Força fase ANTES
+                
+                const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_append_${i}.jpg`));
+                beforeFiles.forEach(f => fd.append("files", f));
+
+                // Se houver número de OS novo, podemos tentar atualizar (opcional, dependendo da API)
+                // Aqui focamos nas fotos para não substituir o registro
+                await apiFetch(`/api/records/${currentService.id}/photos`, {
+                    method: 'POST', // POST normalmente anexa, não substitui
+                    body: fd
+                });
+
+                // Atualiza o estado local para mostrar as fotos antigas + novas
+                setCurrentService(prev => ({
+                    ...prev,
+                    beforePhotos: [...(prev.beforePhotos || []), ...photosBefore],
+                    serviceOrderNumber: serviceOrderNumber || prev.serviceOrderNumber
+                }));
+
+                // Segue o fluxo normal
+                navigate('OPERATOR_SERVICE_IN_PROGRESS');
+            } else {
+                // --- LÓGICA DE CRIAR NOVO (PRESERVA O ORIGINAL PARA CASOS "OK") ---
+                const { serviceId, serviceType, serviceUnit, locationId, locationName, contractGroup, locationArea, gpsUsed, coords } = currentService;
+                
+                const recordPayload = {
+                    operatorId: currentUser!.id,
+                    serviceId,
+                    serviceType,
+                    serviceUnit,
+                    locationId,
+                    locationName,
+                    contractGroup,
+                    locationArea,
+                    gpsUsed: !!gpsUsed,
+                    startTime: new Date().toISOString(),
+                    serviceOrderNumber: serviceOrderNumber?.trim() || undefined,
+                    tempId: crypto.randomUUID(),
+                    newLocationInfo: !locationId ? { name: locationName, city: contractGroup, lat: coords?.latitude, lng: coords?.longitude, parentId: (selectedLocation as any)?.parentId, services: [{ service_id: services.find(s => s.name === serviceType)?.id, measurement: locationArea }] } : undefined
+                };
+                
+                const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
+                await queueRecord(recordPayload, beforeFiles);
+                
+                setCurrentService(prev => ({ ...prev, ...recordPayload, id: recordPayload.tempId, beforePhotos: photosBefore }));
+                navigate('OPERATOR_SERVICE_IN_PROGRESS');
+            }
         } catch (err) {
-            console.error("Falha ao colocar o registro na fila:", err);
-            alert("Falha ao salvar o registro localmente. Tente novamente.");
-        } finally { setIsLoading(null); }
+            console.error("Falha ao salvar registro:", err);
+            alert("Falha ao salvar o registro. Tente novamente.");
+        } finally {
+            setIsLoading(null);
+        }
     };
 
     const handleAfterPhotos = async (photosAfter: string[]) => {
