@@ -9,6 +9,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, 
 import { Bar, Line } from 'react-chartjs-2';
 import ResetPasswordView from './ResetPasswordView';
 import ForgotPasswordView from './ForgotPasswordView';
+import { queueRecord, addAfterPhotosToPending, addBeforePhotosToPending } from "./syncManager"; // <--- Adicione addBeforePhotosToPending
 
 ChartJS.register( CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend );
 
@@ -3044,106 +3045,98 @@ const App = () => {
     };
     
 const handleBeforePhotos = async (photosBefore: string[], serviceOrderNumber?: string) => {
-    setIsLoading("Salvando fotos...");
-    try {
-        // 1. Identifica se é um registro que já existe (seja no servidor ou localmente)
-        const recordId = currentService.id || currentService.tempId;
-        const isEditing = !!recordId;
+        setIsLoading("Salvando fotos...");
+        try {
+            // Identifica IDs
+            const serverId = currentService.id && !currentService.tempId ? currentService.id : null;
+            const tempId = currentService.tempId;
+            const isEditing = !!serverId || !!tempId;
 
-        if (isEditing) {
-            // --- MODO EDIÇÃO / ADIÇÃO (Adicionar fotos a algo que já existe) ---
-            if (currentService.id && !currentService.tempId) {
-                // Registro sincronizado no servidor -> envia arquivos (append)
-                const fd = new FormData();
-                fd.append("phase", "BEFORE");
-                const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_append_${Date.now()}_${i}.jpg`));
-                beforeFiles.forEach(f => fd.append("files", f));
+            // Prepara os arquivos (File objects)
+            const newFiles = photosBefore.map((p, i) => 
+                dataURLtoFile(p, `before_append_${Date.now()}_${i}.jpg`)
+            );
 
-                await apiFetch(`/api/records/${currentService.id}/photos`, {
-                    method: 'POST',
-                    body: fd
-                });
+            if (isEditing) {
+                // --- CENÁRIO A: REGISTRO JÁ EXISTE (Seja no servidor ou local) ---
+
+                if (serverId) {
+                    // 1. Está no Servidor: Envia direto via API
+                    const fd = new FormData();
+                    fd.append("phase", "BEFORE");
+                    newFiles.forEach(f => fd.append("files", f));
+
+                    await apiFetch(`/api/records/${serverId}/photos`, {
+                        method: 'POST',
+                        body: fd
+                    });
+                } else if (tempId) {
+                    // 2. Está Pendente (Local): Atualiza o registro no IndexedDB
+                    // Importante: Certifique-se de importar a função criada no Passo 1
+                    await addBeforePhotosToPending(tempId, newFiles);
+                }
+
+                // Atualiza visualmente (Junta antigas + novas)
+                setCurrentService(prev => ({
+                    ...prev,
+                    beforePhotos: [...(prev.beforePhotos || []), ...photosBefore],
+                    serviceOrderNumber: serviceOrderNumber || prev.serviceOrderNumber
+                }));
+
+                navigate('OPERATOR_SERVICE_IN_PROGRESS');
+
             } else {
-                // Registro local (tempId já existe) -> NÃO criar novo registro,
-                // apenas atualiza o estado local e, se tiver função para atualizar pending local, chame-a.
-                const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_append_${Date.now()}_${i}.jpg`));
-                // Se você tiver função para acrescentar arquivos no pending (ex: addBeforePhotosToPending), chame-a aqui:
-                // await addBeforePhotosToPending(currentService.tempId!, beforeFiles);
-                // Caso não exista tal função, ao menos atualizamos o estado visual e o registro local já enfileirado (queueRecord)
+                // --- CENÁRIO B: REGISTRO TOTALMENTE NOVO ---
+                
+                // Gera um ID temporário novo
+                const newTempId = crypto.randomUUID();
+
+                const { serviceId, serviceType, serviceUnit, locationId, locationName, contractGroup, locationArea, gpsUsed, coords } = currentService;
+
+                const recordPayload = {
+                    operatorId: currentUser!.id,
+                    serviceId,
+                    serviceType,
+                    serviceUnit,
+                    locationId,
+                    locationName,
+                    contractGroup,
+                    locationArea,
+                    gpsUsed: !!gpsUsed,
+                    startTime: new Date().toISOString(),
+                    serviceOrderNumber: serviceOrderNumber?.trim() || undefined,
+                    tempId: newTempId, // Usa o ID gerado
+                    newLocationInfo: !locationId ? {
+                        name: locationName,
+                        city: contractGroup,
+                        lat: coords?.latitude,
+                        lng: coords?.longitude,
+                        parentId: (selectedLocation as any)?.parentId,
+                        services: [{ service_id: services.find(s => s.name === serviceType)?.id, measurement: locationArea }]
+                    } : undefined
+                };
+
+                // Cria o registro no banco local
+                await queueRecord(recordPayload, newFiles);
+
+                // Atualiza o estado da aplicação
+                setCurrentService(prev => ({
+                    ...prev,
+                    ...recordPayload,
+                    id: newTempId,      // Define o ID para que a próxima foto caia no "isEditing"
+                    tempId: newTempId,
+                    beforePhotos: photosBefore // Apenas as novas, pois é zero km
+                }));
+
+                navigate('OPERATOR_SERVICE_IN_PROGRESS');
             }
-
-            // Atualiza estado visual (sempre acumula)
-            setCurrentService(prev => ({
-                ...prev,
-                beforePhotos: [...(prev.beforePhotos || []), ...photosBefore],
-                serviceOrderNumber: serviceOrderNumber || prev.serviceOrderNumber
-            }));
-
-            navigate('OPERATOR_SERVICE_IN_PROGRESS');
-
-        } else {
-            // --- MODO CRIAÇÃO (SÓ NA PRIMEIRA VEZ ABSOLUTA) ---
-            const { serviceId, serviceType, serviceUnit, locationId, locationName, contractGroup, locationArea, gpsUsed, coords } = currentService;
-
-            // Reutiliza um tempId existente se houver (evita criar múltiplos), senão gera um só agora
-            const tempIdToUse = currentService.tempId || crypto.randomUUID();
-
-            const recordPayload = {
-                operatorId: currentUser!.id,
-                serviceId,
-                serviceType,
-                serviceUnit,
-                locationId,
-                locationName,
-                contractGroup,
-                locationArea,
-                gpsUsed: !!gpsUsed,
-                startTime: new Date().toISOString(),
-                serviceOrderNumber: serviceOrderNumber?.trim() || undefined,
-                tempId: tempIdToUse,
-                newLocationInfo: !locationId ? {
-                    name: locationName,
-                    city: contractGroup,
-                    lat: coords?.latitude,
-                    lng: coords?.longitude,
-                    parentId: (selectedLocation as any)?.parentId,
-                    services: [{ service_id: services.find(s => s.name === serviceType)?.id, measurement: locationArea }]
-                } : undefined
-            };
-
-            const beforeFiles = photosBefore.map((p, i) => dataURLtoFile(p, `before_${i}.jpg`));
-
-            // Só cria um pending record se ainda NÃO houver tempId no currentService.
-            // Isso evita duplicar pending records ao tirar mais fotos repetidas vezes.
-            if (!currentService.tempId && !currentService.id) {
-                await queueRecord(recordPayload, beforeFiles);
-            } else {
-                // Caso já exista tempId (por alguma razão), preferimos acrescentar os arquivos ao pending existente.
-                // Se você tiver função para isso (ex: addBeforePhotosToPending), chame-a:
-                // await addBeforePhotosToPending(tempIdToUse, beforeFiles);
-                // Se não houver função, o queueRecord acima já foi chamado antes — mantemos apenas o estado.
-            }
-
-            // Define/atualiza estado inicial — garante que usamos o MESMO tempId depois
-            setCurrentService(prev => ({
-                ...prev,
-                ...recordPayload,
-                id: tempIdToUse,           // opcional: manter compatibilidade onde o código usa `id` = tempId
-                tempId: tempIdToUse,
-                beforePhotos: [...(prev.beforePhotos || []), ...photosBefore] // acumula, mas no primeiro push prev.beforePhotos geralmente vazio
-            }));
-
-            navigate('OPERATOR_SERVICE_IN_PROGRESS');
+        } catch (err) {
+            console.error("Falha ao salvar registro:", err);
+            alert("Falha ao salvar o registro. Tente novamente.");
+        } finally {
+            setIsLoading(null);
         }
-    } catch (err) {
-        console.error("Falha ao salvar registro:", err);
-        alert("Falha ao salvar o registro. Tente novamente.");
-    } finally {
-        setIsLoading(null);
-    }
-};
-
-
+    };
 
     const handleAfterPhotos = async (photosAfter: string[]) => {
         setIsLoading("Salvando fotos 'Depois'...");
