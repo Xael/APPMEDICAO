@@ -88,6 +88,45 @@ export async function trySync() {
   }
 }
 
+// Adicione isto no final do arquivo syncManager.ts
+
+export async function addBeforePhotosToPending(recordId: string, photosBefore: File[]) {
+  // 1. Busca os registros pendentes
+  const pending = await getPendingRecords();
+  
+  // 2. Encontra o registro pelo ID temporário ou ID real
+  const record = pending.find(r => r.payload.tempId === recordId || r.id === recordId);
+
+  if (record) {
+    // 3. Adiciona as novas fotos ao array existente
+    if (!record.photosBefore) record.photosBefore = [];
+    record.photosBefore.push(...photosBefore);
+    
+    // 4. Salva de volta no IndexedDB
+    await addPendingRecord(record); 
+    console.log("Fotos 'Antes' anexadas ao registro pendente:", recordId);
+    
+    // 5. Tenta sincronizar se tiver internet
+    trySync();
+  } else {
+    // Se não achou no pendente, talvez já tenha subido pro servidor?
+    // Nesse caso, tentamos envio direto via API (fallback)
+    try {
+        const fd = new FormData();
+        fd.append("phase", "BEFORE");
+        photosBefore.forEach(f => fd.append("files", f));
+
+        // Tenta recuperar o ID real mapeado ou usa o próprio ID
+        const realId = localStorage.getItem(`sync_map_${recordId}`) || recordId;
+        
+        await apiFetch(`/api/records/${realId}/photos`, { method: "POST", body: fd });
+    } catch (err) {
+        console.error("Erro ao tentar anexar fotos Antes (registro não encontrado em pendentes):", err);
+    }
+  }
+}
+
+
 // Auto-sync
 window.addEventListener("online", trySync);
 setInterval(trySync, 30000);
