@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { queueRecord, addAfterPhotosToPending } from "./syncManager";
+import { queueRecord } from "./syncManager"; // CORRIGIDO: Removida a importação duplicada 'addAfterPhotosToPending'
 import logoSrc from './assets/Logo.png';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
@@ -166,6 +166,7 @@ const SearchBar: React.FC<{ value: string; onChange: (val: string) => void; plac
 // --- Componentes ---
 
 const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => void; onLogout: () => void; }> = ({ view, currentUser, onBack, onLogout }) => {
+// ... (código Header omitido por brevidade)
     const isAdmin = currentUser?.role === 'ADMIN';
     const showBackButton = onBack && view !== 'LOGIN' && view !== 'ADMIN_DASHBOARD' && view !== 'FISCAL_DASHBOARD' && view !== 'OPERATOR_GROUP_SELECT';
     
@@ -221,6 +222,7 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
 const Loader: React.FC<{ text?: string }> = ({ text = "Carregando..." }) => ( <div className="loader-container"><div className="spinner"></div><p>{text}</p></div> );
 
 const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () => void; onFinish: () => void; photoCount: number }> = ({ onCapture, onCancel, onFinish, photoCount }) => {
+// ... (código CameraView omitido por brevidade)
     const videoRef = useRef<HTMLVideoElement>(null);
     const cameraViewRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -285,6 +287,7 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
 };
 
 const Login: React.FC<{
+// ... (código Login omitido por brevidade)
   onLogin: (user: User) => void;
   onNavigate: (view: View) => void;
 }> = ({ onLogin, onNavigate }) => {
@@ -353,6 +356,7 @@ const Login: React.FC<{
 };
 
 const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () => void; }> = ({ onNavigate, onLogout }) => (
+// ... (código AdminDashboard omitido por brevidade)
     <div className="dashboard-container">
         <div className="admin-dashboard">
             <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_SERVICES')}>Gerenciar Tipos de Serviço</button>
@@ -369,6 +373,7 @@ const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () 
 );
 
 const ManageCyclesView: React.FC<{
+// ... (código ManageCyclesView omitido por brevidade)
     locations: LocationRecord[];
     configs: ContractConfig[];
     fetchData: () => Promise<void>;
@@ -446,6 +451,7 @@ const ManageCyclesView: React.FC<{
 };
 
 const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () => void; }> = ({ onNavigate, onLogout }) => (
+// ... (código FiscalDashboard omitido por brevidade)
     <div className="dashboard-container">
         <div className="admin-dashboard">
             <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
@@ -455,6 +461,7 @@ const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: ()
 );
 
 const OperatorGroupSelect: React.FC<{
+// ... (código OperatorGroupSelect omitido por brevidade)
     user: User;
     onSelectGroup: (group: string) => void;
     onLogout: () => void;
@@ -474,6 +481,7 @@ const OperatorGroupSelect: React.FC<{
 };
 
 const OperatorServiceSelect: React.FC<{
+// ... (código OperatorServiceSelect omitido por brevidade)
     location: LocationRecord;
     services: ServiceDefinition[];
     user: User;
@@ -583,6 +591,7 @@ const OperatorServiceSelect: React.FC<{
 };
 
 const OperatorLocationSelect: React.FC<{
+// ... (código OperatorLocationSelect omitido por brevidade)
     locations: LocationRecord[];
     contractGroup: string;
     onSelectLocation: (loc: LocationRecord, gpsUsed: boolean) => void;
@@ -689,6 +698,7 @@ const OperatorLocationSelect: React.FC<{
 
 
 const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: string[], serviceOrderNumber?: string) => void; onCancel: () => void }> = ({ phase, onComplete, onCancel }) => {
+// ... (código PhotoStep omitido por brevidade)
     const [photos, setPhotos] = useState<string[]>([]);
     const [isTakingPhoto, setIsTakingPhoto] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -757,6 +767,7 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
 };
 
 const ConfirmStep: React.FC<{ recordData: Partial<ServiceRecord>; onSave: () => void; onCancel: () => void }> = ({ recordData, onSave, onCancel }) => (
+// ... (código ConfirmStep omitido por brevidade)
     <div className="card">
         <h2>Confirmação e Salvamento</h2>
         <div className="detail-section" style={{textAlign: 'left'}}>
@@ -792,6 +803,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
+    
+    // --- INÍCIO DA CORREÇÃO 1: Adicionar Filtros de Data no Histórico ---
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    // --- FIM DA CORREÇÃO 1 ---
 
     const handleSaveMeasurement = async (recordId: string) => {
         await onMeasurementUpdate(parseInt(recordId), newMeasurement);
@@ -814,23 +830,54 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
 
     // Filter and Pagination Logic
     const filteredRecords = useMemo(() => {
-        return records.filter(record => 
-            record.locationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            record.serviceType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            record.operatorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (record.serviceOrderNumber && record.serviceOrderNumber.includes(searchTerm))
-        );
-    }, [records, searchTerm]);
+        // --- INÍCIO DA CORREÇÃO 1: Aplicar Filtro de Data ---
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+        if (end) end.setHours(23, 59, 59, 999); // Garante que a data final inclua o dia inteiro
+        // --- FIM DA CORREÇÃO 1 ---
+
+        return records.filter(record => {
+            const recordDate = new Date(record.startTime);
+
+            // Filtro de Busca por Texto (Existente)
+            const textMatch = record.locationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                record.serviceType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                record.operatorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (record.serviceOrderNumber && record.serviceOrderNumber.includes(searchTerm));
+            
+            if (!textMatch) return false;
+
+            // --- INÍCIO DA CORREÇÃO 1: Aplicar Filtro de Data ---
+            if (start && recordDate < start) return false;
+            if (end && recordDate > end) return false;
+            // --- FIM DA CORREÇÃO 1 ---
+
+            return true;
+        });
+    }, [records, searchTerm, startDate, endDate]); // Adicionar dependências de data
 
     const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE);
     const currentRecords = filteredRecords.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-    // Reset page when search changes
-    useEffect(() => { setCurrentPage(1); }, [searchTerm]);
+    // Reset page when search or date changes
+    useEffect(() => { setCurrentPage(1); }, [searchTerm, startDate, endDate]);
 
     return (
         <div>
             <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar por local, serviço, operador ou O.S..." />
+            
+            {/* --- INÍCIO DA CORREÇÃO 1: Inputs de Data --- */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <div className="form-group">
+                    <label>Data de Início</label>
+                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                    <label>Data Final</label>
+                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                </div>
+            </div>
+            {/* --- FIM DA CORREÇÃO 1 --- */}
 
             {isAdmin && selectedIds.size > 0 && (
                 <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
@@ -896,6 +943,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
 };
 
 const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
+// ... (código DetailView omitido por brevidade)
     <div className="detail-view">
         <div className="detail-section card">
             <h3>Resumo</h3>
@@ -924,6 +972,7 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
 );
 
 const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
+// ... (código ReportsView omitido por brevidade)
     const [reportType, setReportType] = useState<'excel' | 'photos' | 'billing' | null>(null);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -1162,6 +1211,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     };
 
     const PdfLayout = () => {
+// ... (código PdfLayout omitido por brevidade)
         // ========== PAGINAÇÃO INTELIGENTE (CORREÇÃO DE DEFORMAÇÃO) ==========
         const [pages, setPages] = useState<ServiceRecord[][]>([]);
         const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
@@ -1461,6 +1511,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 };
             
 const ManageLocationsView: React.FC<{
+// ... (código ManageLocationsView omitido por brevidade)
     locations: LocationRecord[];
     services: ServiceDefinition[];
     fetchData: () => Promise<void>;
@@ -1802,6 +1853,7 @@ const ManageLocationsView: React.FC<{
 
 
 const ManageUsersView: React.FC<{ 
+// ... (código ManageUsersView omitido por brevidade)
     users: User[];
     onUsersUpdate: () => Promise<void>;
     services: ServiceDefinition[];
@@ -2011,7 +2063,8 @@ const GoalsAndChartsView: React.FC<{
     records: ServiceRecord[];
     locations: LocationRecord[];
     services: ServiceDefinition[];
-}> = ({ records, locations, services }) => {
+    contractConfigs: ContractConfig[]; // Adicionado props para configs
+}> = ({ records, locations, services, contractConfigs }) => { // Recebendo configs
     const [chartData, setChartData] = useState<any>(null);
     const [isLoadingChart, setIsLoadingChart] = useState(false);
     const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
@@ -2134,6 +2187,53 @@ const GoalsAndChartsView: React.FC<{
             }
         }
     };
+    
+    // --- INÍCIO DA CORREÇÃO 2: Funções para calcular o ciclo de medição da Meta ---
+
+    // Calcula a data de início do ciclo de medição para o MÊS da meta (YYYY-MM)
+    const getCycleStartDateForGoal = (contractGroup: string, goalMonth: string): Date => {
+        const config = contractConfigs.find(c => c.contractGroup === contractGroup);
+        const cycleStartDay = config ? config.cycleStartDay : 1;
+        
+        const dateParts = goalMonth.split('-');
+        const year = parseInt(dateParts[0], 10);
+        const month = parseInt(dateParts[1], 10) - 1; // Mês é 0-indexado
+
+        // Referência para o dia do mês
+        let referenceDate = new Date(year, month, 1);
+        if (referenceDate.getDate() < cycleStartDay) {
+            // Se o dia do ciclo for maior que o dia 1, o ciclo daquele mês
+            // começa no mês anterior. Ex: Meta de Jan/2026, Ciclo começa dia 10.
+            // O ciclo que termina em Jan/2026 (dia 9) começou em Dez/2025 (dia 10).
+             referenceDate = new Date(year, month, cycleStartDay);
+        } else {
+             referenceDate = new Date(year, month, cycleStartDay);
+        }
+        
+        let cycleStartDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), cycleStartDay);
+        
+        // Ajuste: Se o dia da meta (qualquer dia do mês YYYY-MM) for menor que o dia de início
+        // do ciclo, o ciclo relevante é o anterior. Ex: Hoje é dia 5. O ciclo começa dia 10.
+        // O ciclo que termina no dia 9 deste mês é o do mês passado.
+        if (cycleStartDate.getMonth() > month) { // Ex: cycleStartDate é Jan, month é Dez (mês anterior)
+            cycleStartDate.setMonth(cycleStartDate.getMonth() - 1);
+        }
+
+        cycleStartDate.setHours(0, 0, 0, 0);
+        return cycleStartDate;
+    };
+    
+    // Calcula a data de fim do ciclo de medição para o MÊS da meta (YYYY-MM)
+    const getCycleEndDateForGoal = (contractGroup: string, goalMonth: string): Date => {
+        const cycleStart = getCycleStartDateForGoal(contractGroup, goalMonth);
+        // O final do ciclo é o dia anterior ao início do PRÓXIMO ciclo.
+        const nextCycleStart = new Date(cycleStart.getFullYear(), cycleStart.getMonth() + 1, cycleStart.getDate());
+        
+        const cycleEndDate = new Date(nextCycleStart.getTime() - 1000); // 1 segundo antes para pegar 23:59:59
+        return cycleEndDate;
+    }
+    
+    // --- FIM DA CORREÇÃO 2 ---
 
     return (
         <div>
@@ -2205,13 +2305,24 @@ const GoalsAndChartsView: React.FC<{
             <ul className="goal-list">
                 {[...goals].sort((a, b) => b.month.localeCompare(a.month) || a.contractGroup.localeCompare(b.contractGroup)).map(goal => {
                     const service = services.find(s => s.id === String(goal.serviceId));
+                    
+                    // --- INÍCIO DA CORREÇÃO 2: Cálculo da Área Realizada com base no Ciclo de Medição ---
+                    const cycleStartDate = getCycleStartDateForGoal(goal.contractGroup, goal.month);
+                    const cycleEndDate = getCycleEndDateForGoal(goal.contractGroup, goal.month);
+
                     const realizedArea = records
-                        .filter(r => 
-                            r.contractGroup === goal.contractGroup && 
-                            r.startTime.startsWith(goal.month) && 
-                            r.serviceType === service?.name
-                        )
+                        .filter(r => {
+                            const recordDate = new Date(r.startTime);
+                            return (
+                                r.contractGroup === goal.contractGroup && 
+                                r.serviceType === service?.name &&
+                                recordDate >= cycleStartDate &&
+                                recordDate <= cycleEndDate
+                            );
+                        })
                         .reduce((sum, r) => sum + ((r.overrideMeasurement ?? r.locationArea) || 0), 0);
+                        
+                    // --- FIM DA CORREÇÃO 2 ---
                         
                     const percentage = goal.targetArea > 0 ? (realizedArea / goal.targetArea) * 100 : 0;
                     const serviceName = service?.name || 'Serviço não encontrado';
@@ -2226,7 +2337,8 @@ const GoalsAndChartsView: React.FC<{
                                     <button className="button button-sm button-danger" onClick={() => handleDeleteGoal(goal.id)}>Excluir</button>
                                 </div>
                             </div>
-                            <p style={{color: 'var(--dark-gray-color)', marginTop: '-0.75rem', marginBottom: '1rem'}}>{goal.month}</p>
+                            {/* EXIBIÇÃO DO CICLO DE MEDIÇÃO REAL */}
+                            <p style={{color: 'var(--dark-gray-color)', marginTop: '-0.75rem', marginBottom: '1rem'}}>{goal.month} (Ciclo: {cycleStartDate.toLocaleDateString('pt-BR')} a {cycleEndDate.toLocaleDateString('pt-BR')})</p>
                             <div className="progress-info">
                                 <span>Realizado: {realizedArea.toLocaleString('pt-BR')} / {goal.targetArea.toLocaleString('pt-BR')} {serviceUnit}</span>
                                 <span>{percentage.toFixed(1)}%</span>
@@ -2241,6 +2353,7 @@ const GoalsAndChartsView: React.FC<{
 };
 
 const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinish: () => void; }> = ({ service, onFinish }) => {
+// ... (código ServiceInProgressView omitido por brevidade)
     return (
         <div className="card">
             <h2>Serviço em Andamento</h2>
@@ -2261,6 +2374,7 @@ const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinis
 };
 
 const AdminEditRecordView: React.FC<{
+// ... (código AdminEditRecordView omitido por brevidade)
     record: ServiceRecord;
     onSave: (updatedRecord: ServiceRecord) => void;
     onCancel: () => void;
@@ -2517,6 +2631,7 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
 };
 
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
+// ... (código AuditLogView omitido por brevidade)
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
@@ -2599,6 +2714,7 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
 };
 
 const ManageServicesView: React.FC<{
+// ... (código ManageServicesView omitido por brevidade)
     services: ServiceDefinition[];
     fetchData: () => Promise<void>;
 }> = ({ services, fetchData }) => {
@@ -3247,7 +3363,7 @@ const handleBeforePhotos = async (photosBefore: string[], serviceOrderNumber?: s
                     case 'ADMIN_MANAGE_SERVICES': return <ManageServicesView services={services} fetchData={fetchData} />;
                     case 'ADMIN_MANAGE_LOCATIONS': return <ManageLocationsView locations={locations} services={services} fetchData={fetchData} addAuditLogEntry={addAuditLogEntry} />;
                     case 'ADMIN_MANAGE_USERS': return <ManageUsersView users={users} onUsersUpdate={fetchData} services={services} locations={locations} />;
-                    case 'ADMIN_MANAGE_GOALS': return <GoalsAndChartsView records={records} locations={locations} services={services} />;
+                    case 'ADMIN_MANAGE_GOALS': return <GoalsAndChartsView records={records} locations={locations} services={services} contractConfigs={contractConfigs} />;
                     case 'ADMIN_MANAGE_CYCLES': return <ManageCyclesView locations={locations} configs={contractConfigs} fetchData={fetchData} />;
                     case 'REPORTS': return <ReportsView records={records} services={services} locations={locations} />;
                     case 'HISTORY': return <HistoryView records={records} onSelect={handleSelectRecord} isAdmin={true} onEdit={handleEditRecord} onDelete={handleDeleteRecord} selectedIds={selectedRecordIds} onToggleSelect={handleToggleRecordSelection} onDeleteSelected={handleDeleteSelectedRecords} onMeasurementUpdate={handleMeasurementUpdate} />;
