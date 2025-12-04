@@ -516,9 +516,11 @@ const OperatorServiceSelect: React.FC<{
         
         let servicesForLocation: LocationServiceDetail[] = [];
         if (location.parentId) {
+            // É uma rua, busca os serviços do pai (bairro)
             const parentLocation = locations.find(l => l.id === location.parentId);
             servicesForLocation = parentLocation?.services || [];
         } else {
+            // É um local autônomo ou um bairro (que tem serviços próprios)
             servicesForLocation = location.services || [];
         }
 
@@ -752,6 +754,7 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
                 <div className="photo-gallery">
                     {photos.map((p, i) => <img key={i} src={p} alt={`Foto ${i+1}`} className="image-preview" />)}
                 </div>
+                {/* O atributo 'multiple' já está aqui e permite seleção múltipla */}
                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} accept="image/*" multiple />
                 <div className="photo-actions">
                     <button className="button" onClick={() => setIsTakingPhoto(true)}>📷 {photos.length > 0 ? 'Tirar Outra Foto' : 'Iniciar Captura'}</button>
@@ -804,10 +807,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
     
-    // --- INÍCIO DA CORREÇÃO 1: Adicionar Filtros de Data no Histórico ---
+    // --- FILTROS DE DATA (CORREÇÃO ANTERIOR) ---
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    // --- FIM DA CORREÇÃO 1 ---
+    // ------------------------------------------
 
     const handleSaveMeasurement = async (recordId: string) => {
         await onMeasurementUpdate(parseInt(recordId), newMeasurement);
@@ -830,11 +833,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
 
     // Filter and Pagination Logic
     const filteredRecords = useMemo(() => {
-        // --- INÍCIO DA CORREÇÃO 1: Aplicar Filtro de Data ---
         const start = startDate ? new Date(startDate) : null;
         const end = endDate ? new Date(endDate) : null;
-        if (end) end.setHours(23, 59, 59, 999); // Garante que a data final inclua o dia inteiro
-        // --- FIM DA CORREÇÃO 1 ---
+        if (end) end.setHours(23, 59, 59, 999); 
 
         return records.filter(record => {
             const recordDate = new Date(record.startTime);
@@ -847,10 +848,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
             
             if (!textMatch) return false;
 
-            // --- INÍCIO DA CORREÇÃO 1: Aplicar Filtro de Data ---
+            // Filtro de Data (Corrigido)
             if (start && recordDate < start) return false;
             if (end && recordDate > end) return false;
-            // --- FIM DA CORREÇÃO 1 ---
 
             return true;
         });
@@ -866,7 +866,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
         <div>
             <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar por local, serviço, operador ou O.S..." />
             
-            {/* --- INÍCIO DA CORREÇÃO 1: Inputs de Data --- */}
+            {/* --- Inputs de Data (CORREÇÃO ANTERIOR) --- */}
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <div className="form-group">
                     <label>Data de Início</label>
@@ -877,7 +877,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
                     <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
                 </div>
             </div>
-            {/* --- FIM DA CORREÇÃO 1 --- */}
+            {/* ------------------------------------------ */}
 
             {isAdmin && selectedIds.size > 0 && (
                 <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
@@ -2188,7 +2188,7 @@ const GoalsAndChartsView: React.FC<{
         }
     };
     
-    // --- INÍCIO DA CORREÇÃO 2: Funções para calcular o ciclo de medição da Meta ---
+    // --- Funções para calcular o ciclo de medição da Meta (CORREÇÃO ANTERIOR) ---
 
     // Calcula a data de início do ciclo de medição para o MÊS da meta (YYYY-MM)
     const getCycleStartDateForGoal = (contractGroup: string, goalMonth: string): Date => {
@@ -2233,7 +2233,7 @@ const GoalsAndChartsView: React.FC<{
         return cycleEndDate;
     }
     
-    // --- FIM DA CORREÇÃO 2 ---
+    // ---------------------------------------------------------------------
 
     return (
         <div>
@@ -2306,7 +2306,7 @@ const GoalsAndChartsView: React.FC<{
                 {[...goals].sort((a, b) => b.month.localeCompare(a.month) || a.contractGroup.localeCompare(b.contractGroup)).map(goal => {
                     const service = services.find(s => s.id === String(goal.serviceId));
                     
-                    // --- INÍCIO DA CORREÇÃO 2: Cálculo da Área Realizada com base no Ciclo de Medição ---
+                    // --- Cálculo da Área Realizada com base no Ciclo de Medição (CORREÇÃO ANTERIOR) ---
                     const cycleStartDate = getCycleStartDateForGoal(goal.contractGroup, goal.month);
                     const cycleEndDate = getCycleEndDateForGoal(goal.contractGroup, goal.month);
 
@@ -2322,8 +2322,8 @@ const GoalsAndChartsView: React.FC<{
                         })
                         .reduce((sum, r) => sum + ((r.overrideMeasurement ?? r.locationArea) || 0), 0);
                         
-                    // --- FIM DA CORREÇÃO 2 ---
-                        
+                    // --------------------------------------------------------------------------------
+
                     const percentage = goal.targetArea > 0 ? (realizedArea / goal.targetArea) * 100 : 0;
                     const serviceName = service?.name || 'Serviço não encontrado';
                     const serviceUnit = service?.unit.symbol || '';
@@ -2424,8 +2424,7 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                 body: formDataUpload
             });
 
-            // 2. CORREÇÃO: Busca o registro atualizado (GET) para garantir a lista completa de fotos
-            // Isso evita que o estado local fique apenas com as novas fotos e sobrescreva as antigas ao salvar.
+            // 2. Busca o registro atualizado (GET) para garantir a lista completa de fotos
             const freshRecord = await apiFetch(`/api/records/${formData.id}`);
             
             const fullRecord = {
@@ -2590,7 +2589,7 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                     id="before-upload"
                     type="file"
                     accept="image/*"
-                    multiple
+                    multiple // ATRIBUTO CONFIRMADO: PERMITE MÚLTIPLA SELEÇÃO
                     onChange={e => handlePhotoUpload("BEFORE", e.target.files)}
                     style={{display: 'none'}}
                 />
@@ -2616,7 +2615,7 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                     id="after-upload"
                     type="file"
                     accept="image/*"
-                    multiple
+                    multiple // ATRIBUTO CONFIRMADO: PERMITE MÚLTIPLA SELEÇÃO
                     onChange={e => handlePhotoUpload("AFTER", e.target.files)}
                     style={{display: 'none'}}
                 />
