@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { queueRecord } from "./syncManager"; // CORRIGIDO: Removida a importação duplicada 'addAfterPhotosToPending'
+import { queueRecord, addAfterPhotosToPending } from "./syncManager";
 import logoSrc from './assets/Logo.png';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
@@ -166,7 +166,6 @@ const SearchBar: React.FC<{ value: string; onChange: (val: string) => void; plac
 // --- Componentes ---
 
 const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => void; onLogout: () => void; }> = ({ view, currentUser, onBack, onLogout }) => {
-// ... (código Header omitido por brevidade)
     const isAdmin = currentUser?.role === 'ADMIN';
     const showBackButton = onBack && view !== 'LOGIN' && view !== 'ADMIN_DASHBOARD' && view !== 'FISCAL_DASHBOARD' && view !== 'OPERATOR_GROUP_SELECT';
     
@@ -222,7 +221,6 @@ const Header: React.FC<{ view: View; currentUser: User | null; onBack?: () => vo
 const Loader: React.FC<{ text?: string }> = ({ text = "Carregando..." }) => ( <div className="loader-container"><div className="spinner"></div><p>{text}</p></div> );
 
 const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () => void; onFinish: () => void; photoCount: number }> = ({ onCapture, onCancel, onFinish, photoCount }) => {
-// ... (código CameraView omitido por brevidade)
     const videoRef = useRef<HTMLVideoElement>(null);
     const cameraViewRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -287,7 +285,6 @@ const CameraView: React.FC<{ onCapture: (dataUrl: string) => void; onCancel: () 
 };
 
 const Login: React.FC<{
-// ... (código Login omitido por brevidade)
   onLogin: (user: User) => void;
   onNavigate: (view: View) => void;
 }> = ({ onLogin, onNavigate }) => {
@@ -356,7 +353,6 @@ const Login: React.FC<{
 };
 
 const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () => void; }> = ({ onNavigate, onLogout }) => (
-// ... (código AdminDashboard omitido por brevidade)
     <div className="dashboard-container">
         <div className="admin-dashboard">
             <button className="button admin-button" onClick={() => onNavigate('ADMIN_MANAGE_SERVICES')}>Gerenciar Tipos de Serviço</button>
@@ -373,7 +369,6 @@ const AdminDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () 
 );
 
 const ManageCyclesView: React.FC<{
-// ... (código ManageCyclesView omitido por brevidade)
     locations: LocationRecord[];
     configs: ContractConfig[];
     fetchData: () => Promise<void>;
@@ -451,7 +446,6 @@ const ManageCyclesView: React.FC<{
 };
 
 const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: () => void; }> = ({ onNavigate, onLogout }) => (
-// ... (código FiscalDashboard omitido por brevidade)
     <div className="dashboard-container">
         <div className="admin-dashboard">
             <button className="button" onClick={() => onNavigate('REPORTS')}>📊 Gerar Relatórios</button>
@@ -461,7 +455,6 @@ const FiscalDashboard: React.FC<{ onNavigate: (view: View) => void; onLogout: ()
 );
 
 const OperatorGroupSelect: React.FC<{
-// ... (código OperatorGroupSelect omitido por brevidade)
     user: User;
     onSelectGroup: (group: string) => void;
     onLogout: () => void;
@@ -481,7 +474,6 @@ const OperatorGroupSelect: React.FC<{
 };
 
 const OperatorServiceSelect: React.FC<{
-// ... (código OperatorServiceSelect omitido por brevidade)
     location: LocationRecord;
     services: ServiceDefinition[];
     user: User;
@@ -516,11 +508,9 @@ const OperatorServiceSelect: React.FC<{
         
         let servicesForLocation: LocationServiceDetail[] = [];
         if (location.parentId) {
-            // É uma rua, busca os serviços do pai (bairro)
             const parentLocation = locations.find(l => l.id === location.parentId);
             servicesForLocation = parentLocation?.services || [];
         } else {
-            // É um local autônomo ou um bairro (que tem serviços próprios)
             servicesForLocation = location.services || [];
         }
 
@@ -593,7 +583,6 @@ const OperatorServiceSelect: React.FC<{
 };
 
 const OperatorLocationSelect: React.FC<{
-// ... (código OperatorLocationSelect omitido por brevidade)
     locations: LocationRecord[];
     contractGroup: string;
     onSelectLocation: (loc: LocationRecord, gpsUsed: boolean) => void;
@@ -700,7 +689,6 @@ const OperatorLocationSelect: React.FC<{
 
 
 const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: string[], serviceOrderNumber?: string) => void; onCancel: () => void }> = ({ phase, onComplete, onCancel }) => {
-// ... (código PhotoStep omitido por brevidade)
     const [photos, setPhotos] = useState<string[]>([]);
     const [isTakingPhoto, setIsTakingPhoto] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -754,7 +742,6 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
                 <div className="photo-gallery">
                     {photos.map((p, i) => <img key={i} src={p} alt={`Foto ${i+1}`} className="image-preview" />)}
                 </div>
-                {/* O atributo 'multiple' já está aqui e permite seleção múltipla */}
                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} accept="image/*" multiple />
                 <div className="photo-actions">
                     <button className="button" onClick={() => setIsTakingPhoto(true)}>📷 {photos.length > 0 ? 'Tirar Outra Foto' : 'Iniciar Captura'}</button>
@@ -770,7 +757,6 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
 };
 
 const ConfirmStep: React.FC<{ recordData: Partial<ServiceRecord>; onSave: () => void; onCancel: () => void }> = ({ recordData, onSave, onCancel }) => (
-// ... (código ConfirmStep omitido por brevidade)
     <div className="card">
         <h2>Confirmação e Salvamento</h2>
         <div className="detail-section" style={{textAlign: 'left'}}>
@@ -943,7 +929,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
 };
 
 const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
-// ... (código DetailView omitido por brevidade)
     <div className="detail-view">
         <div className="detail-section card">
             <h3>Resumo</h3>
@@ -972,7 +957,6 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
 );
 
 const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
-// ... (código ReportsView omitido por brevidade)
     const [reportType, setReportType] = useState<'excel' | 'photos' | 'billing' | null>(null);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -1064,6 +1048,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
         // --- STYLES ---
         const centerBoldStyle = { font: { bold: true }, alignment: { horizontal: 'center' as const, vertical: 'middle' as const } };
+        const leftBoldStyle = { font: { bold: true }, alignment: { horizontal: 'left' as const, vertical: 'middle' as const } };
         const centerStyle = { alignment: { horizontal: 'center' as const, vertical: 'middle' as const } };
         const titleStyle = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' as const, vertical: 'middle' as const } };
         const yellowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } as ExcelJS.Fill;
@@ -1071,62 +1056,82 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         const thinBorder = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } as ExcelJS.Borders;
         const numberFormat = '#,##0.00';
 
-        // --- HEADER ---
-        worksheet.mergeCells('A1:L1');
+        // --- HEADER (Ajustado para o modelo) ---
+        worksheet.mergeCells('A1:K1');
         worksheet.getCell('A1').value = 'C.R.B COMERCIO E SERVIÇOS DE MANUTENÇÃO EM GERAL LTDA';
         worksheet.getCell('A1').style = centerBoldStyle;
-        worksheet.mergeCells('A2:L2');
+        worksheet.mergeCells('A2:K2');
         worksheet.getCell('A2').value = 'CNPJ: 10.397.876/0001-77';
         worksheet.getCell('A2').style = centerStyle;
-        worksheet.mergeCells('A3:L3');
+        worksheet.mergeCells('A3:K3');
         worksheet.getCell('A3').value = 'PLANILHA DE FATURAMENTO';
         worksheet.getCell('A3').style = titleStyle;
 
+        // Linha 5: Informações de Contrato/Período
+        worksheet.mergeCells('A5:D5');
         worksheet.getCell('A5').value = 'CONTRATO ADMINISTRATIVO Nº:';
+        worksheet.getCell('A5').style = leftBoldStyle;
+        worksheet.mergeCells('E5:F5');
         worksheet.getCell('E5').value = 'NÚMERO MEDIÇÃO:';
-        worksheet.getCell('I5').value = 'PERÍODO:';
+        worksheet.getCell('E5').style = leftBoldStyle;
+        worksheet.mergeCells('G5:H5');
+        worksheet.getCell('G5').value = 'PERÍODO:';
+        worksheet.getCell('G5').style = leftBoldStyle;
+        worksheet.mergeCells('I5:K5');
         const formattedStartDate = startDate ? new Date(startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
         const formattedEndDate = endDate ? new Date(endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
-        worksheet.getCell('J5').value = `${formattedStartDate} até ${formattedEndDate}`;
+        worksheet.getCell('I5').value = `${formattedStartDate} até ${formattedEndDate}`;
+        worksheet.getCell('I5').style = centerStyle;
 
         // --- DATA ---
         const groupedRecords = selectedRecords.reduce((acc, record) => {
-            (acc[record.serviceType] = acc[record.serviceType] || []).push(record);
+            // Usar serviceType + serviceUnit para agrupar, replicando a lógica do "SERVIÇOS" no resumo
+            const key = `${record.serviceType} (${record.serviceUnit})`;
+            (acc[key] = acc[key] || []).push(record);
             return acc;
         }, {} as Record<string, ServiceRecord[]>);
 
-        let currentColumn = 1;
+        let currentColumn = 1; // Coluna A
         let maxRows = 8;
-        const serviceSummaryInfo: { service: string, unit: string, metragemColumn: string, firstRow: number, lastRow: number }[] = [];
+        const serviceSummaryInfo: { serviceAndUnit: string, metragemColumn: string, firstRow: number, lastRow: number, serviceType: string }[] = [];
+        const spacerColumns = 2; // Colunas para O.S. e Local
+        const metragemColumnIndexOffset = 3; // + 1 para O.S. + 1 para Local + 1 para Metragem = 3
 
-        Object.keys(groupedRecords).forEach(serviceType => {
-            const records = groupedRecords[serviceType];
+        Object.keys(groupedRecords).forEach(serviceAndUnit => {
+            const records = groupedRecords[serviceAndUnit];
             if (records.length === 0) return;
+            const serviceType = records[0].serviceType;
 
-            // Service Header
-            worksheet.mergeCells(7, currentColumn, 7, currentColumn + 2);
+            // Service Header - Coluna A
+            worksheet.mergeCells(7, currentColumn, 7, currentColumn + metragemColumnIndexOffset);
             const headerCell = worksheet.getCell(7, currentColumn);
             headerCell.value = serviceType.toUpperCase();
             headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
 
-            // Subheaders
-            const subheaders = ['DATA', 'LOCAL', `METRAGEM EM`];
+            // Subheaders - Linha 8
+            const subheaders = ['O.S.', 'DATA', 'LOCAL', `METRAGEM EM`];
             subheaders.forEach((text, i) => {
                 const cell = worksheet.getCell(8, currentColumn + i);
                 cell.value = text;
                 cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
             });
 
-            const metragemColumn = worksheet.getColumn(currentColumn + 2);
+            const metragemColumn = worksheet.getColumn(currentColumn + metragemColumnIndexOffset);
             metragemColumn.numFmt = numberFormat;
 
             let currentRow = 9;
             records.forEach(record => {
-                worksheet.getCell(currentRow, currentColumn).value = new Date(record.startTime).toLocaleDateString('pt-BR');
-                worksheet.getCell(currentRow, currentColumn + 1).value = record.locationName;
-                worksheet.getCell(currentRow, currentColumn + 2).value = record.locationArea;
+                // O.S.
+                worksheet.getCell(currentRow, currentColumn).value = record.serviceOrderNumber || '';
+                // DATA
+                worksheet.getCell(currentRow, currentColumn + 1).value = new Date(record.startTime).toLocaleDateString('pt-BR');
+                // LOCAL
+                worksheet.getCell(currentRow, currentColumn + 2).value = record.locationName;
+                // METRAGEM
+                worksheet.getCell(currentRow, currentColumn + 3).value = record.locationArea;
+                
                 // Apply borders to data cells
-                for (let i = 0; i < 3; i++) {
+                for (let i = 0; i < 4; i++) {
                      worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
                 }
                 currentRow++;
@@ -1134,41 +1139,61 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
             if (currentRow > maxRows) maxRows = currentRow;
             serviceSummaryInfo.push({
-                service: serviceType,
-                unit: records[0].serviceUnit,
+                serviceAndUnit: serviceAndUnit,
                 metragemColumn: metragemColumn.letter,
                 firstRow: 9,
-                lastRow: currentRow - 1
+                lastRow: currentRow - 1,
+                serviceType: serviceType
             });
 
-            currentColumn += 4; // 3 columns for data + 1 spacer column
+            currentColumn += 5; // 4 colunas de dados + 1 coluna de espaçador
         });
         
-        // --- QUADRO RESUMO ---
-        const summaryStartCol = currentColumn;
-        worksheet.mergeCells(7, summaryStartCol, 7, summaryStartCol + 3);
+        // --- QUADRO RESUMO (Ajustado para começar na coluna A, logo após os dados) ---
+        
+        // Determinar a coluna de início do Quadro Resumo (deve ser a próxima disponível ou C/D se for só 1 serviço)
+        let summaryStartCol = 1;
+        if (currentColumn > 5) {
+             summaryStartCol = currentColumn;
+        } else {
+             // Se só tinha uma coluna (A-D) de dados, a próxima é E. Usamos J
+             summaryStartCol = 10;
+        }
+        
+        worksheet.mergeCells(7, summaryStartCol, 7, summaryStartCol + 2);
         const summaryHeader = worksheet.getCell(7, summaryStartCol);
         summaryHeader.value = 'QUADRO RESUMO';
         summaryHeader.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
         
-        ['SERVIÇOS', 'METRAGEM', 'METRAGEM REALIZADA'].forEach((text, i) => {
-            const headerIndex = i === 0 ? summaryStartCol : summaryStartCol + i + 1;
-            const cell = worksheet.getCell(8, headerIndex);
+        // Headers do Quadro Resumo
+        const summaryHeaders = ['SERVIÇOS', 'METRAGEM TOTAL', 'METRAGEM REALIZADA'];
+        summaryHeaders.forEach((text, i) => {
+            const cell = worksheet.getCell(8, summaryStartCol + i);
             cell.value = text;
             cell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
+            if (i === 1 || i === 2) {
+                worksheet.getColumn(summaryStartCol + i).numFmt = numberFormat;
+            }
         });
 
         let summaryCurrentRow = 9;
         serviceSummaryInfo.forEach(info => {
-            worksheet.getCell(summaryCurrentRow, summaryStartCol).value = `${info.service} ${info.unit}`;
-            const totalCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 3);
-            totalCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
-            totalCell.numFmt = numberFormat;
+            // SERVIÇOS
+            worksheet.getCell(summaryCurrentRow, summaryStartCol).value = info.serviceAndUnit;
+            // METRAGEM TOTAL (Vazia no modelo, mas deixaremos como o valor estático do contrato)
+            // Este campo geralmente é preenchido manualmente para ser o valor MÁXIMO do contrato.
+            // Para replicar o layout, deixaremos em branco conforme a imagem (coluna 2 do resumo).
+            // Coluna 2 do Resumo: summaryStartCol + 1
+            worksheet.getCell(summaryCurrentRow, summaryStartCol + 1).value = ''; 
+            
+            // METRAGEM REALIZADA
+            const realizedCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 2);
+            realizedCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
 
-            // Apply borders to summary cells
-            [summaryStartCol, summaryStartCol + 2, summaryStartCol + 3].forEach(colIdx => {
-                worksheet.getCell(summaryCurrentRow, colIdx).border = thinBorder;
-            })
+            // Aplica bordas às células de dados do resumo
+            for (let i = 0; i < 3; i++) {
+                worksheet.getCell(summaryCurrentRow, summaryStartCol + i).border = thinBorder;
+            }
             summaryCurrentRow++;
         });
 
@@ -1181,7 +1206,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     maxLength = columnLength;
                 }
             });
-            column.width = maxLength < 10 ? 10 : maxLength + 2;
+            // O valor mínimo de 10 foi mantido, mas o aumento é feito para evitar o corte de títulos
+            column.width = Math.max(10, maxLength + 2);
         });
 
         // --- DOWNLOAD ---
@@ -1211,7 +1237,6 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     };
 
     const PdfLayout = () => {
-// ... (código PdfLayout omitido por brevidade)
         // ========== PAGINAÇÃO INTELIGENTE (CORREÇÃO DE DEFORMAÇÃO) ==========
         const [pages, setPages] = useState<ServiceRecord[][]>([]);
         const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
@@ -1511,7 +1536,6 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 };
             
 const ManageLocationsView: React.FC<{
-// ... (código ManageLocationsView omitido por brevidade)
     locations: LocationRecord[];
     services: ServiceDefinition[];
     fetchData: () => Promise<void>;
@@ -1853,7 +1877,6 @@ const ManageLocationsView: React.FC<{
 
 
 const ManageUsersView: React.FC<{ 
-// ... (código ManageUsersView omitido por brevidade)
     users: User[];
     onUsersUpdate: () => Promise<void>;
     services: ServiceDefinition[];
@@ -2063,8 +2086,8 @@ const GoalsAndChartsView: React.FC<{
     records: ServiceRecord[];
     locations: LocationRecord[];
     services: ServiceDefinition[];
-    contractConfigs: ContractConfig[]; // Adicionado props para configs
-}> = ({ records, locations, services, contractConfigs }) => { // Recebendo configs
+    contractConfigs: ContractConfig[];
+}> = ({ records, locations, services, contractConfigs }) => {
     const [chartData, setChartData] = useState<any>(null);
     const [isLoadingChart, setIsLoadingChart] = useState(false);
     const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
@@ -2353,7 +2376,6 @@ const GoalsAndChartsView: React.FC<{
 };
 
 const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinish: () => void; }> = ({ service, onFinish }) => {
-// ... (código ServiceInProgressView omitido por brevidade)
     return (
         <div className="card">
             <h2>Serviço em Andamento</h2>
@@ -2374,7 +2396,6 @@ const ServiceInProgressView: React.FC<{ service: Partial<ServiceRecord>; onFinis
 };
 
 const AdminEditRecordView: React.FC<{
-// ... (código AdminEditRecordView omitido por brevidade)
     record: ServiceRecord;
     onSave: (updatedRecord: ServiceRecord) => void;
     onCancel: () => void;
@@ -2424,7 +2445,8 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                 body: formDataUpload
             });
 
-            // 2. Busca o registro atualizado (GET) para garantir a lista completa de fotos
+            // 2. CORREÇÃO: Busca o registro atualizado (GET) para garantir a lista completa de fotos
+            // Isso evita que o estado local fique apenas com as novas fotos e sobrescreva as antigas ao salvar.
             const freshRecord = await apiFetch(`/api/records/${formData.id}`);
             
             const fullRecord = {
@@ -2589,7 +2611,7 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                     id="before-upload"
                     type="file"
                     accept="image/*"
-                    multiple // ATRIBUTO CONFIRMADO: PERMITE MÚLTIPLA SELEÇÃO
+                    multiple
                     onChange={e => handlePhotoUpload("BEFORE", e.target.files)}
                     style={{display: 'none'}}
                 />
@@ -2615,7 +2637,7 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                     id="after-upload"
                     type="file"
                     accept="image/*"
-                    multiple // ATRIBUTO CONFIRMADO: PERMITE MÚLTIPLA SELEÇÃO
+                    multiple
                     onChange={e => handlePhotoUpload("AFTER", e.target.files)}
                     style={{display: 'none'}}
                 />
@@ -2630,7 +2652,6 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
 };
 
 const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
-// ... (código AuditLogView omitido por brevidade)
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
@@ -2713,7 +2734,6 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
 };
 
 const ManageServicesView: React.FC<{
-// ... (código ManageServicesView omitido por brevidade)
     services: ServiceDefinition[];
     fetchData: () => Promise<void>;
 }> = ({ services, fetchData }) => {
