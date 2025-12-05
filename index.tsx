@@ -2583,7 +2583,7 @@ const AdminEditRecordView: React.FC<{
         }
     };
 
-    const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
+const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
         if (!files || files.length === 0) return;
         
         // CORREÇÃO 2: Salva as alterações de texto ANTES de fazer o upload
@@ -2604,10 +2604,30 @@ const AdminEditRecordView: React.FC<{
         Array.from(files).forEach(file => formDataUpload.append("files", file));
         
         try {
-            await apiFetch(`/api/records/${updatedRecord.id}/photos`, { // Usa o ID do registro recém-salvo
+            await apiFetch(`/api/records/${updatedRecord.id}/photos`, { 
                 method: "POST",
                 body: formDataUpload
             });
+            
+            // --- NOVA CORREÇÃO PARA O PROBLEMA DO TIMESTAMP (Admin/Fiscal) ---
+            // Se o usuário é Admin ou Fiscal, garantimos que o startTime e endTime originais sejam mantidos.
+            if (currentUser?.role === 'ADMIN' || currentUser?.role === 'FISCAL') {
+                 // Enviamos um novo PUT request com os valores de startTime e endTime que estavam no formulário (formData)
+                 // que são os valores originais ou os editados pelo admin/fiscal, revertendo o timestamp do upload.
+                 const timestampFixPayload = {
+                     // Usamos os valores ATUAIS do formulário
+                     startTime: formData.startTime, 
+                     endTime: formData.endTime,
+                     serviceOrderNumber: formData.serviceOrderNumber 
+                 };
+                 await apiFetch(`/api/records/${updatedRecord.id}`, {
+                     method: 'PUT',
+                     body: JSON.stringify(timestampFixPayload),
+                 });
+            }
+            // --- FIM DA NOVA CORREÇÃO ---
+
+            // Busca o registro mais recente (agora com o timestamp corrigido)
             const freshRecord = await apiFetch(`/api/records/${updatedRecord.id}`);
             const fullRecord = {
                 ...freshRecord,
