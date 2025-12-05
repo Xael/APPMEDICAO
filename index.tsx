@@ -956,7 +956,7 @@ const DetailView: React.FC<{ record: ServiceRecord }> = ({ record }) => (
     </div>
 );
 
-const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; }> = ({ records, services }) => {
+const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinition[]; locations: LocationRecord[]; }> = ({ records, services, locations }) => {
     const [reportType, setReportType] = useState<'excel' | 'photos' | 'billing' | null>(null);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -965,6 +965,32 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const printableRef = useRef<HTMLDivElement>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+
+    // --- CORREÇÃO 1: Mapeamento para busca rápida de Pais/Bairros ---
+    const locationMap = useMemo(() => {
+        return locations.reduce((acc, loc) => {
+            acc[loc.id] = loc;
+            return acc;
+        }, {} as Record<string, LocationRecord>);
+    }, [locations]);
+
+    // --- CORREÇÃO 2: Função para resolver o nome completo (Bairro - Rua) ---
+    const getFullLocationName = (record: ServiceRecord) => {
+        // Se não tiver ID de local, retorna o nome gravado
+        if (!record.locationId) return record.locationName;
+        
+        const loc = locationMap[record.locationId];
+        
+        // Se o local existe no cadastro e tem um Pai (parentId)
+        if (loc && loc.parentId) {
+            const parent = locationMap[loc.parentId];
+            if (parent) {
+                // Formato: "Nome do Bairro - Nome da Rua"
+                return `${parent.name} - ${record.locationName}`;
+            }
+        }
+        return record.locationName;
+    };
 
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
@@ -1006,7 +1032,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         worksheet.columns = [
             { header: 'ID', key: 'id', width: 10 }, { header: 'Data Início', key: 'startTime', width: 20 },
             { header: 'Data Fim', key: 'endTime', width: 20 }, { header: 'Contrato/Cidade', key: 'contractGroup', width: 25 },
-            { header: 'Local', key: 'locationName', width: 40 }, { header: 'Serviço', key: 'serviceType', width: 30 },
+            { header: 'Local', key: 'locationName', width: 50 }, // Aumentei a largura
+            { header: 'Serviço', key: 'serviceType', width: 30 },
             { header: 'Medição', key: 'locationArea', width: 15 }, { header: 'Unidade', key: 'serviceUnit', width: 15 },
             { header: 'Operador', key: 'operatorName', width: 25 }, { header: 'Usou GPS', key: 'gpsUsed', width: 10 },
             { header: 'O.S.', key: 'os', width: 15 },
@@ -1015,7 +1042,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             worksheet.addRow({
                 id: record.id, startTime: formatDateTime(record.startTime),
                 endTime: record.endTime ? formatDateTime(record.endTime) : 'Não finalizado',
-                contractGroup: record.contractGroup, locationName: record.locationName,
+                contractGroup: record.contractGroup, 
+                locationName: getFullLocationName(record), // --- CORREÇÃO 3: Uso da função aqui ---
                 serviceType: record.serviceType, locationArea: record.locationArea,
                 serviceUnit: record.serviceUnit, operatorName: record.operatorName,
                 gpsUsed: record.gpsUsed ? 'Sim' : 'Não',
@@ -1120,7 +1148,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             records.forEach(record => {
                 worksheet.getCell(currentRow, currentColumn).value = record.serviceOrderNumber || '';
                 worksheet.getCell(currentRow, currentColumn + 1).value = new Date(record.startTime).toLocaleDateString('pt-BR');
-                worksheet.getCell(currentRow, currentColumn + 2).value = record.locationName;
+                // --- CORREÇÃO 4: Uso da função aqui também ---
+                worksheet.getCell(currentRow, currentColumn + 2).value = getFullLocationName(record);
                 worksheet.getCell(currentRow, currentColumn + 3).value = record.locationArea;
                 for (let i = 0; i < 4; i++) {
                      worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
@@ -1310,7 +1339,6 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         if (isLoadingImages) return null;
         
         const today = new Date().toLocaleDateString('pt-BR');
-        // Define o nome do contrato dinâmico baseado no primeiro registro (ou padrão se vazio)
         const contractTitle = pages[0]?.[0]?.contractGroup || "";
         
         const styles = {
@@ -1324,7 +1352,6 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 marginBottom: '20px'
             },
             header: { display: 'flex', alignItems: 'center', marginBottom: '10px', borderBottom: '2px solid #333', paddingBottom: '10px' },
-            // Logo aumentado em +50% (35px -> 55px)
             logo: { maxHeight: '55px', width: 'auto', marginRight: '15px' },
             headerText: { flexGrow: 1 },
             recordBlock: { marginBottom: '15px', pageBreakInside: 'avoid' as const, border: '1px solid #ccc', padding: '10px', borderRadius: '4px' },
@@ -1343,7 +1370,6 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                         <header style={styles.header}>
                             <img src={logoSrc} alt="Logo" style={styles.logo} />
                             <div style={styles.headerText}>
-                                {/* Cabeçalho dinâmico com nome do Contrato */}
                                 <h2 style={{margin: 0, fontSize: '14pt'}}>Relatório Fotográfico - {contractTitle}</h2>
                                 <p style={{margin: 0, fontSize: '10pt'}}>CRB Serviços Gerais</p>
                             </div>
@@ -1360,15 +1386,17 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                 for (let i = 0; i < maxPhotos; i++) {
                                     photoPairs.push({ before: record.beforePhotos?.[i], after: record.afterPhotos?.[i] });
                                 }
+                                // --- CORREÇÃO 5: Uso da função para pegar nome composto ---
+                                const locationDisplayName = getFullLocationName(record);
+                                
                                 return (
                                     <div key={record.id} style={styles.recordBlock}>
                                         <table style={styles.infoTable}>
                                             <tbody>
-                                                {/* Local ocupa toda a largura */}
                                                 <tr>
-                                                    <td style={styles.infoCell} colSpan={4}><strong>Local:</strong> {record.locationName}</td>
+                                                    {/* Exibe Bairro - Rua no cabeçalho do item */}
+                                                    <td style={styles.infoCell} colSpan={4}><strong>Local:</strong> {locationDisplayName}</td>
                                                 </tr>
-                                                {/* Linha harmoniosa: Data | O.S. | Serviço | Medição */}
                                                 <tr>
                                                     <td style={{...styles.infoCell, width: '20%'}}><strong>Data:</strong> {new Date(record.startTime).toLocaleDateString('pt-BR')}</td>
                                                     <td style={{...styles.infoCell, width: '20%'}}><strong>O.S.:</strong> {record.serviceOrderNumber || 'N/A'}</td>
@@ -1394,7 +1422,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                                             {pair.before ? (
                                                                 <>
                                                                     <img src={loadedImages[`${API_BASE}${pair.before}`]} alt="Antes" style={styles.img} />
-                                                                    <div style={styles.caption}>{record.locationName}</div>
+                                                                    {/* Legenda com o nome composto também */}
+                                                                    <div style={styles.caption}>{locationDisplayName}</div>
                                                                 </>
                                                             ) : <div style={{height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc'}}>Sem foto</div>}
                                                         </td>
@@ -1402,7 +1431,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                                             {pair.after ? (
                                                                 <>
                                                                     <img src={loadedImages[`${API_BASE}${pair.after}`]} alt="Depois" style={styles.img} />
-                                                                    <div style={styles.caption}>{record.locationName}</div>
+                                                                    <div style={styles.caption}>{locationDisplayName}</div>
                                                                 </>
                                                             ) : <div style={{height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc'}}>Sem foto</div>}
                                                         </td>
@@ -1423,7 +1452,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     if (isGenerating) {
         return (
             <>
-                <Loader text="Gerando relatório PDF, por favor aguarde... Isso pode levar alguns segundos." />
+                <Loader text="Gerando relatório PDF, por favor aguarde... Isso pode levar alguns minutos." />
                 {reportType === 'photos' && <PdfLayout />}
             </>
         );
@@ -1470,7 +1499,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     <li key={record.id} className="report-item">
                         <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={e => handleSelectOne(record.id, e.target.checked)} />
                         <div className="report-item-info">
-                            <p><strong>{record.locationName}</strong> - {record.serviceType}</p>
+                            {/* Uso da função aqui também para visualização na lista */}
+                            <p><strong>{getFullLocationName(record)}</strong> - {record.serviceType}</p>
                             <p><small>{record.contractGroup} | {formatDateTime(record.startTime)}</small></p>
                         </div>
                     </li>
