@@ -1009,6 +1009,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             { header: 'Local', key: 'locationName', width: 40 }, { header: 'Serviço', key: 'serviceType', width: 30 },
             { header: 'Medição', key: 'locationArea', width: 15 }, { header: 'Unidade', key: 'serviceUnit', width: 15 },
             { header: 'Operador', key: 'operatorName', width: 25 }, { header: 'Usou GPS', key: 'gpsUsed', width: 10 },
+            { header: 'O.S.', key: 'os', width: 15 },
         ];
         selectedRecords.forEach(record => {
             worksheet.addRow({
@@ -1018,6 +1019,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 serviceType: record.serviceType, locationArea: record.locationArea,
                 serviceUnit: record.serviceUnit, operatorName: record.operatorName,
                 gpsUsed: record.gpsUsed ? 'Sim' : 'Não',
+                os: record.serviceOrderNumber || ''
             });
         });
         try {
@@ -1052,11 +1054,10 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         const centerStyle = { alignment: { horizontal: 'center' as const, vertical: 'middle' as const } };
         const titleStyle = { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' as const, vertical: 'middle' as const } };
         const yellowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } as ExcelJS.Fill;
-        const grayFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } as ExcelJS.Fill;
         const thinBorder = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } as ExcelJS.Borders;
         const numberFormat = '#,##0.00';
 
-        // --- HEADER (Ajustado para o modelo) ---
+        // --- HEADER ---
         worksheet.mergeCells('A1:K1');
         worksheet.getCell('A1').value = 'C.R.B COMERCIO E SERVIÇOS DE MANUTENÇÃO EM GERAL LTDA';
         worksheet.getCell('A1').style = centerBoldStyle;
@@ -1067,7 +1068,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         worksheet.getCell('A3').value = 'PLANILHA DE FATURAMENTO';
         worksheet.getCell('A3').style = titleStyle;
 
-        // Linha 5: Informações de Contrato/Período
+        // Linha 5
         worksheet.mergeCells('A5:D5');
         worksheet.getCell('A5').value = 'CONTRATO ADMINISTRATIVO Nº:';
         worksheet.getCell('A5').style = leftBoldStyle;
@@ -1085,30 +1086,26 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
         // --- DATA ---
         const groupedRecords = selectedRecords.reduce((acc, record) => {
-            // Usar serviceType + serviceUnit para agrupar, replicando a lógica do "SERVIÇOS" no resumo
             const key = `${record.serviceType} (${record.serviceUnit})`;
             (acc[key] = acc[key] || []).push(record);
             return acc;
         }, {} as Record<string, ServiceRecord[]>);
 
-        let currentColumn = 1; // Coluna A
+        let currentColumn = 1;
         let maxRows = 8;
         const serviceSummaryInfo: { serviceAndUnit: string, metragemColumn: string, firstRow: number, lastRow: number, serviceType: string }[] = [];
-        const spacerColumns = 2; // Colunas para O.S. e Local
-        const metragemColumnIndexOffset = 3; // + 1 para O.S. + 1 para Local + 1 para Metragem = 3
+        const metragemColumnIndexOffset = 3; 
 
         Object.keys(groupedRecords).forEach(serviceAndUnit => {
             const records = groupedRecords[serviceAndUnit];
             if (records.length === 0) return;
             const serviceType = records[0].serviceType;
 
-            // Service Header - Coluna A
             worksheet.mergeCells(7, currentColumn, 7, currentColumn + metragemColumnIndexOffset);
             const headerCell = worksheet.getCell(7, currentColumn);
             headerCell.value = serviceType.toUpperCase();
             headerCell.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
 
-            // Subheaders - Linha 8
             const subheaders = ['O.S.', 'DATA', 'LOCAL', `METRAGEM EM`];
             subheaders.forEach((text, i) => {
                 const cell = worksheet.getCell(8, currentColumn + i);
@@ -1121,16 +1118,10 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
             let currentRow = 9;
             records.forEach(record => {
-                // O.S.
                 worksheet.getCell(currentRow, currentColumn).value = record.serviceOrderNumber || '';
-                // DATA
                 worksheet.getCell(currentRow, currentColumn + 1).value = new Date(record.startTime).toLocaleDateString('pt-BR');
-                // LOCAL
                 worksheet.getCell(currentRow, currentColumn + 2).value = record.locationName;
-                // METRAGEM
                 worksheet.getCell(currentRow, currentColumn + 3).value = record.locationArea;
-                
-                // Apply borders to data cells
                 for (let i = 0; i < 4; i++) {
                      worksheet.getCell(currentRow, currentColumn + i).border = thinBorder;
                 }
@@ -1145,27 +1136,18 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 lastRow: currentRow - 1,
                 serviceType: serviceType
             });
-
-            currentColumn += 5; // 4 colunas de dados + 1 coluna de espaçador
+            currentColumn += 5;
         });
         
-        // --- QUADRO RESUMO (Ajustado para começar na coluna A, logo após os dados) ---
-        
-        // Determinar a coluna de início do Quadro Resumo (deve ser a próxima disponível ou C/D se for só 1 serviço)
+        // --- QUADRO RESUMO ---
         let summaryStartCol = 1;
-        if (currentColumn > 5) {
-             summaryStartCol = currentColumn;
-        } else {
-             // Se só tinha uma coluna (A-D) de dados, a próxima é E. Usamos J
-             summaryStartCol = 10;
-        }
+        if (currentColumn > 5) { summaryStartCol = currentColumn; } else { summaryStartCol = 10; }
         
         worksheet.mergeCells(7, summaryStartCol, 7, summaryStartCol + 2);
         const summaryHeader = worksheet.getCell(7, summaryStartCol);
         summaryHeader.value = 'QUADRO RESUMO';
         summaryHeader.style = { ...centerBoldStyle, fill: yellowFill, border: thinBorder };
         
-        // Headers do Quadro Resumo
         const summaryHeaders = ['SERVIÇOS', 'METRAGEM TOTAL', 'METRAGEM REALIZADA'];
         summaryHeaders.forEach((text, i) => {
             const cell = worksheet.getCell(8, summaryStartCol + i);
@@ -1178,39 +1160,25 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
         let summaryCurrentRow = 9;
         serviceSummaryInfo.forEach(info => {
-            // SERVIÇOS
             worksheet.getCell(summaryCurrentRow, summaryStartCol).value = info.serviceAndUnit;
-            // METRAGEM TOTAL (Vazia no modelo, mas deixaremos como o valor estático do contrato)
-            // Este campo geralmente é preenchido manualmente para ser o valor MÁXIMO do contrato.
-            // Para replicar o layout, deixaremos em branco conforme a imagem (coluna 2 do resumo).
-            // Coluna 2 do Resumo: summaryStartCol + 1
             worksheet.getCell(summaryCurrentRow, summaryStartCol + 1).value = ''; 
-            
-            // METRAGEM REALIZADA
             const realizedCell = worksheet.getCell(summaryCurrentRow, summaryStartCol + 2);
             realizedCell.value = { formula: `SUM(${info.metragemColumn}${info.firstRow}:${info.metragemColumn}${info.lastRow})` };
-
-            // Aplica bordas às células de dados do resumo
             for (let i = 0; i < 3; i++) {
                 worksheet.getCell(summaryCurrentRow, summaryStartCol + i).border = thinBorder;
             }
             summaryCurrentRow++;
         });
 
-        // Set column widths
         worksheet.columns.forEach(column => {
             let maxLength = 0;
             column.eachCell!({ includeEmpty: true }, cell => {
                 let columnLength = cell.value ? cell.value.toString().length : 10;
-                if (columnLength > maxLength) {
-                    maxLength = columnLength;
-                }
+                if (columnLength > maxLength) maxLength = columnLength;
             });
-            // O valor mínimo de 10 foi mantido, mas o aumento é feito para evitar o corte de títulos
             column.width = Math.max(10, maxLength + 2);
         });
 
-        // --- DOWNLOAD ---
         try {
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1237,7 +1205,6 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     };
 
     const PdfLayout = () => {
-        // ========== PAGINAÇÃO INTELIGENTE (CORREÇÃO DE DEFORMAÇÃO) ==========
         const [pages, setPages] = useState<ServiceRecord[][]>([]);
         const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
         const [isLoadingImages, setIsLoadingImages] = useState(true);
@@ -1261,7 +1228,6 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 
         useEffect(() => {
             const processRecords = async () => {
-                // 1. Pré-carregar todas as imagens
                 const allImageUrls = selectedRecords.flatMap(r => [...(r.beforePhotos || []), ...(r.afterPhotos || [])]);
                 const uniqueImageUrls = [...new Set(allImageUrls)];
                 const imagePromises = uniqueImageUrls.map(url => getBase64Image(`${API_BASE}${url}`).then(base64 => ({ url, base64 })));
@@ -1272,54 +1238,43 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                 }, {} as Record<string, string>);
                 setLoadedImages(imageMap);
 
-                // 2. Lógica de "Pontos" para Paginação
-                // Uma página A4 tem uma capacidade de "pontos" de altura.
-                // - Cabeçalho do registro + Infos: ~2.5 pontos
-                // - Cada LINHA de fotos (2 fotos lado a lado): ~2.0 pontos
-                // Capacidade Máxima sugerida: 10 pontos.
+                // Paginação
                 const PAGE_CAPACITY = 10;
                 const HEADER_COST = 2.5;
                 const ROW_COST = 2.0;
-
                 const paginatedRecords: ServiceRecord[][] = [];
                 let currentPage: ServiceRecord[] = [];
                 let currentLoad = 0;
 
                 selectedRecords.forEach(record => {
                     const maxPhotos = Math.max((record.beforePhotos || []).length, (record.afterPhotos || []).length);
-                    const photoRows = Math.ceil(maxPhotos); // 1 foto conta como 1 linha devido à tabela lateral
+                    const photoRows = Math.ceil(maxPhotos); 
                     const recordCost = HEADER_COST + (photoRows * ROW_COST);
 
-                    // Se o registro sozinho é maior que uma página inteira, ele vai numa página nova sozinho.
                     if (recordCost > PAGE_CAPACITY) {
                         if (currentPage.length > 0) {
                             paginatedRecords.push(currentPage);
                             currentPage = [];
                             currentLoad = 0;
                         }
-                        paginatedRecords.push([record]); // Página exclusiva para ele
+                        paginatedRecords.push([record]);
                     } 
-                    // Se somar com o atual estourar, quebra página antes
                     else if (currentLoad + recordCost > PAGE_CAPACITY) {
                         paginatedRecords.push(currentPage);
                         currentPage = [record];
                         currentLoad = recordCost;
                     } 
-                    // Senão, adiciona na página atual
                     else {
                         currentPage.push(record);
                         currentLoad += recordCost;
                     }
                 });
-
                 if (currentPage.length > 0) {
                     paginatedRecords.push(currentPage);
                 }
-
                 setPages(paginatedRecords);
                 setIsLoadingImages(false);
             };
-            
             if (selectedRecords.length > 0) { processRecords(); } else { setIsLoadingImages(false); }
         }, []);
 
@@ -1331,27 +1286,14 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                         const doc = new jsPDF('p', 'mm', 'a4');
                         const pageElements = printableRef.current.querySelectorAll('.printable-page');
                         const pdfPageWidth = doc.internal.pageSize.getWidth();
-                        const pdfPageHeight = doc.internal.pageSize.getHeight();
 
                         for (let i = 0; i < pageElements.length; i++) {
                             const page = pageElements[i] as HTMLElement;
-                            
-                            // Aumenta escala para melhor qualidade
                             const canvas = await html2canvas(page, { scale: 2, useCORS: true, logging: false });
-                            const imgData = canvas.toDataURL('image/jpeg', 0.85); // Compressão leve
-
+                            const imgData = canvas.toDataURL('image/jpeg', 0.85); 
                             if (i > 0) doc.addPage();
-
-                            // ========== CÁLCULO PROPORCIONAL (CRÍTICO) ==========
-                            // Calcula a altura que a imagem DEVE ter para manter a proporção
                             const imgProps = doc.getImageProperties(imgData);
                             const proportionalHeight = (imgProps.height * pdfPageWidth) / imgProps.width;
-
-                            // Usa a altura proporcional. Se for menor que a página A4, sobra espaço branco embaixo (ok).
-                            // Se for maior, vai cortar ou encolher, mas nossa paginação acima deve prevenir que seja MUITO maior.
-                            // Para garantir que cabe na página se passar um pouquinho, usamos Math.min
-                            // MAS o ideal é deixar proportionalHeight para não deformar.
-                            
                             doc.addImage(imgData, 'JPEG', 0, 0, pdfPageWidth, proportionalHeight);
                         }
                         doc.save(`relatorio_fotos_crb_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -1368,24 +1310,26 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         if (isLoadingImages) return null;
         
         const today = new Date().toLocaleDateString('pt-BR');
+        // Define o nome do contrato dinâmico baseado no primeiro registro (ou padrão se vazio)
+        const contractTitle = pages[0]?.[0]?.contractGroup || "";
         
-        // Estilo inline para garantir visualização correta no PDF
         const styles = {
             page: {
                 width: '210mm',
-                minHeight: '297mm', // Permite crescer se necessário, o html2canvas captura tudo
+                minHeight: '297mm', 
                 padding: '10mm',
                 backgroundColor: 'white',
                 boxSizing: 'border-box' as const,
-                border: '1px solid #eee', // Borda visual na tela
+                border: '1px solid #eee', 
                 marginBottom: '20px'
             },
             header: { display: 'flex', alignItems: 'center', marginBottom: '10px', borderBottom: '2px solid #333', paddingBottom: '10px' },
-            logo: { maxHeight: '35px', width: 'auto', marginRight: '15px' },
+            // Logo aumentado em +50% (35px -> 55px)
+            logo: { maxHeight: '55px', width: 'auto', marginRight: '15px' },
             headerText: { flexGrow: 1 },
             recordBlock: { marginBottom: '15px', pageBreakInside: 'avoid' as const, border: '1px solid #ccc', padding: '10px', borderRadius: '4px' },
             infoTable: { width: '100%', marginBottom: '10px', borderCollapse: 'collapse' as const },
-            infoCell: { padding: '4px', borderBottom: '1px solid #eee', fontSize: '10pt' },
+            infoCell: { padding: '4px', borderBottom: '1px solid #eee', fontSize: '10pt', verticalAlign: 'top' as const },
             photoTable: { width: '100%', borderCollapse: 'collapse' as const },
             photoCell: { width: '50%', padding: '5px', textAlign: 'center' as const, verticalAlign: 'top' as const, border: '1px solid #ddd' },
             img: { width: '100%', maxHeight: '180px', objectFit: 'contain' as const, display: 'block', margin: '0 auto' },
@@ -1399,7 +1343,8 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                         <header style={styles.header}>
                             <img src={logoSrc} alt="Logo" style={styles.logo} />
                             <div style={styles.headerText}>
-                                <h2 style={{margin: 0, fontSize: '14pt'}}>Relatório Fotográfico</h2>
+                                {/* Cabeçalho dinâmico com nome do Contrato */}
+                                <h2 style={{margin: 0, fontSize: '14pt'}}>Relatório Fotográfico - {contractTitle}</h2>
                                 <p style={{margin: 0, fontSize: '10pt'}}>CRB Serviços Gerais</p>
                             </div>
                             <div style={{textAlign: 'right', fontSize: '9pt'}}>
@@ -1419,18 +1364,18 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                                     <div key={record.id} style={styles.recordBlock}>
                                         <table style={styles.infoTable}>
                                             <tbody>
+                                                {/* Local ocupa toda a largura */}
                                                 <tr>
-                                                    <td style={styles.infoCell}><strong>Local:</strong> {record.locationName}</td>
-                                                    <td style={styles.infoCell}><strong>Data:</strong> {formatDateTime(record.startTime)}</td>
+                                                    <td style={styles.infoCell} colSpan={4}><strong>Local:</strong> {record.locationName}</td>
                                                 </tr>
+                                                {/* Linha harmoniosa: Data | O.S. | Serviço | Medição */}
                                                 <tr>
-                                                    <td style={styles.infoCell}><strong>Serviço:</strong> {record.serviceType}</td>
-                                                    <td style={styles.infoCell}>
+                                                    <td style={{...styles.infoCell, width: '20%'}}><strong>Data:</strong> {new Date(record.startTime).toLocaleDateString('pt-BR')}</td>
+                                                    <td style={{...styles.infoCell, width: '20%'}}><strong>O.S.:</strong> {record.serviceOrderNumber || 'N/A'}</td>
+                                                    <td style={{...styles.infoCell, width: '30%'}}><strong>Serviço:</strong> {record.serviceType}</td>
+                                                    <td style={{...styles.infoCell, width: '30%'}}>
                                                         <strong>Medição:</strong> {record.locationArea ? `${record.locationArea.toLocaleString('pt-BR')} ${record.serviceUnit}` : 'N/A'}
                                                     </td>
-                                                </tr>
-                                                <tr>
-                                                    <td style={styles.infoCell} colSpan={2}><strong>Contrato:</strong> {record.contractGroup}</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -2409,6 +2354,20 @@ const AdminEditRecordView: React.FC<{
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
+    // Helper para converter ISO string para o formato do input datetime-local com segurança
+    const toInputDate = (isoString?: string) => {
+        if (!isoString) return "";
+        try {
+            const date = new Date(isoString);
+            // Ajuste de fuso horário para exibir corretamente no input local
+            const offset = date.getTimezoneOffset() * 60000;
+            const localDate = new Date(date.getTime() - offset);
+            return localDate.toISOString().slice(0, 16);
+        } catch (e) {
+            return "";
+        }
+    };
+
     const handleSave = async () => {
         setIsLoading("Salvando alterações...");
         try {
@@ -2431,7 +2390,7 @@ const AdminEditRecordView: React.FC<{
         }
     };
 
-const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
+    const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | null) => {
         if (!files || files.length === 0) return;
         setIsLoading("Enviando fotos...");
         const formDataUpload = new FormData();
@@ -2439,25 +2398,18 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
         Array.from(files).forEach(file => formDataUpload.append("files", file));
         
         try {
-            // 1. Envia as fotos (POST)
             await apiFetch(`/api/records/${formData.id}/photos`, {
                 method: "POST",
                 body: formDataUpload
             });
-
-            // 2. CORREÇÃO: Busca o registro atualizado (GET) para garantir a lista completa de fotos
-            // Isso evita que o estado local fique apenas com as novas fotos e sobrescreva as antigas ao salvar.
             const freshRecord = await apiFetch(`/api/records/${formData.id}`);
-            
             const fullRecord = {
                 ...freshRecord,
                 id: String(freshRecord.id),
                 operatorId: String(freshRecord.operatorId),
             };
-            
             setFormData(fullRecord); 
-            alert("Fotos adicionadas com sucesso!"); // Feedback visual opcional
-
+            alert("Fotos adicionadas com sucesso!");
         } catch (err) {
             alert(`Falha ao enviar fotos '${phase === "BEFORE" ? "Antes" : "Depois"}'.`);
             console.error(err);
@@ -2537,7 +2489,6 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                 />
             </div>
             
-            {/* Added Observations Field */}
             <div className="form-group">
                 <label>Observações</label>
                 <textarea 
@@ -2575,7 +2526,7 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                 <label>Início</label>
                 <input
                     type="datetime-local"
-                    value={formData.startTime ? new Date(new Date(formData.startTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
+                    value={toInputDate(formData.startTime)}
                     onChange={e => handleChange("startTime", new Date(e.target.value).toISOString())}
                     readOnly={isOperator}
                 />
@@ -2585,8 +2536,13 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                 <label>Fim</label>
                 <input
                     type="datetime-local"
-                    value={formData.endTime ? new Date(new Date(formData.endTime).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16) : ""}
-                    onChange={e => handleChange("endTime", new Date(e.target.value).toISOString())}
+                    value={toInputDate(formData.endTime)}
+                    onChange={e => {
+                        // Só atualiza se o usuário realmente inseriu um valor válido
+                        if (e.target.value) {
+                            handleChange("endTime", new Date(e.target.value).toISOString());
+                        }
+                    }}
                     readOnly={isOperator}
                 />
             </div>
@@ -2597,24 +2553,12 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                     {(formData.beforePhotos || []).map((p, i) => (
                         <div key={`b-${i}`} className="edit-photo-item">
                             <img src={`${API_BASE}${p}`} alt={`Antes ${i+1}`} />
-                            <button
-                                className="delete-photo-btn"
-                                onClick={() => handlePhotoRemove(p)}
-                            >
-                                &times;
-                            </button>
+                            <button className="delete-photo-btn" onClick={() => handlePhotoRemove(p)}>&times;</button>
                         </div>
                     ))}
                 </div>
                 <label htmlFor="before-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar Foto "Antes"</label>
-                <input
-                    id="before-upload"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={e => handlePhotoUpload("BEFORE", e.target.files)}
-                    style={{display: 'none'}}
-                />
+                <input id="before-upload" type="file" accept="image/*" multiple onChange={e => handlePhotoUpload("BEFORE", e.target.files)} style={{display: 'none'}} />
             </div>
 
             <div className="form-group">
@@ -2623,24 +2567,12 @@ const handlePhotoUpload = async (phase: 'BEFORE' | 'AFTER', files: FileList | nu
                     {(formData.afterPhotos || []).map((p, i) => (
                         <div key={`a-${i}`} className="edit-photo-item">
                             <img src={`${API_BASE}${p}`} alt={`Depois ${i+1}`} />
-                             <button
-                                 className="delete-photo-btn"
-                                 onClick={() => handlePhotoRemove(p)}
-                             >
-                                 &times;
-                             </button>
+                             <button className="delete-photo-btn" onClick={() => handlePhotoRemove(p)}>&times;</button>
                         </div>
                     ))}
                 </div>
                 <label htmlFor="after-upload" className="button button-sm" style={{marginTop: '0.5rem'}}>Adicionar Foto "Depois"</label>
-                <input
-                    id="after-upload"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={e => handlePhotoUpload("AFTER", e.target.files)}
-                    style={{display: 'none'}}
-                />
+                <input id="after-upload" type="file" accept="image/*" multiple onChange={e => handlePhotoUpload("AFTER", e.target.files)} style={{display: 'none'}} />
             </div>
 
             <div className="button-group">
