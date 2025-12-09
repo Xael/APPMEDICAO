@@ -848,6 +848,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
+    const [selectedContractGroup, setSelectedContractGroup] = useState('');
     
     // --- FILTROS DE DATA (CORREÇÃO ANTERIOR) ---
     const [startDate, setStartDate] = useState('');
