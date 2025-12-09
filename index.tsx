@@ -863,7 +863,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     // ------------------------------------------
-
+    const [selectedServices, setSelectedServices] = useState<string[]>([]);
     const handleSaveMeasurement = async (recordId: string) => {
         await onMeasurementUpdate(parseInt(recordId), newMeasurement);
         setEditingMeasurementId(null);
@@ -911,6 +911,7 @@ const filteredRecords = useMemo(() => {
             if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
             return true;
         }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    
     }, [records, startDate, endDate, selectedServices, selectedContractGroup]);
 
     const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE);
@@ -1113,28 +1114,43 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
     const allServiceNames = services.map(s => s.name);
     const allContractGroups = [...new Set(records.map(r => r.contractGroup))].sort();
     
-    const handleServiceFilterChange = (service: string, isChecked: boolean) => { setSelectedServices(prev => isChecked ? [...prev, service] : prev.filter(s => s !== service)); };
+    const handleServiceFilterChange = (service: string, isChecked: boolean) => {
+    setSelectedServices(prev =>
+        isChecked ? [...prev, service] : prev.filter(s => s !== service)
+    );
+};
     
-    const filteredRecords = records.filter(r => {
+const filteredRecords = records
+    .filter(r => {
         const recordDate = new Date(r.startTime);
         const start = startDate ? new Date(startDate) : null;
         const end = endDate ? new Date(endDate) : null;
+
         if (start && recordDate < start) return false;
-        if (end) { end.setHours(23, 59, 59, 999); if (recordDate > end) return false; }
+
+        if (end) {
+            end.setHours(23, 59, 59, 999);
+            if (recordDate > end) return false;
+        }
+
+        // Filtro de serviços flexível (maiúsculas/minúsculas/acentos)
         if (selectedServices.length > 0) {
             const normalizedRecordService = normalizeString(r.serviceType);
-            
-            // Verifica se o serviço normalizado do registro corresponde a algum dos selecionados
-            const isServiceSelected = selectedServices.some(selectedName => {
-                return normalizeString(selectedName) === normalizedRecordService;
-            });
-            
-            if (!isServiceSelected) return false;
+            const normalizedSelected = selectedServices.map(normalizeString);
+
+            if (!normalizedSelected.includes(normalizedRecordService)) {
+                return false;
+            }
         }
-       
-        if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
+
+        // Filtro por contrato/cidade
+        if (selectedContractGroup && r.contractGroup !== selectedContractGroup) {
+            return false;
+        }
+
         return true;
-    }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    })
+    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
     
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         if(e.target.checked) setSelectedIds(filteredRecords.map(r => r.id));
@@ -1609,7 +1625,22 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
                     <div className="form-group"><label>Data Final</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
                     <div className="form-group"><label>Contrato/Cidade</label><select value={selectedContractGroup} onChange={e => setSelectedContractGroup(e.target.value)}><option value="">Todos</option>{allContractGroups.map(g => <option key={g} value={g}>{g}</option>)}</select></div>
                 </div>
-                <fieldset className="form-group-full"><legend>Filtrar por Serviços</legend><div className="checkbox-group">{allServiceNames.map(name => (<div key={name} className="checkbox-item"><input type="checkbox" id={`service-${name}`} checked={selectedServices.includes(name)} onChange={e => handleServiceFilterChange(name, e.target.checked)} /><label htmlFor={`service-${name}`}>{name}</label></div>))}</div></fieldset>
+                <fieldset className="form-group-full">
+    <legend>Filtrar por Serviços</legend>
+    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        {allServiceNames.map(name => (
+            <div key={name}>
+                <input
+                    type="checkbox"
+                    id={`service-${name}`}
+                    checked={selectedServices.includes(name)}
+                    onChange={e => handleServiceFilterChange(name, e.target.checked)}
+                />
+                <label htmlFor={`service-${name}`}>{name}</label>
+            </div>
+        ))}
+    </div>
+</fieldset>
             </div>
           
             <div className="report-summary">
