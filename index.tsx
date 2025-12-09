@@ -932,7 +932,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
                     ))}
                 </select>
             </div>
-         </div>
+         
             {/* ------------------------------------------ */}
 
             {isAdmin && selectedIds.size > 0 && (
