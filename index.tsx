@@ -904,7 +904,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
     const currentRecords = filteredRecords.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
     // Reset page when search or date changes
-    useEffect(() => { setCurrentPage(1); }, [searchTerm, startDate, endDate]);
+    // useEffect(() => { setCurrentPage(1); }, [searchTerm, startDate, endDate]);
 
     return (
         <div>
