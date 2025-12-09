@@ -1131,7 +1131,7 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
             
             if (!isServiceSelected) return false;
         }
-        if (selectedServices.length > 0 && !selectedServices.includes(r.serviceType)) return false;
+       
         if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
         return true;
     }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
