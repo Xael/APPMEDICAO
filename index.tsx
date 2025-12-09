@@ -1120,6 +1120,16 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
         const end = endDate ? new Date(endDate) : null;
         if (start && recordDate < start) return false;
         if (end) { end.setHours(23, 59, 59, 999); if (recordDate > end) return false; }
+        if (selectedServices.length > 0) {
+            const normalizedRecordService = normalizeString(r.serviceType);
+            
+            // Verifica se o serviço normalizado do registro corresponde a algum dos selecionados
+            const isServiceSelected = selectedServices.some(selectedName => {
+                return normalizeString(selectedName) === normalizedRecordService;
+            });
+            
+            if (!isServiceSelected) return false;
+        }
         if (selectedServices.length > 0 && !selectedServices.includes(r.serviceType)) return false;
         if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
         return true;
