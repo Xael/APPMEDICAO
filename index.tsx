@@ -891,37 +891,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
     
     // 1. NORMALIZA O TERMO DE BUSCA UMA VEZ
         const normalizedSearchTerm = normalizeString(searchTerm);
+
         return records.filter(record => {
             const recordDate = new Date(record.startTime);
 
-    // 2. APLICA A NORMALIZAÇÃO NOS CAMPOS DE BUSCA
+    // 2. APLICA A NORMALIZAÇÃO NOS CAMPOS DE BUSCA (Busca Flexível)
             const textMatch = normalizeString(record.locationName).includes(normalizedSearchTerm) ||
                 normalizeString(record.serviceType).includes(normalizedSearchTerm) ||
                 normalizeString(record.operatorName).includes(normalizedSearchTerm) ||
                 (record.serviceOrderNumber && normalizeString(record.serviceOrderNumber).includes(normalizedSearchTerm));
             
             if (!textMatch) return false;
-    
-        return records.filter(record => {
-            const recordDate = new Date(record.startTime);
-        
 
-            // Filtro de Busca por Texto (Existente)
-            const textMatch = record.locationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                record.serviceType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                record.operatorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (record.serviceOrderNumber && record.serviceOrderNumber.includes(searchTerm));
-            
-            if (!textMatch) return false;
-
-            // Filtro de Data (Corrigido)
+            // 3. APLICA OS FILTROS DE DATA E CONTRATO
             if (start && recordDate < start) return false;
             if (end && recordDate > end) return false;
             if (selectedContractGroup && record.contractGroup !== selectedContractGroup) return false;
 
             return true;
         });
-    }, [records, searchTerm, startDate, endDate, selectedContractGroup]); // Adicionar dependências de data
+    }, [records, searchTerm, startDate, endDate, selectedContractGroup]); // Fim do useMemo
 
     const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE);
     const currentRecords = filteredRecords.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
