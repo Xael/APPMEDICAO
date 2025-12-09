@@ -766,6 +766,7 @@ const PhotoStep: React.FC<{ phase: 'BEFORE' | 'AFTER'; onComplete: (photos: stri
         }
         if (event.target) { event.target.value = ''; }
     };
+    const [selectedContractGroup, setSelectedContractGroup] = useState(''); // <--- NOVO ESTADO
     const handleUploadClick = () => {
         fileInputRef.current?.click();
     };
@@ -880,6 +881,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
 
         return records.filter(record => {
             const recordDate = new Date(record.startTime);
+        
 
             // Filtro de Busca por Texto (Existente)
             const textMatch = record.locationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -892,10 +894,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
             // Filtro de Data (Corrigido)
             if (start && recordDate < start) return false;
             if (end && recordDate > end) return false;
+            if (selectedContractGroup && record.contractGroup !== selectedContractGroup) return false;
 
             return true;
         });
-    }, [records, searchTerm, startDate, endDate]); // Adicionar dependências de data
+    }, [records, searchTerm, startDate, endDate, selectedContractGroup]); // Adicionar dependências de data
 
     const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE);
     const currentRecords = filteredRecords.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -918,6 +921,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
                     <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
                 </div>
             </div>
+
+            {/* Adicionar Filtro de Contrato/Cidade (NOVO) */}
+            <div className="form-group">
+                <label>Contrato/Cidade</label>
+                <select value={selectedContractGroup} onChange={e => setSelectedContractGroup(e.target.value)}>
+                    <option value="">Todos os Contratos</option>
+                    {[...new Set(records.map(r => r.contractGroup))].sort().map(group => (
+                        <option key={group} value={group}>{group}</option>
+                    ))}
+                </select>
+            </div>
+         </div>
             {/* ------------------------------------------ */}
 
             {isAdmin && selectedIds.size > 0 && (
