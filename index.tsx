@@ -884,33 +884,34 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
     };
 
     // Filter and Pagination Logic
-    const filteredRecords = useMemo(() => {
+const filteredRecords = useMemo(() => {
         const start = startDate ? new Date(startDate) : null;
         const end = endDate ? new Date(endDate) : null;
         if (end) end.setHours(23, 59, 59, 999); 
     
-    // 1. NORMALIZA O TERMO DE BUSCA UMA VEZ
-        const normalizedSearchTerm = normalizeString(searchTerm);
+        // 1. NORMALIZA A LISTA DE SERVIÇOS SELECIONADOS UMA ÚNICA VEZ
+        const normalizedSelectedServices = selectedServices.map(normalizeString);
 
-        return records.filter(record => {
-            const recordDate = new Date(record.startTime);
-
-    // 2. APLICA A NORMALIZAÇÃO NOS CAMPOS DE BUSCA (Busca Flexível)
-            const textMatch = normalizeString(record.locationName).includes(normalizedSearchTerm) ||
-                normalizeString(record.serviceType).includes(normalizedSearchTerm) ||
-                normalizeString(record.operatorName).includes(normalizedSearchTerm) ||
-                (record.serviceOrderNumber && normalizeString(record.serviceOrderNumber).includes(normalizedSearchTerm));
+        return records.filter(r => {
+            const recordDate = new Date(r.startTime);
             
-            if (!textMatch) return false;
-
-            // 3. APLICA OS FILTROS DE DATA E CONTRATO
             if (start && recordDate < start) return false;
             if (end && recordDate > end) return false;
-            if (selectedContractGroup && record.contractGroup !== selectedContractGroup) return false;
 
+            // 2. FILTRO DE SERVIÇO CORRIGIDO: insensível a acento/case
+            if (selectedServices.length > 0) {
+                const normalizedRecordService = normalizeString(r.serviceType);
+                
+                // Verifica se o serviço normalizado do registro está na lista normalizada de serviços selecionados
+                if (!normalizedSelectedServices.includes(normalizedRecordService)) {
+                    return false;
+                }
+            }
+
+            if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
             return true;
-        });
-    }, [records, searchTerm, startDate, endDate, selectedContractGroup]); // Fim do useMemo
+        }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    }, [records, startDate, endDate, selectedServices, selectedContractGroup]);
 
     const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE);
     const currentRecords = filteredRecords.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
