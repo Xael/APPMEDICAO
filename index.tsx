@@ -14,6 +14,15 @@ import ForgotPasswordView from './ForgotPasswordView';
 ChartJS.register( CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend );
 
 // --- Tipos, Helpers, Hooks ---
+
+// NOVO HELPER: Torna strings insensíveis a maiúsculas/minúsculas e acentos
+const normalizeString = (str: string | null | undefined) => {
+    if (!str) return '';
+    // Converte para minúsculas, normaliza (NFD) para separar a letra do acento, 
+    // e remove os caracteres de diacrítico (acentos)
+    return String(str).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+};
+
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 let API_TOKEN: string | null = localStorage.getItem('crbApiToken');
 
@@ -879,7 +888,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
         const start = startDate ? new Date(startDate) : null;
         const end = endDate ? new Date(endDate) : null;
         if (end) end.setHours(23, 59, 59, 999); 
+    
+    // 1. NORMALIZA O TERMO DE BUSCA UMA VEZ
+        const normalizedSearchTerm = normalizeString(searchTerm);
+        return records.filter(record => {
+            const recordDate = new Date(record.startTime);
 
+    // 2. APLICA A NORMALIZAÇÃO NOS CAMPOS DE BUSCA
+            const textMatch = normalizeString(record.locationName).includes(normalizedSearchTerm) ||
+                normalizeString(record.serviceType).includes(normalizedSearchTerm) ||
+                normalizeString(record.operatorName).includes(normalizedSearchTerm) ||
+                (record.serviceOrderNumber && normalizeString(record.serviceOrderNumber).includes(normalizedSearchTerm));
+            
+            if (!textMatch) return false;
+    
         return records.filter(record => {
             const recordDate = new Date(record.startTime);
         
@@ -1806,11 +1828,14 @@ const ManageLocationsView: React.FC<{
 
     // Determine what to display
     const displayedLocations = useMemo(() => {
+    // 1. NORMALIZA O TERMO DE BUSCA UMA VEZ
+    const normalizedSearchTerm = normalizeString(searchTerm);
         if (searchTerm) {
             // Global Search
             return locations.filter(l => 
-                l.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                l.contractGroup.toLowerCase().includes(searchTerm.toLowerCase())
+            // APLICA A NORMALIZAÇÃO NOS CAMPOS DE BUSCA
+                normalizeString(l.name).includes(normalizedSearchTerm) ||
+                normalizeString(l.contractGroup).includes(normalizedSearchTerm)
             );
         } else if (selectedGroup) {
             // Filter by group, showing top level only
@@ -2848,10 +2873,14 @@ const AuditLogView: React.FC<{ log: AuditLogEntry[] }> = ({ log }) => {
     const ITEMS_PER_PAGE = 10;
 
     const filteredLog = useMemo(() => {
+        // 1. NORMALIZA O TERMO DE BUSCA UMA VEZ
+        const normalizedSearchTerm = normalizeString(searchTerm);
+        
         return log.filter(entry => 
-            entry.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            entry.adminUsername.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            entry.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            // APLICA A NORMALIZAÇÃO NOS CAMPOS DE BUSCA
+            normalizeString(entry.details).includes(normalizedSearchTerm) ||
+            normalizeString(entry.adminUsername).includes(normalizedSearchTerm) ||
+            normalizeString(entry.action).includes(normalizedSearchTerm) ||
             String(entry.recordId).includes(searchTerm)
         ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }, [log, searchTerm]);
