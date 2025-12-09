@@ -1851,6 +1851,7 @@ const ManageLocationsView: React.FC<{
                                         <h3>{loc.name} <small style={{fontWeight:'normal', fontSize:'0.8rem'}}>({loc.contractGroup})</small></h3>
                                         <div>
                                             <button className="button button-sm admin-button" onClick={() => handleEdit(loc)}>Editar</button>
+                                            <button className="button button-sm button-danger" onClick={() => handleDelete(loc.id)}>Excluir</button>
                                         </div>
                                     </div>
                                     <p>{loc.isGroup ? 'Tipo: Bairro' : loc.parentId ? 'Tipo: Rua' : 'Tipo: Local'}</p>
