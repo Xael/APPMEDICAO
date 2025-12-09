@@ -889,8 +889,9 @@ const filteredRecords = useMemo(() => {
         const end = endDate ? new Date(endDate) : null;
         if (end) end.setHours(23, 59, 59, 999); 
     
-        // 1. NORMALIZA A LISTA DE SERVIÇOS SELECIONADOS UMA ÚNICA VEZ
         const normalizedSelectedServices = selectedServices.map(normalizeString);
+        // NOVO: Normaliza o termo de busca (para evitar recalculo a cada keystroke fora do useMemo)
+        const normalizedSearchTerm = normalizeString(searchTerm); 
 
         return records.filter(r => {
             const recordDate = new Date(r.startTime);
@@ -898,21 +899,33 @@ const filteredRecords = useMemo(() => {
             if (start && recordDate < start) return false;
             if (end && recordDate > end) return false;
 
-            // 2. FILTRO DE SERVIÇO CORRIGIDO: insensível a acento/case
             if (selectedServices.length > 0) {
                 const normalizedRecordService = normalizeString(r.serviceType);
-                
-                // Verifica se o serviço normalizado do registro está na lista normalizada de serviços selecionados
                 if (!normalizedSelectedServices.includes(normalizedRecordService)) {
                     return false;
                 }
             }
 
             if (selectedContractGroup && r.contractGroup !== selectedContractGroup) return false;
+            
+            // NOVO/CORRIGIDO: Aplicar o filtro de busca
+            if (normalizedSearchTerm) {
+                 const matchLocation = normalizeString(r.locationName).includes(normalizedSearchTerm);
+                 const matchService = normalizeString(r.serviceType).includes(normalizedSearchTerm);
+                 const matchOperator = normalizeString(r.operatorName).includes(normalizedSearchTerm);
+                 const matchOs = normalizeString(r.serviceOrderNumber).includes(normalizedSearchTerm);
+                 
+                 // CORRIGIDO: Só retorna true se houver match em qualquer um dos campos
+                 if (!matchLocation && !matchService && !matchOperator && !matchOs) {
+                     return false;
+                 }
+            }
+
             return true;
         }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
     
-    }, [records, startDate, endDate, selectedServices, selectedContractGroup]);
+// CORRIGIDO: Adiciona searchTerm nas dependências
+}, [records, startDate, endDate, selectedServices, selectedContractGroup, searchTerm]);
 
     const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE);
     const currentRecords = filteredRecords.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
