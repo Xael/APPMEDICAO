@@ -112,6 +112,34 @@ interface AuditLogEntry { id: string; timestamp: string; adminId: string; adminU
 interface ContractConfig { id: number; contractGroup: string; cycleStartDay: number; }
 
 const formatDateTime = (isoString: string) => new Date(isoString).toLocaleString('pt-BR');
+
+/**
+ * IMPORTANT: HTML <input type="date" /> returns a "YYYY-MM-DD" string.
+ * In JS, `new Date("YYYY-MM-DD")` is parsed as UTC and can shift the day in Brazil (-03:00).
+ * These helpers parse the date as LOCAL time, avoiding off-by-one/day-range bugs in filters and reports.
+ */
+const parseDateInputLocal = (value: string, endOfDay = false): Date | null => {
+  if (!value) return null;
+  const [y, m, d] = value.split('-').map(Number);
+  if (!y || !m || !d) return null;
+
+  const dt = new Date(y, m - 1, d, 0, 0, 0, 0); // local midnight
+  if (endOfDay) dt.setHours(23, 59, 59, 999);
+  return dt;
+};
+
+const formatDateInputBR = (value: string): string => {
+  const dt = parseDateInputLocal(value, false);
+  return dt ? dt.toLocaleDateString('pt-BR') : 'N/A';
+};
+
+const getPeriodTag = (startDate: string, endDate: string) => {
+  if (startDate && endDate) return `${startDate}_a_${endDate}`;
+  if (startDate) return `a_partir_${startDate}`;
+  if (endDate) return `ate_${endDate}`;
+  return `todas_datas`;
+};
+
 const calculateDistance = (p1: GeolocationCoords, p2: GeolocationCoords) => {
     if (!p1 || !p2) return Infinity;
     const R = 6371e3;
@@ -885,9 +913,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ records, onSelect, isAdmin, o
 
     // Filter and Pagination Logic
 const filteredRecords = useMemo(() => {
-        const start = startDate ? new Date(startDate) : null;
-        const end = endDate ? new Date(endDate) : null;
-        if (end) end.setHours(23, 59, 59, 999); 
+        const start = startDate ? parseDateInputLocal(startDate) : null;
+        const end = endDate ? parseDateInputLocal(endDate, true) : null; 
     
         const normalizedSelectedServices = selectedServices.map(normalizeString);
         // NOVO: Normaliza o termo de busca (para evitar recalculo a cada keystroke fora do useMemo)
@@ -1136,16 +1163,11 @@ const ReportsView: React.FC<{ records: ServiceRecord[]; services: ServiceDefinit
 const filteredRecords = records
     .filter(r => {
         const recordDate = new Date(r.startTime);
-        const start = startDate ? new Date(startDate) : null;
-        const end = endDate ? new Date(endDate) : null;
+        const start = startDate ? parseDateInputLocal(startDate) : null;
+        const end = endDate ? parseDateInputLocal(endDate, true) : null;
 
         if (start && recordDate < start) return false;
-
-        if (end) {
-            end.setHours(23, 59, 59, 999);
-            if (recordDate > end) return false;
-        }
-
+        if (end && recordDate > end) return false;
         // Filtro de serviços flexível (maiúsculas/minúsculas/acentos)
         if (selectedServices.length > 0) {
             const normalizedRecordService = normalizeString(r.serviceType);
@@ -1175,7 +1197,7 @@ const filteredRecords = records
         else setSelectedIds(ids => ids.filter(i => i !== id));
     };
 
-    const selectedRecords = records.filter(r => selectedIds.includes(r.id));
+    const selectedRecords = filteredRecords.filter(r => selectedIds.includes(r.id));
     const totalArea = selectedRecords.reduce((sum, r) => sum + (r.locationArea || 0), 0);
 
     const handleExportExcel = async () => {
@@ -1212,7 +1234,8 @@ const filteredRecords = records
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `relatorio_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
+            const periodTag = getPeriodTag(startDate, endDate);
+            link.download = `relatorio_crb_${periodTag}_${new Date().toISOString().split('T')[0]}.xlsx`;
             link.click();
             URL.revokeObjectURL(link.href);
         } catch (error) {
@@ -1264,8 +1287,8 @@ const filteredRecords = records
         worksheet.getCell('G5').value = 'PERÍODO:';
         worksheet.getCell('G5').style = leftBoldStyle;
         worksheet.mergeCells('I5:K5');
-        const formattedStartDate = startDate ? new Date(startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
-        const formattedEndDate = endDate ? new Date(endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'N/A';
+        const formattedStartDate = startDate ? formatDateInputBR(startDate) : 'N/A';
+        const formattedEndDate = endDate ? formatDateInputBR(endDate) : 'N/A';
         worksheet.getCell('I5').value = `${formattedStartDate} até ${formattedEndDate}`;
         worksheet.getCell('I5').style = centerStyle;
 
@@ -1370,7 +1393,8 @@ const filteredRecords = records
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `relatorio_faturamento_crb_${new Date().toISOString().split('T')[0]}.xlsx`;
+            const periodTag = getPeriodTag(startDate, endDate);
+            link.download = `relatorio_faturamento_crb_${periodTag}_${new Date().toISOString().split('T')[0]}.xlsx`;
             link.click();
             URL.revokeObjectURL(link.href);
         } catch (error) {
@@ -1482,7 +1506,8 @@ const filteredRecords = records
                             const proportionalHeight = (imgProps.height * pdfPageWidth) / imgProps.width;
                             doc.addImage(imgData, 'JPEG', 0, 0, pdfPageWidth, proportionalHeight);
                         }
-                        doc.save(`relatorio_fotos_crb_${new Date().toISOString().split('T')[0]}.pdf`);
+                        const periodTag = getPeriodTag(startDate, endDate);
+                        doc.save(`relatorio_fotos_crb_${periodTag}_${new Date().toISOString().split('T')[0]}.pdf`);
                     } catch (error) {
                         console.error("Erro ao gerar PDF:", error);
                         alert("Ocorreu um erro ao gerar o PDF.");
@@ -1497,8 +1522,12 @@ const filteredRecords = records
         
         const today = new Date().toLocaleDateString('pt-BR');
         const contractTitle = pages[0]?.[0]?.contractGroup || "";
-        
-        const styles = {
+
+        const periodText =
+            (startDate || endDate)
+                ? `${startDate ? formatDateInputBR(startDate) : '...'} até ${endDate ? formatDateInputBR(endDate) : '...'}`
+                : 'Todos os períodos';
+const styles = {
             page: {
                 width: '210mm',
                 minHeight: '297mm', 
@@ -1532,6 +1561,7 @@ const filteredRecords = records
                             </div>
                             <div style={{textAlign: 'right', fontSize: '9pt'}}>
                                 <p>Emissão: {today}</p>
+                                <p>Período: {periodText}</p>
                                 <p>Pág. {pageIndex + 1}/{pages.length}</p>
                             </div>
                         </header>
